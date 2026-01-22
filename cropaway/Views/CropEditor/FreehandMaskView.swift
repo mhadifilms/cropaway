@@ -136,6 +136,8 @@ struct FreehandMaskView: View {
     @State private var interactionState: MaskInteractionState = .idle
     @State private var dragStartLocation: CGPoint = .zero
     @State private var renderTrigger: Int = 0  // Force canvas redraw
+    @State private var isCreatingNewVertex: Bool = false  // Track if we're dragging out handles for a new vertex
+    @State private var newVertexIndex: Int? = nil  // Index of vertex being created
 
     // UI constants
     private let vertexSize: CGFloat = 14
@@ -177,13 +179,6 @@ struct FreehandMaskView: View {
                     .contentShape(Rectangle())
                     .gesture(unifiedGesture)
 
-                // Add curve button (outside canvas)
-                if let selectedIdx = selectedVertexIndex,
-                   selectedIdx < vertices.count,
-                   vertices[selectedIdx].controlOut == nil {
-                    addCurveButton(for: selectedIdx)
-                }
-
                 // Instructions overlay
                 instructionsView
             }
@@ -210,13 +205,18 @@ struct FreehandMaskView: View {
                 // Only process as drag if moved beyond tap threshold
                 let distance = value.startLocation.distance(to: value.location)
                 if distance > tapThreshold {
-                    continueDrag(to: value.location, from: value.startLocation)
+                    if isCreatingNewVertex, let idx = newVertexIndex {
+                        // Dragging out bezier handles for new vertex
+                        updateNewVertexHandles(at: idx, dragTo: value.location, from: value.startLocation)
+                    } else {
+                        continueDrag(to: value.location, from: value.startLocation)
+                    }
                 }
             }
             .onEnded { value in
                 let distance = value.startLocation.distance(to: value.location)
 
-                if distance <= tapThreshold {
+                if distance <= tapThreshold && !isCreatingNewVertex {
                     // It was a tap, not a drag
                     handleTap(at: value.startLocation)
                 } else {
@@ -226,6 +226,8 @@ struct FreehandMaskView: View {
 
                 dragStartLocation = .zero
                 interactionState = .idle
+                isCreatingNewVertex = false
+                newVertexIndex = nil
             }
     }
 
@@ -253,19 +255,60 @@ struct FreehandMaskView: View {
             )
 
         case .vertex(let i):
-            interactionState = .draggingVertex(
-                index: i,
-                startPos: vertices[i].position
-            )
+            // Check if clicking first vertex to close
+            if !isShapeClosed && i == 0 && vertices.count >= 3 {
+                // Will be handled in tap - don't start drag
+                interactionState = .idle
+            } else {
+                interactionState = .draggingVertex(
+                    index: i,
+                    startPos: vertices[i].position
+                )
+            }
 
         case .insideShape where isShapeClosed:
             interactionState = .draggingShape(
                 startPositions: vertices.map { $0.position }
             )
 
+        case .background where !isShapeClosed:
+            // Create new vertex immediately - drag will add bezier handles
+            let rawNormalized = point.normalized(to: videoSize)
+            let normalized = CGPoint(x: max(0, min(1, rawNormalized.x)), y: max(0, min(1, rawNormalized.y)))
+
+            // Check if near first vertex to close
+            if vertices.count >= 3 {
+                let firstPos = vertices[0].position.denormalized(to: videoSize)
+                if point.distance(to: firstPos) < closeThreshold {
+                    // Will close on tap/drag end
+                    interactionState = .idle
+                    return
+                }
+            }
+
+            vertices.append(MaskVertex(position: normalized))
+            newVertexIndex = vertices.count - 1
+            isCreatingNewVertex = true
+            selectedVertexIndex = newVertexIndex
+            triggerRedraw()
+
         case .background, .insideShape:
             interactionState = .idle
         }
+    }
+
+    private func updateNewVertexHandles(at index: Int, dragTo point: CGPoint, from start: CGPoint) {
+        guard index < vertices.count else { return }
+
+        // Calculate handle offset based on drag distance and direction
+        let dx = (point.x - start.x) / videoSize.width
+        let dy = (point.y - start.y) / videoSize.height
+
+        // The drag direction determines the "out" handle, opposite is "in" handle
+        vertices[index].controlOut = CGPoint(x: dx, y: dy)
+        vertices[index].controlIn = CGPoint(x: -dx, y: -dy)
+
+        triggerRedraw()
     }
 
     private func handleTap(at point: CGPoint) {
@@ -297,31 +340,27 @@ struct FreehandMaskView: View {
 
         case .background:
             if !isShapeClosed {
-                // Add new vertex
-                addVertex(at: point)
+                // Check if near first vertex to close
+                if vertices.count >= 3 {
+                    let firstPos = vertices[0].position.denormalized(to: videoSize)
+                    if point.distance(to: firstPos) < closeThreshold {
+                        closeShape()
+                        return
+                    }
+                }
+
+                // Add new vertex (simple click = no bezier handles)
+                let rawNormalized = point.normalized(to: videoSize)
+                let normalized = CGPoint(x: max(0, min(1, rawNormalized.x)), y: max(0, min(1, rawNormalized.y)))
+                vertices.append(MaskVertex(position: normalized))
+                selectedVertexIndex = vertices.count - 1
+                saveToPathData()
+                triggerRedraw()
             } else {
                 selectedVertexIndex = nil
                 triggerRedraw()
             }
         }
-    }
-
-    private func addVertex(at point: CGPoint) {
-        let rawNormalized = point.normalized(to: videoSize)
-        let normalized = CGPoint(x: max(0, min(1, rawNormalized.x)), y: max(0, min(1, rawNormalized.y)))
-
-        // Check if near first vertex to close (only if we have 3+ points)
-        if vertices.count >= 3 {
-            let firstPos = vertices[0].position.denormalized(to: videoSize)
-            if point.distance(to: firstPos) < closeThreshold {
-                closeShape()
-                return
-            }
-        }
-
-        vertices.append(MaskVertex(position: normalized))
-        saveToPathData()
-        triggerRedraw()
     }
 
     // MARK: - Drag Handling
@@ -556,42 +595,20 @@ struct FreehandMaskView: View {
 
     // MARK: - UI Components
 
-    @ViewBuilder
-    private func addCurveButton(for index: Int) -> some View {
-        let pos = vertices[index].position.denormalized(to: videoSize)
-
-        Button {
-            vertices[index].controlOut = CGPoint(x: 0.05, y: 0)
-            vertices[index].controlIn = CGPoint(x: -0.05, y: 0)
-            saveToPathData()
-            triggerRedraw()
-        } label: {
-            Image(systemName: "point.topleft.down.curvedto.point.bottomright.up")
-                .font(.system(size: 10, weight: .medium))
-                .foregroundColor(.white)
-                .padding(6)
-                .background(Color.accentColor)
-                .clipShape(Circle())
-                .shadow(radius: 2)
-        }
-        .buttonStyle(.plain)
-        .position(x: pos.x + 28, y: pos.y - 28)
-    }
-
     private var instructionsView: some View {
         VStack {
             Spacer()
             HStack {
                 if !isShapeClosed {
                     if vertices.isEmpty {
-                        Text("Click to place points")
+                        Text("Click to add point \u{2022} Click+drag for curves")
                     } else if vertices.count < 3 {
-                        Text("Add more points (\(vertices.count)/3 minimum)")
+                        Text("Add more points (\(vertices.count)/3 min) \u{2022} Drag for curves")
                     } else {
-                        Text("Click first point (green) to close shape, or keep adding")
+                        Text("Click green point to close \u{2022} Drag for curves")
                     }
                 } else {
-                    Text("Select vertex to edit \u{2022} Drag inside to move shape")
+                    Text("Drag vertex to move \u{2022} Drag handles for curves \u{2022} Drag inside to move all")
                 }
             }
             .font(.system(size: 11))
