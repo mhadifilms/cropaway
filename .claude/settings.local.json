@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xcodebuild:*)",
+      "Bash(find:*)",
+      "Bash(codesign:*)",
+      "Bash(swift test_export.swift:*)",
+      "Bash(ffmpeg:*)",
+      "Bash(readlink:*)",
+      "Bash(/bin/sh -c \"/opt/homebrew/Cellar/ffmpeg/8.0.1_1/bin/ffmpeg -y -i /Users/sync-studio/Downloads/samle/Berlin_201_022_vubcritical_R1.mov -vf crop=3840:1194:0:137 -c:v copy -c:a copy /tmp/test_crop.mov\")",
+      "Bash(/bin/sh -c \"/opt/homebrew/Cellar/ffmpeg/8.0.1_1/bin/ffmpeg -y -i /Users/sync-studio/Downloads/samle/Berlin_201_022_vubcritical_R1.mov -vf crop=3840:1194:0:137 -c:v prores_ks -profile:v 4444 -pix_fmt yuva444p10le -c:a copy /tmp/test_crop.mov\")",
+      "Bash(/opt/homebrew/Cellar/ffmpeg/8.0.1_1/bin/ffmpeg:*)",
+      "Bash(/opt/homebrew/bin/ffmpeg:*)",
+      "Bash(xattr:*)",
+      "Bash(/Users/sync-studio/Documents/GitHub/cropaway/cropaway/cropaway/Resources/ffmpeg -version)",
+      "Bash(/Users/sync-studio/Documents/GitHub/cropaway/cropaway/cropaway/Resources/ffmpeg -encoders)",
+      "Bash(/Users/sync-studio/Library/Developer/Xcode/DerivedData/cropaway-bnrbvclbqcwaopbkjqjoyoxjpnof/Build/Products/Debug/cropaway.app/Contents/Resources/ffmpeg:*)",
+      "Bash(chmod:*)",
+      "Bash(SOURCE=\"../AppIcon.imageset/cropaway-iOS-Default-1024x1024@1x.png\")",
+      "Bash(sips:*)"
+    ]
+  }
+}
