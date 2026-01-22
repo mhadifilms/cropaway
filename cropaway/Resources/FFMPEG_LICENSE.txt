@@ -1,0 +1,16 @@
+FFmpeg License Notice
+=====================
+
+This application bundles FFmpeg (https://ffmpeg.org).
+
+FFmpeg is licensed under the GNU Lesser General Public License (LGPL)
+version 2.1 or later, with some optional components under the GNU
+General Public License (GPL) version 2 or later.
+
+FFmpeg static build provided by: https://evermeet.cx/ffmpeg/
+
+For the complete FFmpeg source code and license terms, visit:
+https://github.com/FFmpeg/FFmpeg
+
+This application uses FFmpeg as a separate executable and does not
+link against FFmpeg libraries, in compliance with LGPL requirements.
