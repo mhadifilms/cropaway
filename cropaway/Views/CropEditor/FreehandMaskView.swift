@@ -12,7 +12,7 @@ import SwiftUI
 struct MaskHitTester {
     let vertices: [MaskVertex]
     let videoSize: CGSize
-    let hitRadius: CGFloat = 12
+    let hitRadius: CGFloat = 14
     let isShapeClosed: Bool
     let selectedVertexIndex: Int?
 
@@ -64,19 +64,49 @@ struct MaskHitTester {
 
         // 3. Check inside closed shape
         if isShapeClosed && vertices.count >= 3 {
-            let path = Path { p in
-                p.move(to: vertices[0].position.denormalized(to: videoSize))
-                for v in vertices.dropFirst() {
-                    p.addLine(to: v.position.denormalized(to: videoSize))
-                }
-                p.closeSubpath()
-            }
+            let path = buildShapePath()
             if path.contains(point) {
                 return .insideShape
             }
         }
 
         return .background
+    }
+
+    private func buildShapePath() -> Path {
+        Path { p in
+            guard vertices.count >= 3 else { return }
+            p.move(to: vertices[0].position.denormalized(to: videoSize))
+
+            for i in 1..<vertices.count {
+                let from = vertices[i-1]
+                let to = vertices[i]
+                addSegment(to: &p, from: from, to: to)
+            }
+
+            // Close path
+            addSegment(to: &p, from: vertices.last!, to: vertices.first!)
+            p.closeSubpath()
+        }
+    }
+
+    private func addSegment(to path: inout Path, from: MaskVertex, to: MaskVertex) {
+        let fromPx = from.position.denormalized(to: videoSize)
+        let toPx = to.position.denormalized(to: videoSize)
+
+        if let ctrlOut = from.controlOut, let ctrlIn = to.controlIn {
+            let ctrl1 = CGPoint(
+                x: fromPx.x + ctrlOut.x * videoSize.width,
+                y: fromPx.y + ctrlOut.y * videoSize.height
+            )
+            let ctrl2 = CGPoint(
+                x: toPx.x + ctrlIn.x * videoSize.width,
+                y: toPx.y + ctrlIn.y * videoSize.height
+            )
+            path.addCurve(to: toPx, control1: ctrl1, control2: ctrl2)
+        } else {
+            path.addLine(to: toPx)
+        }
     }
 }
 
@@ -104,11 +134,14 @@ struct FreehandMaskView: View {
     @State private var selectedVertexIndex: Int? = nil
     @State private var isShapeClosed: Bool = false
     @State private var interactionState: MaskInteractionState = .idle
+    @State private var dragStartLocation: CGPoint = .zero
+    @State private var renderTrigger: Int = 0  // Force canvas redraw
 
     // UI constants
-    private let vertexSize: CGFloat = 12
-    private let handleSize: CGFloat = 8
+    private let vertexSize: CGFloat = 14
+    private let handleSize: CGFloat = 10
     private let closeThreshold: CGFloat = 20
+    private let tapThreshold: CGFloat = 5  // Max movement to count as tap
 
     // Initializers
     init(points: Binding<[CGPoint]>, isDrawing: Binding<Bool>, pathData: Binding<Data?>, videoSize: CGSize, onEditEnded: (() -> Void)? = nil) {
@@ -136,13 +169,13 @@ struct FreehandMaskView: View {
                     drawVertices(context: context)
                     drawBezierHandles(context: context)
                 }
+                .id(renderTrigger)  // Force redraw when state changes
                 .allowsHitTesting(false)
 
-                // Invisible gesture layer
+                // Unified gesture layer - single gesture handles both tap and drag
                 Color.clear
                     .contentShape(Rectangle())
-                    .gesture(tapGesture)
-                    .gesture(dragGesture)
+                    .gesture(unifiedGesture)
 
                 // Add curve button (outside canvas)
                 if let selectedIdx = selectedVertexIndex,
@@ -163,80 +196,42 @@ struct FreehandMaskView: View {
         }
     }
 
-    // MARK: - Gestures
+    // MARK: - Unified Gesture (handles both tap and drag)
 
-    private var tapGesture: some Gesture {
-        SpatialTapGesture()
-            .onEnded { value in
-                handleTap(at: value.location)
-            }
-    }
-
-    private var dragGesture: some Gesture {
-        DragGesture(minimumDistance: 3)
+    private var unifiedGesture: some Gesture {
+        DragGesture(minimumDistance: 0)
             .onChanged { value in
-                if case .idle = interactionState {
-                    startDrag(at: value.startLocation)
+                if dragStartLocation == .zero {
+                    // First event - store start location and determine action
+                    dragStartLocation = value.startLocation
+                    startInteraction(at: value.startLocation)
                 }
-                continueDrag(to: value.location, from: value.startLocation)
+
+                // Only process as drag if moved beyond tap threshold
+                let distance = value.startLocation.distance(to: value.location)
+                if distance > tapThreshold {
+                    continueDrag(to: value.location, from: value.startLocation)
+                }
             }
-            .onEnded { _ in
-                endDrag()
+            .onEnded { value in
+                let distance = value.startLocation.distance(to: value.location)
+
+                if distance <= tapThreshold {
+                    // It was a tap, not a drag
+                    handleTap(at: value.startLocation)
+                } else {
+                    // It was a drag - finalize
+                    endDrag()
+                }
+
+                dragStartLocation = .zero
+                interactionState = .idle
             }
     }
 
-    // MARK: - Tap Handling
+    // MARK: - Interaction Handling
 
-    private func handleTap(at point: CGPoint) {
-        let hitTester = MaskHitTester(
-            vertices: vertices,
-            videoSize: videoSize,
-            isShapeClosed: isShapeClosed,
-            selectedVertexIndex: selectedVertexIndex
-        )
-
-        switch hitTester.hitTest(point) {
-        case .vertex(let i):
-            if !isShapeClosed && i == 0 && vertices.count >= 3 {
-                closeShape()
-            } else {
-                selectedVertexIndex = selectedVertexIndex == i ? nil : i
-            }
-
-        case .handleIn(let i), .handleOut(let i):
-            selectedVertexIndex = i
-
-        case .insideShape:
-            selectedVertexIndex = nil
-
-        case .background:
-            if selectedVertexIndex != nil {
-                selectedVertexIndex = nil
-            } else if !isShapeClosed {
-                addVertex(at: point)
-            }
-        }
-    }
-
-    private func addVertex(at point: CGPoint) {
-        let normalized = point.normalized(to: videoSize).clamped()
-
-        // Check if near first vertex to close
-        if vertices.count >= 3 {
-            let firstPos = vertices[0].position.denormalized(to: videoSize)
-            if point.distance(to: firstPos) < closeThreshold {
-                closeShape()
-                return
-            }
-        }
-
-        vertices.append(MaskVertex(position: normalized))
-        saveToPathData()
-    }
-
-    // MARK: - Drag Handling
-
-    private func startDrag(at point: CGPoint) {
+    private func startInteraction(at point: CGPoint) {
         let hitTester = MaskHitTester(
             vertices: vertices,
             videoSize: videoSize,
@@ -250,21 +245,18 @@ struct FreehandMaskView: View {
                 index: i,
                 startOffset: vertices[i].controlIn ?? .zero
             )
-            selectedVertexIndex = i
 
         case .handleOut(let i):
             interactionState = .draggingHandleOut(
                 index: i,
                 startOffset: vertices[i].controlOut ?? .zero
             )
-            selectedVertexIndex = i
 
         case .vertex(let i):
             interactionState = .draggingVertex(
                 index: i,
                 startPos: vertices[i].position
             )
-            selectedVertexIndex = i
 
         case .insideShape where isShapeClosed:
             interactionState = .draggingShape(
@@ -272,9 +264,67 @@ struct FreehandMaskView: View {
             )
 
         case .background, .insideShape:
-            break
+            interactionState = .idle
         }
     }
+
+    private func handleTap(at point: CGPoint) {
+        let hitTester = MaskHitTester(
+            vertices: vertices,
+            videoSize: videoSize,
+            isShapeClosed: isShapeClosed,
+            selectedVertexIndex: selectedVertexIndex
+        )
+
+        switch hitTester.hitTest(point) {
+        case .vertex(let i):
+            if !isShapeClosed && i == 0 && vertices.count >= 3 {
+                // Clicking first vertex closes the shape
+                closeShape()
+            } else {
+                // Toggle selection
+                selectedVertexIndex = selectedVertexIndex == i ? nil : i
+                triggerRedraw()
+            }
+
+        case .handleIn(let i), .handleOut(let i):
+            selectedVertexIndex = i
+            triggerRedraw()
+
+        case .insideShape:
+            selectedVertexIndex = nil
+            triggerRedraw()
+
+        case .background:
+            if !isShapeClosed {
+                // Add new vertex
+                addVertex(at: point)
+            } else {
+                selectedVertexIndex = nil
+                triggerRedraw()
+            }
+        }
+    }
+
+    private func addVertex(at point: CGPoint) {
+        let rawNormalized = point.normalized(to: videoSize)
+        let normalized = CGPoint(x: max(0, min(1, rawNormalized.x)), y: max(0, min(1, rawNormalized.y)))
+
+        // Check if near first vertex to close (only if we have 3+ points)
+        if vertices.count >= 3 {
+            let firstPos = vertices[0].position.denormalized(to: videoSize)
+            if point.distance(to: firstPos) < closeThreshold {
+                closeShape()
+                return
+            }
+        }
+
+        vertices.append(MaskVertex(position: normalized))
+        saveToPathData()
+        triggerRedraw()
+    }
+
+    // MARK: - Drag Handling
 
     private func continueDrag(to point: CGPoint, from start: CGPoint) {
         let dx = (point.x - start.x) / videoSize.width
@@ -284,34 +334,40 @@ struct FreehandMaskView: View {
         case .draggingVertex(let i, let startPos):
             guard i < vertices.count else { return }
             vertices[i].position = CGPoint(
-                x: (startPos.x + dx).clamped(to: 0...1),
-                y: (startPos.y + dy).clamped(to: 0...1)
+                x: max(0, min(1, startPos.x + dx)),
+                y: max(0, min(1, startPos.y + dy))
             )
+            triggerRedraw()
 
         case .draggingHandleIn(let i, let startOffset):
             guard i < vertices.count else { return }
             let newOffset = CGPoint(x: startOffset.x + dx, y: startOffset.y + dy)
             vertices[i].controlIn = newOffset
+            // Mirror to other handle unless Option is held
             if !NSEvent.modifierFlags.contains(.option) {
                 vertices[i].controlOut = CGPoint(x: -newOffset.x, y: -newOffset.y)
             }
+            triggerRedraw()
 
         case .draggingHandleOut(let i, let startOffset):
             guard i < vertices.count else { return }
             let newOffset = CGPoint(x: startOffset.x + dx, y: startOffset.y + dy)
             vertices[i].controlOut = newOffset
+            // Mirror to other handle unless Option is held
             if !NSEvent.modifierFlags.contains(.option) {
                 vertices[i].controlIn = CGPoint(x: -newOffset.x, y: -newOffset.y)
             }
+            triggerRedraw()
 
         case .draggingShape(let startPositions):
             for i in vertices.indices {
                 guard i < startPositions.count else { continue }
                 vertices[i].position = CGPoint(
-                    x: (startPositions[i].x + dx).clamped(to: 0...1),
-                    y: (startPositions[i].y + dy).clamped(to: 0...1)
+                    x: max(0, min(1, startPositions[i].x + dx)),
+                    y: max(0, min(1, startPositions[i].y + dy))
                 )
             }
+            triggerRedraw()
 
         case .idle:
             break
@@ -320,9 +376,12 @@ struct FreehandMaskView: View {
 
     private func endDrag() {
         if case .idle = interactionState { return }
-        interactionState = .idle
         saveToPathData()
         onEditEnded?()
+    }
+
+    private func triggerRedraw() {
+        renderTrigger += 1
     }
 
     // MARK: - Canvas Drawing
@@ -339,12 +398,13 @@ struct FreehandMaskView: View {
 
         if isShapeClosed && vertices.count >= 3 {
             addCurveSegment(to: &path, from: vertices.last!, to: vertices.first!)
+            path.closeSubpath()
         }
 
         // Draw shadow
-        context.stroke(path, with: .color(.black.opacity(0.5)), style: StrokeStyle(lineWidth: 4))
+        context.stroke(path, with: .color(.black.opacity(0.5)), style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
         // Draw main stroke
-        context.stroke(path, with: .color(.white), style: StrokeStyle(lineWidth: 2))
+        context.stroke(path, with: .color(.white), style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
     }
 
     private func addCurveSegment(to path: inout Path, from: MaskVertex, to: MaskVertex) {
@@ -390,10 +450,10 @@ struct FreehandMaskView: View {
             // Close indicator ring for first vertex
             if isFirstOpen {
                 let outerRect = CGRect(
-                    x: pos.x - (vertexSize + 8) / 2,
-                    y: pos.y - (vertexSize + 8) / 2,
-                    width: vertexSize + 8,
-                    height: vertexSize + 8
+                    x: pos.x - (vertexSize + 10) / 2,
+                    y: pos.y - (vertexSize + 10) / 2,
+                    width: vertexSize + 10,
+                    height: vertexSize + 10
                 )
                 context.stroke(
                     Circle().path(in: outerRect),
@@ -404,20 +464,33 @@ struct FreehandMaskView: View {
 
             // Shadow
             let shadowRect = CGRect(
+                x: pos.x - vertexSize / 2 + 1,
+                y: pos.y - vertexSize / 2 + 1,
+                width: vertexSize,
+                height: vertexSize
+            )
+            context.fill(
+                Circle().path(in: shadowRect),
+                with: .color(.black.opacity(0.3))
+            )
+
+            // Main vertex
+            let mainRect = CGRect(
                 x: pos.x - vertexSize / 2,
                 y: pos.y - vertexSize / 2,
                 width: vertexSize,
                 height: vertexSize
             )
             context.fill(
-                Circle().path(in: shadowRect.offsetBy(dx: 1, dy: 1)),
-                with: .color(.black.opacity(0.3))
+                Circle().path(in: mainRect),
+                with: .color(isSelected ? .accentColor : .white)
             )
 
-            // Main vertex
-            context.fill(
-                Circle().path(in: shadowRect),
-                with: .color(isSelected ? .accentColor : .white)
+            // Border for better visibility
+            context.stroke(
+                Circle().path(in: mainRect),
+                with: .color(isSelected ? .white : .black.opacity(0.3)),
+                lineWidth: 1
             )
         }
     }
@@ -459,7 +532,16 @@ struct FreehandMaskView: View {
         var line = Path()
         line.move(to: origin)
         line.addLine(to: handlePos)
-        context.stroke(line, with: .color(color.opacity(0.6)), lineWidth: 1)
+        context.stroke(line, with: .color(color.opacity(0.7)), lineWidth: 1.5)
+
+        // Handle circle shadow
+        let shadowRect = CGRect(
+            x: handlePos.x - handleSize / 2 + 1,
+            y: handlePos.y - handleSize / 2 + 1,
+            width: handleSize,
+            height: handleSize
+        )
+        context.fill(Circle().path(in: shadowRect), with: .color(.black.opacity(0.3)))
 
         // Handle circle
         let rect = CGRect(
@@ -469,6 +551,7 @@ struct FreehandMaskView: View {
             height: handleSize
         )
         context.fill(Circle().path(in: rect), with: .color(color))
+        context.stroke(Circle().path(in: rect), with: .color(.white), lineWidth: 1)
     }
 
     // MARK: - UI Components
@@ -481,16 +564,18 @@ struct FreehandMaskView: View {
             vertices[index].controlOut = CGPoint(x: 0.05, y: 0)
             vertices[index].controlIn = CGPoint(x: -0.05, y: 0)
             saveToPathData()
+            triggerRedraw()
         } label: {
             Image(systemName: "point.topleft.down.curvedto.point.bottomright.up")
                 .font(.system(size: 10, weight: .medium))
                 .foregroundColor(.white)
-                .padding(5)
+                .padding(6)
                 .background(Color.accentColor)
                 .clipShape(Circle())
+                .shadow(radius: 2)
         }
         .buttonStyle(.plain)
-        .position(x: pos.x + 24, y: pos.y - 24)
+        .position(x: pos.x + 28, y: pos.y - 28)
     }
 
     private var instructionsView: some View {
@@ -503,10 +588,10 @@ struct FreehandMaskView: View {
                     } else if vertices.count < 3 {
                         Text("Add more points (\(vertices.count)/3 minimum)")
                     } else {
-                        Text("Click first point to close shape")
+                        Text("Click first point (green) to close shape, or keep adding")
                     }
                 } else {
-                    Text("Select vertex to edit curves \u{2022} Drag inside to move")
+                    Text("Select vertex to edit \u{2022} Drag inside to move shape")
                 }
             }
             .font(.system(size: 11))
@@ -526,7 +611,9 @@ struct FreehandMaskView: View {
         guard vertices.count >= 3 else { return }
         isShapeClosed = true
         isDrawing = false
+        selectedVertexIndex = nil
         saveToPathData()
+        triggerRedraw()
     }
 
     // MARK: - Persistence
@@ -547,6 +634,8 @@ struct FreehandMaskView: View {
             vertices = []
             isShapeClosed = false
         }
+        selectedVertexIndex = nil
+        triggerRedraw()
     }
 
     private func saveToPathData() {
@@ -560,62 +649,10 @@ struct FreehandMaskView: View {
     }
 }
 
-// MARK: - Toolbar
-
-struct FreehandToolbar: View {
-    let hasPoints: Bool
-    let onClear: () -> Void
-    let onDeleteSelected: (() -> Void)?
-
-    init(hasPoints: Bool, onClear: @escaping () -> Void, onDeleteSelected: (() -> Void)? = nil) {
-        self.hasPoints = hasPoints
-        self.onClear = onClear
-        self.onDeleteSelected = onDeleteSelected
-    }
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "scribble.variable")
-                .foregroundStyle(.secondary)
-
-            Text(hasPoints ? "Click vertex to edit" : "Click to place points")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-
-            Spacer()
-
-            if hasPoints {
-                Button("Clear All") {
-                    onClear()
-                }
-                .buttonStyle(.borderless)
-                .font(.system(size: 11))
-            }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 6))
-    }
-}
-
-// MARK: - Extensions
-
-extension Comparable {
-    func clamped(to range: ClosedRange<Self>) -> Self {
-        min(max(self, range.lowerBound), range.upperBound)
-    }
-}
-
 #Preview {
     FreehandMaskView(
-        points: .constant([
-            CGPoint(x: 0.2, y: 0.2),
-            CGPoint(x: 0.8, y: 0.3),
-            CGPoint(x: 0.7, y: 0.8),
-            CGPoint(x: 0.3, y: 0.7)
-        ]),
-        isDrawing: .constant(false),
+        points: .constant([]),
+        isDrawing: .constant(true),
         pathData: .constant(nil),
         videoSize: CGSize(width: 640, height: 360)
     )
