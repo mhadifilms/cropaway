@@ -76,7 +76,7 @@ final class FFmpegExportService {
                 }
             }
 
-        case .circle, .freehand:
+        case .circle, .freehand, .ai:
             // Generate mask and use it
             let maskURL = try await generateMaskImage(cropConfig: cropConfig, size: CGSize(width: metadata.width, height: metadata.height))
             args = ["-y", "-i", sourceURL.path, "-i", maskURL.path]
@@ -234,6 +234,13 @@ final class FFmpegExportService {
             let minY = ys.min() ?? 0
             let maxY = ys.max() ?? size.height
             return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+
+        case .ai:
+            // Use AI bounding box if available
+            if cropConfig.aiBoundingBox.width > 0 {
+                return cropConfig.aiBoundingBox.denormalized(to: size)
+            }
+            return CGRect(origin: .zero, size: size)
         }
     }
 
@@ -310,6 +317,25 @@ final class FFmpegExportService {
                 }
                 path.close()
                 path.fill()
+            }
+
+        case .ai:
+            // For AI mode, decode the RLE mask and render it
+            if let maskData = cropConfig.aiMaskData,
+               let bitmap = AIMaskResult.decodeMask(maskData, width: Int(size.width), height: Int(size.height)) {
+                // Create CGImage from bitmap
+                if let maskContext = CGContext(
+                    data: UnsafeMutableRawPointer(mutating: bitmap),
+                    width: Int(size.width),
+                    height: Int(size.height),
+                    bitsPerComponent: 8,
+                    bytesPerRow: Int(size.width),
+                    space: CGColorSpaceCreateDeviceGray(),
+                    bitmapInfo: CGImageAlphaInfo.none.rawValue
+                ), let maskImage = maskContext.makeImage() {
+                    let nsImage = NSImage(cgImage: maskImage, size: size)
+                    nsImage.draw(in: CGRect(origin: .zero, size: size))
+                }
             }
         }
 

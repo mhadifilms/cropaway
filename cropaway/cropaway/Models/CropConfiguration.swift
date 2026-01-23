@@ -25,6 +25,14 @@ final class CropConfiguration: ObservableObject {
     @Published var freehandPathData: Data?
     @Published var freehandPoints: [CGPoint] = []
 
+    // AI mask (SAM3 segmentation)
+    @Published var aiMaskData: Data?
+    @Published var aiPromptPoints: [AIPromptPoint] = []
+    @Published var aiTextPrompt: String?
+    @Published var aiObjectId: String?
+    @Published var aiBoundingBox: CGRect = .zero
+    @Published var aiConfidence: Double = 0
+
     // Keyframes for animation
     @Published var keyframes: [Keyframe] = []
     @Published var keyframesEnabled: Bool = false
@@ -55,6 +63,9 @@ final class CropConfiguration: ObservableObject {
         case .freehand:
             // Freehand with points implies masking
             return freehandPoints.count >= 3 || hasKeyframes
+        case .ai:
+            // AI mode has changes if mask data exists
+            return aiMaskData != nil || hasKeyframes
         }
     }
 
@@ -75,6 +86,9 @@ final class CropConfiguration: ObservableObject {
         case .freehand:
             // Bounding box of path
             return cropRect // Simplified for now
+        case .ai:
+            // Use AI bounding box if available, otherwise full frame
+            return aiBoundingBox.width > 0 ? aiBoundingBox : CGRect(x: 0, y: 0, width: 1, height: 1)
         }
     }
 
@@ -119,6 +133,13 @@ final class CropConfiguration: ObservableObject {
         circleRadius = 0.4
         freehandPathData = nil
         freehandPoints = []
+        // Reset AI mask
+        aiMaskData = nil
+        aiPromptPoints = []
+        aiTextPrompt = nil
+        aiObjectId = nil
+        aiBoundingBox = .zero
+        aiConfidence = 0
         keyframes = []
         keyframesEnabled = false
         // Note: Don't reset preserveWidth and enableAlphaChannel as they're user preferences per video

@@ -80,6 +80,8 @@ final class CropMaskRenderer: @unchecked Sendable {
             )
         case .freehand:
             return generateFreehandMask(points: state.freehandPoints, size: size)
+        case .ai:
+            return generateAIMask(maskData: state.aiMaskData, size: size)
         }
     }
 
@@ -135,6 +137,36 @@ final class CropMaskRenderer: @unchecked Sendable {
         path.closeSubpath()
 
         return renderPathToMask(path, size: size)
+    }
+
+    private func generateAIMask(maskData: Data?, size: CGSize) -> CIImage {
+        guard let data = maskData else {
+            // No mask data - return full white (no masking)
+            return CIImage(color: .white).cropped(to: CGRect(origin: .zero, size: size))
+        }
+
+        let width = Int(size.width)
+        let height = Int(size.height)
+
+        // Decode RLE mask data
+        guard let bitmap = AIMaskResult.decodeMask(data, width: width, height: height) else {
+            return CIImage(color: .white).cropped(to: CGRect(origin: .zero, size: size))
+        }
+
+        // Create CGImage from bitmap
+        guard let context = CGContext(
+            data: UnsafeMutableRawPointer(mutating: bitmap),
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: width,
+            space: CGColorSpaceCreateDeviceGray(),
+            bitmapInfo: CGImageAlphaInfo.none.rawValue
+        ), let cgImage = context.makeImage() else {
+            return CIImage(color: .white).cropped(to: CGRect(origin: .zero, size: size))
+        }
+
+        return CIImage(cgImage: cgImage)
     }
 
     // Thread-safe mask rendering using reusable Core Graphics context

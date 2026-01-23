@@ -28,6 +28,12 @@ final class CropEditorViewModel: ObservableObject {
     @Published var freehandPathData: Data? = nil  // Full bezier vertex data
     @Published var isDrawing: Bool = false
 
+    // AI mask (SAM3)
+    @Published var aiMaskData: Data?
+    @Published var aiPromptPoints: [AIPromptPoint] = []
+    @Published var aiTextPrompt: String?
+    @Published var aiBoundingBox: CGRect = .zero
+
     // Callback for when crop editing ends (drag gesture completed)
     // Used for auto-keyframe creation
     var onCropEditEnded: (() -> Void)?
@@ -50,6 +56,10 @@ final class CropEditorViewModel: ObservableObject {
         circleRadius = config.circleRadius
         freehandPoints = config.freehandPoints
         freehandPathData = config.freehandPathData
+        aiMaskData = config.aiMaskData
+        aiPromptPoints = config.aiPromptPoints
+        aiTextPrompt = config.aiTextPrompt
+        aiBoundingBox = config.aiBoundingBox
 
         // Sync changes back to config
         $mode
@@ -86,6 +96,26 @@ final class CropEditorViewModel: ObservableObject {
             .dropFirst()
             .sink { config.freehandPathData = $0 }
             .store(in: &cancellables)
+
+        $aiMaskData
+            .dropFirst()
+            .sink { config.aiMaskData = $0 }
+            .store(in: &cancellables)
+
+        $aiPromptPoints
+            .dropFirst()
+            .sink { config.aiPromptPoints = $0 }
+            .store(in: &cancellables)
+
+        $aiTextPrompt
+            .dropFirst()
+            .sink { config.aiTextPrompt = $0 }
+            .store(in: &cancellables)
+
+        $aiBoundingBox
+            .dropFirst()
+            .sink { config.aiBoundingBox = $0 }
+            .store(in: &cancellables)
     }
 
     // Get effective crop area for current mode
@@ -110,6 +140,8 @@ final class CropEditorViewModel: ObservableObject {
             let minY = ys.min() ?? 0
             let maxY = ys.max() ?? 1
             return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+        case .ai:
+            return aiBoundingBox.width > 0 ? aiBoundingBox : CGRect(x: 0, y: 0, width: 1, height: 1)
         }
     }
 
@@ -120,6 +152,10 @@ final class CropEditorViewModel: ObservableObject {
         circleRadius = 0.4
         freehandPoints = []
         freehandPathData = nil
+        aiMaskData = nil
+        aiPromptPoints = []
+        aiTextPrompt = nil
+        aiBoundingBox = .zero
     }
 
     // Freehand drawing
@@ -152,5 +188,42 @@ final class CropEditorViewModel: ObservableObject {
     /// This triggers the onCropEditEnded callback for auto-keyframe creation
     func notifyCropEditEnded() {
         onCropEditEnded?()
+    }
+
+    // MARK: - AI Segmentation
+
+    /// Request segmentation using current prompt points
+    func requestAISegmentation(with image: NSImage) async {
+        guard mode == .ai, !aiPromptPoints.isEmpty else { return }
+
+        let sam3Service = SAM3Service.shared
+
+        // Check if server is ready
+        guard sam3Service.serverStatus == .ready else {
+            print("SAM3 server not ready")
+            return
+        }
+
+        do {
+            let result = try await sam3Service.segmentWithPoints(
+                image: image,
+                points: aiPromptPoints
+            )
+
+            // Update mask data
+            aiMaskData = result.maskData
+            aiBoundingBox = result.boundingBox
+
+        } catch {
+            print("AI Segmentation error: \(error)")
+        }
+    }
+
+    /// Clear AI mask data
+    func clearAIMask() {
+        aiMaskData = nil
+        aiPromptPoints = []
+        aiTextPrompt = nil
+        aiBoundingBox = .zero
     }
 }

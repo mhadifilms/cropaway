@@ -12,6 +12,7 @@ struct InterpolatedCropState {
     var circleCenter: CGPoint
     var circleRadius: Double
     var freehandPoints: [CGPoint]
+    var aiMaskData: Data?
 }
 
 final class KeyframeInterpolator {
@@ -74,7 +75,8 @@ final class KeyframeInterpolator {
             edgeInsets: EdgeInsets(),
             circleCenter: CGPoint(x: 0.5, y: 0.5),
             circleRadius: 0.4,
-            freehandPoints: []
+            freehandPoints: [],
+            aiMaskData: nil
         )
     }
 
@@ -84,7 +86,8 @@ final class KeyframeInterpolator {
             edgeInsets: keyframe.edgeInsets,
             circleCenter: keyframe.circleCenter,
             circleRadius: keyframe.circleRadius,
-            freehandPoints: [] // Freehand not interpolated
+            freehandPoints: [], // Freehand not interpolated
+            aiMaskData: keyframe.aiMaskData
         )
     }
 
@@ -113,7 +116,8 @@ final class KeyframeInterpolator {
             edgeInsets: interpolateEdgeInsets(from.edgeInsets, to.edgeInsets, t),
             circleCenter: lerp(from.circleCenter, to.circleCenter, t),
             circleRadius: lerp(from.circleRadius, to.circleRadius, t),
-            freehandPoints: t < 0.5 ? from.freehandPoints : to.freehandPoints
+            freehandPoints: t < 0.5 ? from.freehandPoints : to.freehandPoints,
+            aiMaskData: t < 0.5 ? from.aiMaskData : to.aiMaskData  // Hold interpolation for AI masks
         )
     }
 

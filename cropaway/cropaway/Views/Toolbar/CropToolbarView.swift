@@ -13,6 +13,9 @@ struct CropToolbarView: View {
     @EnvironmentObject var keyframeVM: KeyframeViewModel
     @EnvironmentObject var undoManager: CropUndoManager
 
+    @StateObject private var sam3Service = SAM3Service.shared
+    @State private var showingSAM3Setup = false
+
     init(video: VideoItem) {
         self.video = video
         self.cropConfig = video.cropConfiguration
@@ -38,6 +41,17 @@ struct CropToolbarView: View {
                 .padding(3)
                 .background(Color(NSColor.controlBackgroundColor))
                 .clipShape(RoundedRectangle(cornerRadius: 6))
+
+                // AI Mode controls
+                if cropEditorVM.mode == .ai {
+                    Divider()
+                        .frame(height: 20)
+
+                    AIToolbarControls(
+                        sam3Service: sam3Service,
+                        showingSAM3Setup: $showingSAM3Setup
+                    )
+                }
 
                 Divider()
                     .frame(height: 20)
@@ -206,6 +220,9 @@ struct CropToolbarView: View {
             Divider()
         }
         .background(Color(NSColor.windowBackgroundColor))
+        .sheet(isPresented: $showingSAM3Setup) {
+            SAM3SetupView()
+        }
     }
 }
 
@@ -223,6 +240,137 @@ struct ToolbarButtonStyle: ButtonStyle {
                 RoundedRectangle(cornerRadius: 4)
                     .fill(configuration.isPressed ? Color.primary.opacity(0.1) : Color.clear)
             )
+    }
+}
+
+/// AI-specific toolbar controls
+struct AIToolbarControls: View {
+    @ObservedObject var sam3Service: SAM3Service
+    @Binding var showingSAM3Setup: Bool
+
+    @EnvironmentObject var cropEditorVM: CropEditorViewModel
+
+    private var isSetupComplete: Bool {
+        UserDefaults.standard.bool(forKey: "SAM3SetupComplete")
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            // Server status indicator
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(statusColor)
+                    .frame(width: 8, height: 8)
+
+                Text(statusText)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
+
+            // Setup button (if not set up)
+            if !isSetupComplete {
+                Button("Setup AI") {
+                    showingSAM3Setup = true
+                }
+                .font(.system(size: 11))
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+            }
+            // Start/Stop server button (if set up)
+            else if sam3Service.serverStatus == .stopped || isErrorState {
+                Button("Start AI") {
+                    Task {
+                        do {
+                            try await sam3Service.startServer()
+                            try await sam3Service.initializeModel()
+                        } catch {
+                            print("SAM3 Error: \(error)")
+                            // Show setup if it fails
+                            if case .error = sam3Service.serverStatus {
+                                showingSAM3Setup = true
+                            }
+                        }
+                    }
+                }
+                .font(.system(size: 11))
+                .buttonStyle(.borderless)
+            }
+
+            // Settings gear button
+            if isSetupComplete {
+                Button {
+                    showingSAM3Setup = true
+                } label: {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.borderless)
+                .help("AI Setup")
+            }
+
+            // Clear points button
+            if !cropEditorVM.aiPromptPoints.isEmpty {
+                Button {
+                    cropEditorVM.aiPromptPoints.removeAll()
+                    cropEditorVM.aiMaskData = nil
+                    cropEditorVM.aiBoundingBox = .zero
+                    cropEditorVM.notifyCropEditEnded()
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "xmark.circle")
+                            .font(.system(size: 10))
+                        Text("Clear")
+                            .font(.system(size: 11))
+                    }
+                }
+                .buttonStyle(.borderless)
+                .help("Clear all prompt points")
+            }
+
+            // Processing indicator
+            if sam3Service.isProcessing {
+                ProgressView()
+                    .controlSize(.small)
+                    .padding(.leading, 4)
+            }
+        }
+    }
+
+    private var isErrorState: Bool {
+        if case .error = sam3Service.serverStatus {
+            return true
+        }
+        return false
+    }
+
+    private var statusColor: Color {
+        switch sam3Service.serverStatus {
+        case .stopped:
+            return .gray
+        case .starting:
+            return .orange
+        case .ready:
+            return .green
+        case .processing:
+            return .blue
+        case .error:
+            return .red
+        }
+    }
+
+    private var statusText: String {
+        switch sam3Service.serverStatus {
+        case .stopped:
+            return "AI Off"
+        case .starting:
+            return "Starting..."
+        case .ready:
+            return "AI Ready"
+        case .processing:
+            return "Processing..."
+        case .error(let msg):
+            return msg.isEmpty ? "Error" : "Error: \(msg.prefix(20))"
+        }
     }
 }
 

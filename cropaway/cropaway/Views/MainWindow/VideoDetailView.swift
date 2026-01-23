@@ -212,6 +212,10 @@ struct CropMaskShape: Shape {
             }
             path.closeSubpath()
             return path
+
+        case .ai:
+            // AI mode uses full frame for path shape; actual mask is applied separately
+            return Path(rect)
         }
     }
 }
@@ -241,6 +245,14 @@ struct CropHandlesView: View {
                         points: $cropEditorVM.freehandPoints,
                         isDrawing: $cropEditorVM.isDrawing,
                         pathData: $cropEditorVM.freehandPathData,
+                        videoSize: videoDisplaySize,
+                        onEditEnded: cropEditorVM.notifyCropEditEnded
+                    )
+                case .ai:
+                    AIMaskView(
+                        promptPoints: $cropEditorVM.aiPromptPoints,
+                        maskData: $cropEditorVM.aiMaskData,
+                        boundingBox: $cropEditorVM.aiBoundingBox,
                         videoSize: videoDisplaySize,
                         onEditEnded: cropEditorVM.notifyCropEditEnded
                     )

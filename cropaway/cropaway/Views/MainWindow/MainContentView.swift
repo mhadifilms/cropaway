@@ -459,6 +459,24 @@ struct CropNotificationHandler: ViewModifier {
                     y: max(0, min(1, point.y + dy))
                 )
             }
+
+        case .ai:
+            // Nudge prompt points for AI mode
+            cropEditorVM.aiPromptPoints = cropEditorVM.aiPromptPoints.map { point in
+                var newPoint = point
+                newPoint.position = CGPoint(
+                    x: max(0, min(1, point.position.x + dx)),
+                    y: max(0, min(1, point.position.y + dy))
+                )
+                return newPoint
+            }
+            // Also nudge bounding box if it exists
+            if cropEditorVM.aiBoundingBox.width > 0 {
+                var bbox = cropEditorVM.aiBoundingBox
+                bbox.origin.x = max(0, min(1 - bbox.width, bbox.origin.x + dx))
+                bbox.origin.y = max(0, min(1 - bbox.height, bbox.origin.y + dy))
+                cropEditorVM.aiBoundingBox = bbox
+            }
         }
     }
 }

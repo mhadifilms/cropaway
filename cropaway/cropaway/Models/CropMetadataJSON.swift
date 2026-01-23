@@ -63,6 +63,14 @@ struct CropMetadataDocument: Codable {
         // Freehand mode (SVG path for interoperability)
         let freehandPathSVG: String?
 
+        // AI mode (bounding box and prompt info)
+        let aiBoundingBoxX: Double?
+        let aiBoundingBoxY: Double?
+        let aiBoundingBoxWidth: Double?
+        let aiBoundingBoxHeight: Double?
+        let aiTextPrompt: String?
+        let aiConfidence: Double?
+
         init(
             rectX: Double? = nil,
             rectY: Double? = nil,
@@ -75,7 +83,13 @@ struct CropMetadataDocument: Codable {
             circleCenterX: Double? = nil,
             circleCenterY: Double? = nil,
             circleRadius: Double? = nil,
-            freehandPathSVG: String? = nil
+            freehandPathSVG: String? = nil,
+            aiBoundingBoxX: Double? = nil,
+            aiBoundingBoxY: Double? = nil,
+            aiBoundingBoxWidth: Double? = nil,
+            aiBoundingBoxHeight: Double? = nil,
+            aiTextPrompt: String? = nil,
+            aiConfidence: Double? = nil
         ) {
             self.rectX = rectX
             self.rectY = rectY
@@ -89,6 +103,12 @@ struct CropMetadataDocument: Codable {
             self.circleCenterY = circleCenterY
             self.circleRadius = circleRadius
             self.freehandPathSVG = freehandPathSVG
+            self.aiBoundingBoxX = aiBoundingBoxX
+            self.aiBoundingBoxY = aiBoundingBoxY
+            self.aiBoundingBoxWidth = aiBoundingBoxWidth
+            self.aiBoundingBoxHeight = aiBoundingBoxHeight
+            self.aiTextPrompt = aiTextPrompt
+            self.aiConfidence = aiConfidence
         }
     }
 

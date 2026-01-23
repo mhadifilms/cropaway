@@ -29,7 +29,9 @@ struct CropOverlayView: View {
                         mode: cropEditorVM.mode,
                         circleCenter: cropEditorVM.circleCenter,
                         circleRadius: cropEditorVM.circleRadius,
-                        freehandPoints: cropEditorVM.freehandPoints
+                        freehandPoints: cropEditorVM.freehandPoints,
+                        aiMaskData: cropEditorVM.aiMaskData,
+                        aiBoundingBox: cropEditorVM.aiBoundingBox
                     )
 
                     // Mode-specific crop editor
@@ -55,6 +57,14 @@ struct CropOverlayView: View {
                             videoSize: fittedSize,
                             onEditEnded: cropEditorVM.notifyCropEditEnded
                         )
+                    case .ai:
+                        AIMaskView(
+                            promptPoints: $cropEditorVM.aiPromptPoints,
+                            maskData: $cropEditorVM.aiMaskData,
+                            boundingBox: $cropEditorVM.aiBoundingBox,
+                            videoSize: fittedSize,
+                            onEditEnded: cropEditorVM.notifyCropEditEnded
+                        )
                     }
                 }
                 .frame(width: fittedSize.width, height: fittedSize.height)
@@ -70,6 +80,8 @@ struct DimmedOverlayView: View {
     let circleCenter: CGPoint
     let circleRadius: Double
     let freehandPoints: [CGPoint]
+    let aiMaskData: Data?
+    let aiBoundingBox: CGRect
 
     var body: some View {
         GeometryReader { geometry in
@@ -111,6 +123,14 @@ struct DimmedOverlayView: View {
                     }
                     path.closeSubpath()
                     context.fill(path, with: .color(.white))
+
+                case .ai:
+                    // For AI mode, use the bounding box as the crop area
+                    // The actual mask rendering is handled separately
+                    if aiBoundingBox.width > 0 {
+                        let pixelRect = aiBoundingBox.denormalized(to: size)
+                        context.fill(Path(pixelRect), with: .color(.white))
+                    }
                 }
             }
         }

@@ -38,6 +38,11 @@ final class Keyframe: Identifiable, ObservableObject {
     @Published var circleRadius: Double
     @Published var freehandPathData: Data?
 
+    // AI mask data for this keyframe
+    @Published var aiMaskData: Data?
+    @Published var aiPromptPoints: [AIPromptPoint]?
+    @Published var aiBoundingBox: CGRect?
+
     // Interpolation to next keyframe
     @Published var interpolation: KeyframeInterpolation
 
@@ -68,6 +73,9 @@ final class Keyframe: Identifiable, ObservableObject {
             interpolation: interpolation
         )
         kf.freehandPathData = freehandPathData
+        kf.aiMaskData = aiMaskData
+        kf.aiPromptPoints = aiPromptPoints
+        kf.aiBoundingBox = aiBoundingBox
         return kf
     }
 }

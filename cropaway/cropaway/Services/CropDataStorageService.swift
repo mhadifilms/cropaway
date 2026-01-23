@@ -111,6 +111,26 @@ final class CropDataStorageService {
             }
         }
 
+        // AI
+        if let ai = document.crop.ai {
+            if let maskBase64 = ai.maskDataBase64 {
+                config.aiMaskData = Data(base64Encoded: maskBase64)
+            }
+            config.aiBoundingBox = CGRect(
+                x: ai.boundingBoxX,
+                y: ai.boundingBoxY,
+                width: ai.boundingBoxWidth,
+                height: ai.boundingBoxHeight
+            )
+            config.aiTextPrompt = ai.textPrompt
+            config.aiConfidence = ai.confidence
+            if let promptPoints = ai.promptPoints {
+                config.aiPromptPoints = promptPoints.map {
+                    AIPromptPoint(position: CGPoint(x: $0.x, y: $0.y), isPositive: $0.isPositive)
+                }
+            }
+        }
+
         // Keyframes
         if let keyframes = document.crop.keyframes, !keyframes.isEmpty {
             config.keyframesEnabled = true
@@ -139,6 +159,22 @@ final class CropDataStorageService {
                     }
                     if let data = try? JSONEncoder().encode(maskVertices) {
                         kf.freehandPathData = data
+                    }
+                }
+                if let ai = kfData.ai {
+                    if let maskBase64 = ai.maskDataBase64 {
+                        kf.aiMaskData = Data(base64Encoded: maskBase64)
+                    }
+                    kf.aiBoundingBox = CGRect(
+                        x: ai.boundingBoxX,
+                        y: ai.boundingBoxY,
+                        width: ai.boundingBoxWidth,
+                        height: ai.boundingBoxHeight
+                    )
+                    if let promptPoints = ai.promptPoints {
+                        kf.aiPromptPoints = promptPoints.map {
+                            AIPromptPoint(position: CGPoint(x: $0.x, y: $0.y), isPositive: $0.isPositive)
+                        }
                     }
                 }
 
@@ -371,6 +407,25 @@ final class CropDataStorageService {
             }
 
             cropData.freehand = CropStorageDocument.FreehandData(vertices: vertices)
+
+        case .ai:
+            let promptPointsData = config.aiPromptPoints.map {
+                CropStorageDocument.AIData.AIPromptPointData(
+                    x: $0.position.x,
+                    y: $0.position.y,
+                    isPositive: $0.isPositive
+                )
+            }
+            cropData.ai = CropStorageDocument.AIData(
+                maskDataBase64: config.aiMaskData?.base64EncodedString(),
+                boundingBoxX: config.aiBoundingBox.origin.x,
+                boundingBoxY: config.aiBoundingBox.origin.y,
+                boundingBoxWidth: config.aiBoundingBox.width,
+                boundingBoxHeight: config.aiBoundingBox.height,
+                textPrompt: config.aiTextPrompt,
+                confidence: config.aiConfidence,
+                promptPoints: promptPointsData.isEmpty ? nil : promptPointsData
+            )
         }
 
         // Keyframes
@@ -475,6 +530,7 @@ struct CropStorageDocument: Codable {
         var rectangle: RectangleData?
         var circle: CircleData?
         var freehand: FreehandData?
+        var ai: AIData?
         var keyframes: [KeyframeData]?
 
         init(mode: String) {
@@ -497,6 +553,23 @@ struct CropStorageDocument: Codable {
 
     struct FreehandData: Codable {
         let vertices: [VertexData]
+    }
+
+    struct AIData: Codable {
+        let maskDataBase64: String?
+        let boundingBoxX: Double
+        let boundingBoxY: Double
+        let boundingBoxWidth: Double
+        let boundingBoxHeight: Double
+        let textPrompt: String?
+        let confidence: Double
+        let promptPoints: [AIPromptPointData]?
+
+        struct AIPromptPointData: Codable {
+            let x: Double
+            let y: Double
+            let isPositive: Bool
+        }
     }
 
     struct VertexData: Codable {
@@ -523,6 +596,7 @@ struct CropStorageDocument: Codable {
         var rectangle: RectangleData?
         var circle: CircleData?
         var freehand: FreehandData?
+        var ai: AIData?
 
         init(timestamp: Double, interpolation: String) {
             self.timestamp = timestamp
