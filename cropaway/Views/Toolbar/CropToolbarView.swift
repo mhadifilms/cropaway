@@ -154,14 +154,38 @@ struct CropToolbarView: View {
                 .buttonStyle(.borderless)
                 .help("Reset crop (\u{21E7}\u{2318}R)")
 
-                // Export
-                Button("Export...") {
+                // Export menu with primary action
+                Menu {
+                    Button {
+                        NotificationCenter.default.post(name: .exportVideo, object: nil)
+                    } label: {
+                        Label("Export Video...", systemImage: "film")
+                    }
+                    .keyboardShortcut("e", modifiers: .command)
+
+                    Divider()
+
+                    Button {
+                        NotificationCenter.default.post(name: .exportJSON, object: nil)
+                    } label: {
+                        Label("Export Crop Data (JSON)...", systemImage: "doc.text")
+                    }
+
+                    Button {
+                        NotificationCenter.default.post(name: .exportBoundingBox, object: nil)
+                    } label: {
+                        Label("Export Bounding Boxes...", systemImage: "rectangle.dashed")
+                    }
+                } label: {
+                    Label("Export", systemImage: "square.and.arrow.up")
+                        .labelStyle(.titleOnly)
+                } primaryAction: {
                     NotificationCenter.default.post(name: .exportVideo, object: nil)
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
+                .menuStyle(.borderedButton)
+                .fixedSize()
                 .disabled(!video.hasCropChanges)
-                .help(video.hasCropChanges ? "Export video (\u{2318}E)" : "Make crop changes to enable export")
+                .help(video.hasCropChanges ? "Export video (\u{2318}E) • Click arrow for more options" : "Make crop changes to enable export")
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)

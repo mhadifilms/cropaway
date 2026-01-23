@@ -4,18 +4,18 @@ A professional video cropping app for macOS with support for rectangle, circle, 
 
 ## Features
 
-- 🎬 **Multiple Crop Modes**: Rectangle, Circle, and Custom Freehand masks
-- 🎯 **Keyframe Animation**: Animate crops over time with interpolation
-- ⚡ **Hardware Acceleration**: Uses VideoToolbox for fast encoding
-- 🎨 **Alpha Channel Support**: Export with transparency using ProRes 4444
-- 📊 **Real-time Preview**: See your crop before exporting
-- 🎮 **Professional Controls**: JKL shuttle, frame stepping, zoom
-- 📝 **Metadata Export**: JSON sidecar files with crop data
+- **Multiple Crop Modes**: Rectangle, Circle, and Custom Freehand masks
+- **Keyframe Animation**: Animate crops over time with interpolation
+- **Hardware Acceleration**: Uses VideoToolbox for fast encoding
+- **Alpha Channel Support**: Export with transparency using ProRes 4444
+- **Real-time Preview**: See your crop before exporting
+- **Professional Controls**: JKL shuttle, frame stepping, zoom
+- **Metadata Export**: JSON sidecar files with crop data
 
 ## Requirements
 
 - macOS 13.0 or later
-- FFmpeg (bundled with app, or install via Homebrew for development)
+- FFmpeg (bundled with app)
 
 ## Development Setup
 
@@ -119,10 +119,6 @@ cropaway/
     ├── CGExtensions.swift
     └── AVExtensions.swift
 ```
-
-## License
-
-[Your License Here]
 
 ## Credits
 

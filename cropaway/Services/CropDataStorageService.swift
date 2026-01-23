@@ -171,6 +171,116 @@ final class CropDataStorageService {
         }
     }
 
+    /// Export crop data to a custom folder (for user export, not auto-save)
+    func exportToFolder(video: VideoItem, destinationFolder: URL) throws -> URL {
+        let document = createDocument(from: video)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+
+        let data = try encoder.encode(document)
+
+        // Create filename: videoname_crop.json
+        let videoName = video.sourceURL.deletingPathExtension().lastPathComponent
+        let fileName = "\(videoName)_crop.json"
+        let fileURL = destinationFolder.appendingPathComponent(fileName)
+
+        // Overwrite if exists
+        try? fileManager.removeItem(at: fileURL)
+        try data.write(to: fileURL)
+
+        print("Crop data exported to: \(fileURL.path)")
+        return fileURL
+    }
+
+    /// Export multiple videos to a custom folder
+    func exportMultipleToFolder(videos: [VideoItem], destinationFolder: URL) throws -> [URL] {
+        var exportedURLs: [URL] = []
+        for video in videos where video.hasCropChanges {
+            let url = try exportToFolder(video: video, destinationFolder: destinationFolder)
+            exportedURLs.append(url)
+        }
+        return exportedURLs
+    }
+
+    // MARK: - Bounding Box Export
+
+    /// Export bounding box data as [[x1, y1, x2, y2], ...] for each frame
+    /// x1=left, y1=top, x2=right, y2=bottom in pixel coordinates
+    func exportBoundingBoxData(video: VideoItem, destinationFolder: URL) throws -> URL {
+        let config = video.cropConfiguration
+        let meta = video.metadata
+
+        guard meta.width > 0 && meta.height > 0 && meta.frameRate > 0 else {
+            throw StorageError.invalidMetadata
+        }
+
+        // Calculate total frames
+        let totalFrames = Int(ceil(meta.duration * meta.frameRate))
+        guard totalFrames > 0 else {
+            throw StorageError.invalidMetadata
+        }
+
+        // Generate bounding box for each frame
+        var boundingBoxes: [[Int]] = []
+        boundingBoxes.reserveCapacity(totalFrames)
+
+        let width = Double(meta.width)
+        let height = Double(meta.height)
+
+        for frameIndex in 0..<totalFrames {
+            let timestamp = Double(frameIndex) / meta.frameRate
+
+            // Get crop rect at this timestamp (interpolated if keyframes exist)
+            let cropRect: CGRect
+            if config.hasKeyframes {
+                let state = KeyframeInterpolator.shared.interpolate(
+                    keyframes: config.keyframes,
+                    at: timestamp,
+                    mode: config.mode
+                )
+                cropRect = state.cropRect
+            } else {
+                cropRect = config.effectiveCropRect
+            }
+
+            // Convert normalized rect to pixel bounding box [x1, y1, x2, y2]
+            let x1 = Int(round(cropRect.minX * width))
+            let y1 = Int(round(cropRect.minY * height))
+            let x2 = Int(round(cropRect.maxX * width))
+            let y2 = Int(round(cropRect.maxY * height))
+
+            boundingBoxes.append([x1, y1, x2, y2])
+        }
+
+        // Encode as JSON
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let data = try encoder.encode(boundingBoxes)
+
+        // Create filename: videoname_bbox.json
+        let videoName = video.sourceURL.deletingPathExtension().lastPathComponent
+        let fileName = "\(videoName)_bbox.json"
+        let fileURL = destinationFolder.appendingPathComponent(fileName)
+
+        // Overwrite if exists
+        try? fileManager.removeItem(at: fileURL)
+        try data.write(to: fileURL)
+
+        print("Bounding box data exported to: \(fileURL.path) (\(totalFrames) frames)")
+        return fileURL
+    }
+
+    /// Export bounding box data for multiple videos
+    func exportMultipleBoundingBoxData(videos: [VideoItem], destinationFolder: URL) throws -> [URL] {
+        var exportedURLs: [URL] = []
+        for video in videos where video.hasCropChanges {
+            let url = try exportBoundingBoxData(video: video, destinationFolder: destinationFolder)
+            exportedURLs.append(url)
+        }
+        return exportedURLs
+    }
+
     // MARK: - Private Helpers
 
     private func storageFolder(for sourceURL: URL) -> URL? {
@@ -322,8 +432,18 @@ final class CropDataStorageService {
         )
     }
 
-    enum StorageError: Error {
+    enum StorageError: LocalizedError {
         case invalidPath
+        case invalidMetadata
+
+        var errorDescription: String? {
+            switch self {
+            case .invalidPath:
+                return "Invalid storage path"
+            case .invalidMetadata:
+                return "Invalid video metadata (missing dimensions or frame rate)"
+            }
+        }
     }
 }
 

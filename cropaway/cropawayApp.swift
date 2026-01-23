@@ -1,6 +1,6 @@
 //
-//  cropawayApp.swift
-//  cropaway
+//  CropawayApp.swift
+//  Cropaway
 //
 
 import SwiftUI
@@ -318,6 +318,8 @@ extension Notification.Name {
     static let openVideos = Notification.Name("openVideos")
     static let exportVideo = Notification.Name("exportVideo")
     static let exportAllVideos = Notification.Name("exportAllVideos")
+    static let exportJSON = Notification.Name("exportJSON")
+    static let exportBoundingBox = Notification.Name("exportBoundingBox")
     static let deleteSelectedVideo = Notification.Name("deleteSelectedVideo")
 
     // Edit operations

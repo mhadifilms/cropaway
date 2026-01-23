@@ -62,6 +62,10 @@ jobs:
           fi
           cropaway/Resources/ffmpeg -version | head -1
 
+      - name: Install create-dmg
+        run: |
+          brew install create-dmg
+
       - name: Build Release
         run: |
           xcodebuild -scheme "$SCHEME" \
@@ -79,24 +83,52 @@ jobs:
           mkdir -p build/Release
           cp -R "build/${APP_NAME}.xcarchive/Products/Applications/${APP_NAME}.app" build/Release/
 
-      - name: Create DMG
+      - name: Create Professional DMG
         id: dmg
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           DMG_NAME="${APP_NAME}-${VERSION}.dmg"
 
-          mkdir -p build/dmg
-          cp -R "build/Release/${APP_NAME}.app" build/dmg/
-          ln -s /Applications build/dmg/Applications
-
-          hdiutil create -volname "$APP_NAME" \
-            -srcfolder build/dmg \
-            -ov -format UDZO \
-            "build/${DMG_NAME}"
+          # Create DMG with create-dmg for professional appearance
+          create-dmg \
+            --volname "${APP_NAME}" \
+            --volicon "build/Release/${APP_NAME}.app/Contents/Resources/AppIcon.icns" \
+            --window-pos 200 120 \
+            --window-size 660 400 \
+            --icon-size 100 \
+            --icon "${APP_NAME}.app" 180 190 \
+            --hide-extension "${APP_NAME}.app" \
+            --app-drop-link 480 190 \
+            --no-internet-enable \
+            "build/${DMG_NAME}" \
+            "build/Release/${APP_NAME}.app" \
+          || {
+            # Fallback to basic DMG if create-dmg fails
+            echo "⚠️ create-dmg failed, using basic DMG creation"
+            mkdir -p build/dmg
+            cp -R "build/Release/${APP_NAME}.app" build/dmg/
+            ln -s /Applications build/dmg/Applications
+            hdiutil create -volname "$APP_NAME" \
+              -srcfolder build/dmg \
+              -ov -format UDZO \
+              "build/${DMG_NAME}"
+          }
 
           echo "dmg_path=build/${DMG_NAME}" >> $GITHUB_OUTPUT
           echo "dmg_name=${DMG_NAME}" >> $GITHUB_OUTPUT
           echo "✅ DMG created: $(du -h "build/${DMG_NAME}" | cut -f1)"
+
+      - name: Verify DMG
+        run: |
+          DMG_PATH="${{ steps.dmg.outputs.dmg_path }}"
+          echo "📋 DMG Info:"
+          hdiutil imageinfo "$DMG_PATH" | head -20
+
+          echo ""
+          echo "📦 DMG Contents:"
+          hdiutil attach "$DMG_PATH" -nobrowse -quiet
+          ls -la /Volumes/${{ env.APP_NAME }}/
+          hdiutil detach /Volumes/${{ env.APP_NAME }} -quiet
 
       - name: Upload DMG Artifact
         uses: actions/upload-artifact@v4
@@ -113,6 +145,17 @@ jobs:
           generate_release_notes: true
           draft: false
           prerelease: ${{ contains(github.ref, '-') }}
+          body: |
+            ## Cropaway ${{ steps.version.outputs.version }}
+
+            ### Installation
+            1. Download the DMG file below
+            2. Open the DMG
+            3. Drag Cropaway to your Applications folder
+            4. Eject the DMG
+
+            ### What's New
+            See the automatically generated release notes below.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

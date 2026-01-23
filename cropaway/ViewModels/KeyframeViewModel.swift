@@ -11,11 +11,30 @@ import SwiftUI
 final class KeyframeViewModel: ObservableObject {
     @Published var keyframes: [Keyframe] = []
     @Published var keyframesEnabled: Bool = false
-    @Published var selectedKeyframe: Keyframe?
+    @Published var selectedKeyframeIDs: Set<UUID> = []
 
     private var currentVideo: VideoItem?
     private var cropEditor: CropEditorViewModel?
     private var cancellables = Set<AnyCancellable>()
+
+    // Convenience for single selection (primary selected keyframe)
+    var selectedKeyframe: Keyframe? {
+        get {
+            guard let firstID = selectedKeyframeIDs.first else { return nil }
+            return keyframes.first { $0.id == firstID }
+        }
+        set {
+            if let kf = newValue {
+                selectedKeyframeIDs = [kf.id]
+            } else {
+                selectedKeyframeIDs.removeAll()
+            }
+        }
+    }
+
+    var selectedKeyframes: [Keyframe] {
+        keyframes.filter { selectedKeyframeIDs.contains($0.id) }
+    }
 
     func bind(to video: VideoItem, cropEditor: CropEditorViewModel) {
         cancellables.removeAll()
@@ -27,6 +46,7 @@ final class KeyframeViewModel: ObservableObject {
         // Sync from config
         keyframes = config.keyframes
         keyframesEnabled = config.keyframesEnabled
+        selectedKeyframeIDs.removeAll()
 
         // Sync changes back
         $keyframesEnabled
@@ -34,6 +54,42 @@ final class KeyframeViewModel: ObservableObject {
             .sink { config.keyframesEnabled = $0 }
             .store(in: &cancellables)
     }
+
+    // MARK: - Selection
+
+    func selectKeyframe(_ keyframe: Keyframe, extending: Bool = false) {
+        if extending {
+            // Shift-click: toggle in selection
+            if selectedKeyframeIDs.contains(keyframe.id) {
+                selectedKeyframeIDs.remove(keyframe.id)
+            } else {
+                selectedKeyframeIDs.insert(keyframe.id)
+            }
+        } else {
+            // Regular click: exclusive selection
+            selectedKeyframeIDs = [keyframe.id]
+        }
+    }
+
+    func selectKeyframe(at timestamp: Double) {
+        if let kf = keyframes.first(where: { abs($0.timestamp - timestamp) < 0.1 }) {
+            selectedKeyframeIDs = [kf.id]
+        }
+    }
+
+    func deselectAll() {
+        selectedKeyframeIDs.removeAll()
+    }
+
+    func selectAll() {
+        selectedKeyframeIDs = Set(keyframes.map { $0.id })
+    }
+
+    func isSelected(_ keyframe: Keyframe) -> Bool {
+        selectedKeyframeIDs.contains(keyframe.id)
+    }
+
+    // MARK: - Add/Remove
 
     func addKeyframe(at timestamp: Double) {
         guard let cropEditor = cropEditor else { return }
@@ -54,16 +110,13 @@ final class KeyframeViewModel: ObservableObject {
         }
 
         currentVideo?.cropConfiguration.keyframes = keyframes
-        selectedKeyframe = keyframe
+        selectedKeyframeIDs = [keyframe.id]
     }
 
     func removeKeyframe(_ keyframe: Keyframe) {
         keyframes.removeAll { $0.id == keyframe.id }
         currentVideo?.cropConfiguration.keyframes = keyframes
-
-        if selectedKeyframe?.id == keyframe.id {
-            selectedKeyframe = nil
-        }
+        selectedKeyframeIDs.remove(keyframe.id)
     }
 
     func removeKeyframe(at timestamp: Double) {
@@ -72,13 +125,33 @@ final class KeyframeViewModel: ObservableObject {
         }
     }
 
-    func selectKeyframe(_ keyframe: Keyframe) {
-        selectedKeyframe = keyframe
+    func deleteSelected() {
+        let idsToRemove = selectedKeyframeIDs
+        keyframes.removeAll { idsToRemove.contains($0.id) }
+        currentVideo?.cropConfiguration.keyframes = keyframes
+        selectedKeyframeIDs.removeAll()
     }
 
-    func selectKeyframe(at timestamp: Double) {
-        selectedKeyframe = keyframes.first { abs($0.timestamp - timestamp) < 0.1 }
+    // MARK: - Move
+
+    func moveKeyframe(_ keyframe: Keyframe, to newTimestamp: Double) {
+        // Check for collision
+        let hasCollision = keyframes.contains { other in
+            other.id != keyframe.id && abs(other.timestamp - newTimestamp) < 0.05
+        }
+
+        if !hasCollision {
+            keyframe.timestamp = max(0, newTimestamp)
+            sortKeyframes()
+        }
     }
+
+    func sortKeyframes() {
+        keyframes.sort { $0.timestamp < $1.timestamp }
+        currentVideo?.cropConfiguration.keyframes = keyframes
+    }
+
+    // MARK: - Update
 
     func updateCurrentKeyframe() {
         guard let keyframe = selectedKeyframe, let cropEditor = cropEditor else { return }
@@ -108,6 +181,8 @@ final class KeyframeViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Query
+
     func hasKeyframe(at timestamp: Double, tolerance: Double = 0.1) -> Bool {
         keyframes.contains { abs($0.timestamp - timestamp) < tolerance }
     }
@@ -116,25 +191,18 @@ final class KeyframeViewModel: ObservableObject {
         keyframes.min { abs($0.timestamp - timestamp) < abs($1.timestamp - timestamp) }
     }
 
-    /// Automatically creates or updates a keyframe at the given timestamp.
-    /// This is called when keyframes are enabled and the user finishes editing the crop.
-    /// - Parameter timestamp: The current playback time
-    /// - Parameter tolerance: Time tolerance for considering a keyframe to be at the same position (default 0.1 seconds)
     func autoCreateKeyframe(at timestamp: Double, tolerance: Double = 0.1) {
         guard keyframesEnabled, let cropEditor = cropEditor else { return }
 
-        // Check if a keyframe already exists at this time (within tolerance)
         if let existingKeyframe = keyframes.first(where: { abs($0.timestamp - timestamp) < tolerance }) {
-            // Update the existing keyframe with current crop state
             existingKeyframe.cropRect = cropEditor.cropRect
             existingKeyframe.edgeInsets = cropEditor.edgeInsets
             existingKeyframe.circleCenter = cropEditor.circleCenter
             existingKeyframe.circleRadius = cropEditor.circleRadius
 
             currentVideo?.cropConfiguration.keyframes = keyframes
-            selectedKeyframe = existingKeyframe
+            selectedKeyframeIDs = [existingKeyframe.id]
         } else {
-            // Create a new keyframe at this timestamp
             addKeyframe(at: timestamp)
         }
     }
