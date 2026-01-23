@@ -1,0 +1,67 @@
+# Cropaway
+
+A fast, native macOS app for cropping videos with precision.
+
+![macOS](https://img.shields.io/badge/macOS-14.0+-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+
+## Features
+
+- **Rectangle Crop** - Precise rectangular cropping with draggable handles
+- **Circle Crop** - Circular masks with adjustable center and radius
+- **Freehand Mask** - NLE-style point-based mask tool with bezier curves
+- **Keyframe Animation** - Animate crop changes over time
+- **Hardware Accelerated** - Uses VideoToolbox for fast ProRes/H.264/HEVC encoding
+- **Batch Export** - Export multiple videos at once
+- **Lossless When Possible** - Stream copies when no crop changes needed
+
+## Keyboard Shortcuts
+
+| Action | Shortcut |
+|--------|----------|
+| Rectangle Mode | `Cmd + 1` |
+| Circle Mode | `Cmd + 2` |
+| Freehand Mode | `Cmd + 3` |
+| Export | `Cmd + E` |
+| Export All Selected | `Cmd + Shift + E` |
+| Play/Pause | `Space` |
+| Step Forward | `→` |
+| Step Backward | `←` |
+| J/K/L Shuttle | `J` / `K` / `L` |
+| Add Keyframe | `Cmd + K` |
+| Undo | `Cmd + Z` |
+| Redo | `Cmd + Shift + Z` |
+
+## Requirements
+
+- macOS 14.0 (Sonoma) or later
+- Apple Silicon or Intel Mac
+
+## Installation
+
+Download the latest DMG from [Releases](../../releases/latest).
+
+## Building from Source
+
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/cropaway.git
+cd cropaway
+
+# Build release
+xcodebuild -scheme cropaway -configuration Release build
+
+# Or create DMG
+./scripts/build-dmg.sh 1.0.0
+```
+
+## Tech Stack
+
+- SwiftUI for the interface
+- AVFoundation for video playback
+- FFmpeg (bundled) for export with VideoToolbox hardware acceleration
+- Core Graphics for mask rendering
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.
