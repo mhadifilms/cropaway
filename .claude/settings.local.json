@@ -17,7 +17,23 @@
       "Bash(/Users/sync-studio/Library/Developer/Xcode/DerivedData/cropaway-bnrbvclbqcwaopbkjqjoyoxjpnof/Build/Products/Debug/cropaway.app/Contents/Resources/ffmpeg:*)",
       "Bash(chmod:*)",
       "Bash(SOURCE=\"../AppIcon.imageset/cropaway-iOS-Default-1024x1024@1x.png\")",
-      "Bash(sips:*)"
+      "Bash(sips:*)",
+      "Bash(git remote add:*)",
+      "Bash(git remote:*)",
+      "Bash(gh repo view:*)",
+      "Bash(gh repo create:*)",
+      "WebSearch",
+      "WebFetch(domain:medium.com)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git tag:*)",
+      "Bash(git push:*)",
+      "Bash(git fetch:*)",
+      "Bash(git rebase:*)",
+      "Bash(gh run:*)",
+      "Bash(curl:*)",
+      "Bash(python3:*)",
+      "WebFetch(domain:github.com)"
     ]
   }
 }
