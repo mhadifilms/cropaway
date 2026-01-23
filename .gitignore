@@ -1,0 +1,40 @@
+# Xcode
+build/
+DerivedData/
+*.xcuserstate
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Temporary files
+*.swp
+*.swo
+*~
+
+# Archives
+*.xcarchive
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Distribution
+*.dmg
+*.pkg
+
+# Dependencies (if using SPM)
+.build/
+Packages/
+
+# IDE
+.idea/
+*.code-workspace
+
+# Environment
+.env
+.env.local
