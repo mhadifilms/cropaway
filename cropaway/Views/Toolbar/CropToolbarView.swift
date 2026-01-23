@@ -6,7 +6,7 @@
 import SwiftUI
 
 struct CropToolbarView: View {
-    let video: VideoItem
+    @ObservedObject var video: VideoItem
 
     @EnvironmentObject var cropEditorVM: CropEditorViewModel
     @EnvironmentObject var keyframeVM: KeyframeViewModel
@@ -191,10 +191,15 @@ struct ToolbarButtonStyle: ButtonStyle {
 }
 
 #Preview {
-    let video = VideoItem(sourceURL: URL(fileURLWithPath: "/test.mov"))
-    return CropToolbarView(video: video)
-        .environmentObject(CropEditorViewModel())
-        .environmentObject(KeyframeViewModel())
-        .environmentObject(CropUndoManager())
-        .frame(width: 800)
+    struct PreviewWrapper: View {
+        @StateObject var video = VideoItem(sourceURL: URL(fileURLWithPath: "/test.mov"))
+        var body: some View {
+            CropToolbarView(video: video)
+                .environmentObject(CropEditorViewModel())
+                .environmentObject(KeyframeViewModel())
+                .environmentObject(CropUndoManager())
+                .frame(width: 800)
+        }
+    }
+    return PreviewWrapper()
 }
