@@ -330,13 +330,25 @@ final class VideoProcessingService {
         readerOutput: AVAssetReaderTrackOutput,
         writerInput: AVAssetWriterInput
     ) async {
-        while true {
+        var waitCount = 0
+        let maxWaits = 1000  // Max 10 seconds of waiting (10ms * 1000)
+
+        while !isCancelled {
             if writerInput.isReadyForMoreMediaData {
+                waitCount = 0  // Reset wait counter
                 guard let sampleBuffer = readerOutput.copyNextSampleBuffer() else {
                     break
                 }
-                writerInput.append(sampleBuffer)
+                if !writerInput.append(sampleBuffer) {
+                    print("WARNING: Failed to append audio sample")
+                    break
+                }
             } else {
+                waitCount += 1
+                if waitCount > maxWaits {
+                    print("WARNING: Audio processing timed out waiting for writer")
+                    break
+                }
                 try? await Task.sleep(nanoseconds: 10_000_000)
             }
         }

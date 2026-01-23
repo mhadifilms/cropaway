@@ -6,9 +6,8 @@
 import Foundation
 import CoreImage
 import CoreGraphics
-import AppKit
 
-final class CropMaskRenderer {
+final class CropMaskRenderer: @unchecked Sendable {
     private let ciContext: CIContext
 
     init() {
@@ -57,7 +56,9 @@ final class CropMaskRenderer {
             height: pixelRect.height
         )
 
-        return renderPathToMask(NSBezierPath(rect: flippedRect), size: size)
+        let path = CGMutablePath()
+        path.addRect(flippedRect)
+        return renderPathToMask(path, size: size)
     }
 
     private func generateCircleMask(center: CGPoint, radius: Double, size: CGSize) -> CIImage {
@@ -74,7 +75,9 @@ final class CropMaskRenderer {
             height: pixelRadius * 2
         )
 
-        return renderPathToMask(NSBezierPath(ovalIn: ovalRect), size: size)
+        let path = CGMutablePath()
+        path.addEllipse(in: ovalRect)
+        return renderPathToMask(path, size: size)
     }
 
     private func generateFreehandMask(points: [CGPoint], size: CGSize) -> CIImage {
@@ -83,57 +86,48 @@ final class CropMaskRenderer {
             return CIImage(color: .white).cropped(to: CGRect(origin: .zero, size: size))
         }
 
-        let path = NSBezierPath()
+        let path = CGMutablePath()
         let firstPoint = points[0].denormalized(to: size)
         // Flip Y
         path.move(to: CGPoint(x: firstPoint.x, y: size.height - firstPoint.y))
 
         for point in points.dropFirst() {
             let pixelPoint = point.denormalized(to: size)
-            path.line(to: CGPoint(x: pixelPoint.x, y: size.height - pixelPoint.y))
+            path.addLine(to: CGPoint(x: pixelPoint.x, y: size.height - pixelPoint.y))
         }
-        path.close()
+        path.closeSubpath()
 
         return renderPathToMask(path, size: size)
     }
 
-    private func renderPathToMask(_ path: NSBezierPath, size: CGSize) -> CIImage {
+    // Thread-safe mask rendering using Core Graphics (no AppKit)
+    private func renderPathToMask(_ path: CGPath, size: CGSize) -> CIImage {
         let width = Int(size.width)
         let height = Int(size.height)
 
-        guard let bitmap = NSBitmapImageRep(
-            bitmapDataPlanes: nil,
-            pixelsWide: width,
-            pixelsHigh: height,
-            bitsPerSample: 8,
-            samplesPerPixel: 1,
-            hasAlpha: false,
-            isPlanar: false,
-            colorSpaceName: .deviceWhite,
+        // Create grayscale bitmap context (thread-safe)
+        guard let context = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
             bytesPerRow: width,
-            bitsPerPixel: 8
+            space: CGColorSpaceCreateDeviceGray(),
+            bitmapInfo: CGImageAlphaInfo.none.rawValue
         ) else {
             return CIImage(color: .white).cropped(to: CGRect(origin: .zero, size: size))
         }
 
-        NSGraphicsContext.saveGraphicsState()
-        guard let context = NSGraphicsContext(bitmapImageRep: bitmap) else {
-            NSGraphicsContext.restoreGraphicsState()
-            return CIImage(color: .white).cropped(to: CGRect(origin: .zero, size: size))
-        }
-        NSGraphicsContext.current = context
-
         // Fill black background
-        NSColor.black.setFill()
-        NSBezierPath(rect: CGRect(origin: .zero, size: size)).fill()
+        context.setFillColor(gray: 0, alpha: 1)
+        context.fill(CGRect(origin: .zero, size: size))
 
         // Fill white mask area
-        NSColor.white.setFill()
-        path.fill()
+        context.setFillColor(gray: 1, alpha: 1)
+        context.addPath(path)
+        context.fillPath()
 
-        NSGraphicsContext.restoreGraphicsState()
-
-        guard let cgImage = bitmap.cgImage else {
+        guard let cgImage = context.makeImage() else {
             return CIImage(color: .white).cropped(to: CGRect(origin: .zero, size: size))
         }
 
