@@ -18,6 +18,9 @@ env:
   APP_NAME: Cropaway
   SCHEME: cropaway
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: macos-14
