@@ -29,29 +29,71 @@ struct CropOverlayView: View {
                         mode: cropEditorVM.mode,
                         circleCenter: cropEditorVM.circleCenter,
                         circleRadius: cropEditorVM.circleRadius,
-                        freehandPoints: cropEditorVM.freehandPoints
+                        freehandPoints: cropEditorVM.freehandPoints,
+                        freehandPathData: cropEditorVM.freehandPathData,
+                        aiMaskData: cropEditorVM.aiMaskData,
+                        aiBoundingBox: cropEditorVM.aiBoundingBox
                     )
 
                     // Mode-specific crop editor
                     switch cropEditorVM.mode {
                     case .rectangle:
                         RectangleCropView(
-                            rect: $cropEditorVM.cropRect,
+                            rect: Binding(
+                                get: { cropEditorVM.cropRect },
+                                set: { cropEditorVM.cropRect = $0 }
+                            ),
                             videoSize: fittedSize,
                             onEditEnded: cropEditorVM.notifyCropEditEnded
                         )
                     case .circle:
                         CircleCropView(
-                            center: $cropEditorVM.circleCenter,
-                            radius: $cropEditorVM.circleRadius,
+                            center: Binding(
+                                get: { cropEditorVM.circleCenter },
+                                set: { cropEditorVM.circleCenter = $0 }
+                            ),
+                            radius: Binding(
+                                get: { cropEditorVM.circleRadius },
+                                set: { cropEditorVM.circleRadius = $0 }
+                            ),
                             videoSize: fittedSize,
                             onEditEnded: cropEditorVM.notifyCropEditEnded
                         )
                     case .freehand:
                         FreehandMaskView(
-                            points: $cropEditorVM.freehandPoints,
-                            isDrawing: $cropEditorVM.isDrawing,
-                            pathData: $cropEditorVM.freehandPathData,
+                            points: Binding(
+                                get: { cropEditorVM.freehandPoints },
+                                set: { cropEditorVM.freehandPoints = $0 }
+                            ),
+                            isDrawing: Binding(
+                                get: { cropEditorVM.isDrawing },
+                                set: { cropEditorVM.isDrawing = $0 }
+                            ),
+                            pathData: Binding(
+                                get: { cropEditorVM.freehandPathData },
+                                set: { cropEditorVM.freehandPathData = $0 }
+                            ),
+                            videoSize: fittedSize,
+                            onEditEnded: cropEditorVM.notifyCropEditEnded
+                        )
+                    case .ai:
+                        AIEditorView(
+                            promptPoints: Binding(
+                                get: { cropEditorVM.aiPromptPoints },
+                                set: { cropEditorVM.aiPromptPoints = $0 }
+                            ),
+                            maskData: Binding(
+                                get: { cropEditorVM.aiMaskData },
+                                set: { cropEditorVM.aiMaskData = $0 }
+                            ),
+                            boundingBox: Binding(
+                                get: { cropEditorVM.aiBoundingBox },
+                                set: { cropEditorVM.aiBoundingBox = $0 }
+                            ),
+                            interactionMode: Binding(
+                                get: { cropEditorVM.aiInteractionMode },
+                                set: { cropEditorVM.aiInteractionMode = $0 }
+                            ),
                             videoSize: fittedSize,
                             onEditEnded: cropEditorVM.notifyCropEditEnded
                         )
@@ -70,6 +112,24 @@ struct DimmedOverlayView: View {
     let circleCenter: CGPoint
     let circleRadius: Double
     let freehandPoints: [CGPoint]
+    let freehandPathData: Data?
+    let aiMaskData: Data?
+    let aiBoundingBox: CGRect
+
+    // Computed property to decode vertices once per render
+    private var freehandVertices: [MaskVertex]? {
+        guard let data = freehandPathData,
+              let vertices = try? JSONDecoder().decode([MaskVertex].self, from: data),
+              vertices.count >= 3 else {
+            return nil
+        }
+        return vertices
+    }
+
+    // Use data hash to force Canvas re-render when bezier data changes
+    private var pathDataHash: Int {
+        freehandPathData?.hashValue ?? 0
+    }
 
     var body: some View {
         GeometryReader { geometry in
@@ -102,19 +162,86 @@ struct DimmedOverlayView: View {
                     context.fill(Path(ellipseIn: circleRect), with: .color(.white))
 
                 case .freehand:
-                    guard freehandPoints.count >= 3 else { return }
-                    var path = Path()
-                    let first = freehandPoints[0].denormalized(to: size)
-                    path.move(to: first)
-                    for point in freehandPoints.dropFirst() {
-                        path.addLine(to: point.denormalized(to: size))
+                    // Try to use bezier path data if available (pre-decoded)
+                    if let vertices = freehandVertices {
+                        let path = buildBezierPath(vertices: vertices, size: size)
+                        context.fill(path, with: .color(.white))
+                    } else if freehandPoints.count >= 3 {
+                        // Fallback to simple points
+                        var path = Path()
+                        let first = freehandPoints[0].denormalized(to: size)
+                        path.move(to: first)
+                        for point in freehandPoints.dropFirst() {
+                            path.addLine(to: point.denormalized(to: size))
+                        }
+                        path.closeSubpath()
+                        context.fill(path, with: .color(.white))
                     }
-                    path.closeSubpath()
-                    context.fill(path, with: .color(.white))
+
+                case .ai:
+                    // For AI mode, use the bounding box as the crop area
+                    // The actual mask rendering is handled separately
+                    if aiBoundingBox.width > 0 {
+                        let pixelRect = aiBoundingBox.denormalized(to: size)
+                        context.fill(Path(pixelRect), with: .color(.white))
+                    }
                 }
             }
+            .id(pathDataHash)  // Force re-render when bezier data changes
         }
         .allowsHitTesting(false)
+    }
+
+    /// Build a SwiftUI Path with bezier curves from MaskVertex array
+    private func buildBezierPath(vertices: [MaskVertex], size: CGSize) -> Path {
+        Path { path in
+            guard vertices.count >= 3 else { return }
+
+            path.move(to: vertices[0].position.denormalized(to: size))
+
+            for i in 1..<vertices.count {
+                addBezierSegment(to: &path, from: vertices[i-1], to: vertices[i], size: size)
+            }
+
+            // Close the path
+            addBezierSegment(to: &path, from: vertices[vertices.count - 1], to: vertices[0], size: size)
+            path.closeSubpath()
+        }
+    }
+
+    /// Add a bezier curve segment between two vertices
+    private func addBezierSegment(to path: inout Path, from: MaskVertex, to: MaskVertex, size: CGSize) {
+        let fromPx = from.position.denormalized(to: size)
+        let toPx = to.position.denormalized(to: size)
+
+        let hasFromHandle = from.controlOut != nil
+        let hasToHandle = to.controlIn != nil
+
+        if hasFromHandle && hasToHandle {
+            let ctrl1 = CGPoint(
+                x: fromPx.x + from.controlOut!.x * size.width,
+                y: fromPx.y + from.controlOut!.y * size.height
+            )
+            let ctrl2 = CGPoint(
+                x: toPx.x + to.controlIn!.x * size.width,
+                y: toPx.y + to.controlIn!.y * size.height
+            )
+            path.addCurve(to: toPx, control1: ctrl1, control2: ctrl2)
+        } else if hasFromHandle {
+            let ctrl = CGPoint(
+                x: fromPx.x + from.controlOut!.x * size.width,
+                y: fromPx.y + from.controlOut!.y * size.height
+            )
+            path.addQuadCurve(to: toPx, control: ctrl)
+        } else if hasToHandle {
+            let ctrl = CGPoint(
+                x: toPx.x + to.controlIn!.x * size.width,
+                y: toPx.y + to.controlIn!.y * size.height
+            )
+            path.addQuadCurve(to: toPx, control: ctrl)
+        } else {
+            path.addLine(to: toPx)
+        }
     }
 }
 

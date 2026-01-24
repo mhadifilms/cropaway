@@ -34,7 +34,7 @@ struct MainContentView: View {
         .sheet(isPresented: showExportSheet) { exportSheet }
         .alert("Export Error", isPresented: errorBinding) { errorAlert }
         .modifier(FileNotificationHandler(projectVM: projectVM, exportVM: exportVM, playerVM: playerVM))
-        .modifier(EditNotificationHandler(undoManager: undoManager, cropEditorVM: cropEditorVM, copiedSettings: $copiedCropSettings))
+        .modifier(EditNotificationHandler(undoManager: undoManager, cropEditorVM: cropEditorVM, keyframeVM: keyframeVM, projectVM: projectVM, copiedSettings: $copiedCropSettings))
         .modifier(ViewNotificationHandler(viewScale: $viewScale, columnVisibility: $columnVisibility, keyframeVM: keyframeVM, isPreviewMode: $isPreviewMode))
         .modifier(CropNotificationHandler(undoManager: undoManager, cropEditorVM: cropEditorVM, keyframeVM: keyframeVM, playerVM: playerVM))
         .modifier(PlaybackNotificationHandler(playerVM: playerVM))
@@ -52,6 +52,8 @@ struct MainContentView: View {
                 .environmentObject(undoManager)
         } else {
             EmptyStateView()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentAreaGlassBackground()
         }
     }
 
@@ -90,15 +92,18 @@ struct MainContentView: View {
         undoManager.clearHistory()
 
         // Set up auto-keyframe creation when crop editing ends
-        cropEditorVM.onCropEditEnded = { [weak keyframeVM, weak playerVM, weak undoManager] in
-            guard let keyframeVM = keyframeVM, let playerVM = playerVM else { return }
+        // Note: We use a local capture here since this closure may outlive the view
+        let kfVM = keyframeVM
+        let pVM = playerVM
+        let um = undoManager
+        cropEditorVM.onCropEditEnded = {
             // Auto-create or update keyframe when keyframes are enabled
-            if keyframeVM.keyframesEnabled {
-                let hadKeyframeAtTime = keyframeVM.hasKeyframe(at: playerVM.currentTime)
-                keyframeVM.autoCreateKeyframe(at: playerVM.currentTime)
+            if kfVM.keyframesEnabled {
+                let hadKeyframeAtTime = kfVM.hasKeyframe(at: pVM.currentTime)
+                kfVM.autoCreateKeyframe(at: pVM.currentTime)
                 // Record undo only for new keyframes
                 if !hadKeyframeAtTime {
-                    undoManager?.recordAction(type: .keyframeAdd)
+                    um.recordAction(type: .keyframeAdd)
                 }
             }
         }
@@ -284,6 +289,8 @@ struct CopiedCropSettings {
 struct EditNotificationHandler: ViewModifier {
     let undoManager: CropUndoManager
     let cropEditorVM: CropEditorViewModel
+    let keyframeVM: KeyframeViewModel
+    let projectVM: ProjectViewModel
     @Binding var copiedSettings: CopiedCropSettings?
 
     func body(content: Content) -> some View {
@@ -297,6 +304,16 @@ struct EditNotificationHandler: ViewModifier {
             .onReceive(NotificationCenter.default.publisher(for: .resetCrop)) { _ in
                 undoManager.recordAction(type: .composite)
                 cropEditorVM.reset()
+                // Also reset keyframes - clear both the view model and config
+                keyframeVM.keyframes = []
+                keyframeVM.keyframesEnabled = false
+                keyframeVM.selectedKeyframeIDs.removeAll()
+                if let video = projectVM.selectedVideo {
+                    video.cropConfiguration.keyframes = []
+                    video.cropConfiguration.keyframesEnabled = false
+                    // Clear saved data so reset persists on app restart
+                    video.clearSavedCropData()
+                }
             }
             .onReceive(NotificationCenter.default.publisher(for: .copyCropSettings)) { _ in
                 copyCropSettings()
@@ -459,7 +476,28 @@ struct CropNotificationHandler: ViewModifier {
                     y: max(0, min(1, point.y + dy))
                 )
             }
+
+        case .ai:
+            // Nudge prompt points for AI mode
+            cropEditorVM.aiPromptPoints = cropEditorVM.aiPromptPoints.map { point in
+                var newPoint = point
+                newPoint.position = CGPoint(
+                    x: max(0, min(1, point.position.x + dx)),
+                    y: max(0, min(1, point.position.y + dy))
+                )
+                return newPoint
+            }
+            // Also nudge bounding box if it exists
+            if cropEditorVM.aiBoundingBox.width > 0 {
+                var bbox = cropEditorVM.aiBoundingBox
+                bbox.origin.x = max(0, min(1 - bbox.width, bbox.origin.x + dx))
+                bbox.origin.y = max(0, min(1 - bbox.height, bbox.origin.y + dy))
+                cropEditorVM.aiBoundingBox = bbox
+            }
         }
+
+        // Trigger auto-keyframe creation for nudge operations
+        cropEditorVM.notifyCropEditEnded()
     }
 }
 
@@ -574,13 +612,38 @@ struct EmptyStateView: View {
     @EnvironmentObject var projectVM: ProjectViewModel
 
     var body: some View {
-        ContentUnavailableView {
-            Label("No Video Selected", systemImage: "film")
-        } description: {
-            Text("Drag and drop videos here or click + to add")
-        } actions: {
-            Button("Add Videos...") { openFilePicker() }
-                .buttonStyle(.borderedProminent)
+        ZStack {
+            VStack(spacing: 24) {
+                Image(systemName: "film")
+                    .font(.system(size: 52, weight: .ultraLight))
+                    .foregroundStyle(.tertiary)
+
+                VStack(spacing: 8) {
+                    Text("No Video Selected")
+                        .font(.title2)
+                        .fontWeight(.medium)
+
+                    Text("Drag and drop videos here or click + to add")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+
+                Button(action: openFilePicker) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text("Add Videos")
+                            .font(.system(size: 14, weight: .medium))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
+                }
+                .buttonStyle(.borderless)
+                .liquidGlassCapsule(isSelected: true)
+            }
+            .padding(48)
+            .emptyStateGlassBackground()
         }
     }
 

@@ -219,6 +219,7 @@ final class ExportViewModel: ObservableObject {
 
     func cancelExport() {
         ffmpegService?.cancel()
+        processingService?.cancel()
         isExporting = false
     }
 
@@ -267,6 +268,15 @@ final class ExportViewModel: ObservableObject {
         case .freehand:
             let svgPath = pointsToSVGPath(cropConfig.freehandPoints)
             staticCrop = CropMetadataDocument.StaticCropInfo(freehandPathSVG: svgPath)
+        case .ai:
+            staticCrop = CropMetadataDocument.StaticCropInfo(
+                aiBoundingBoxX: cropConfig.aiBoundingBox.origin.x,
+                aiBoundingBoxY: cropConfig.aiBoundingBox.origin.y,
+                aiBoundingBoxWidth: cropConfig.aiBoundingBox.width,
+                aiBoundingBoxHeight: cropConfig.aiBoundingBox.height,
+                aiTextPrompt: cropConfig.aiTextPrompt,
+                aiConfidence: cropConfig.aiConfidence
+            )
         }
 
         let keyframeInfos: [CropMetadataDocument.KeyframeInfo]? = cropConfig.hasKeyframes ?

@@ -10,10 +10,20 @@ import CoreGraphics
 final class FFmpegExportService {
     private var process: Process?
     private var isCancelled = false
+    private var tempMaskURLs: [URL] = []  // Track temp files for cleanup
 
     func cancel() {
         isCancelled = true
         process?.terminate()
+        cleanupTempFiles()
+    }
+
+    /// Clean up temporary mask files created during export
+    private func cleanupTempFiles() {
+        for url in tempMaskURLs {
+            try? FileManager.default.removeItem(at: url)
+        }
+        tempMaskURLs.removeAll()
     }
 
     func exportVideo(
@@ -71,12 +81,12 @@ final class FFmpegExportService {
                         args += ["-vf", "crop=\(cropW):\(cropH):\(cropX):\(cropY),pad=\(metadata.width):\(metadata.height):\(cropX):\(cropY):black"]
                     }
                 } else {
-                    // Just crop - output will be crop dimensions
-                    args += ["-vf", "crop=\(cropW):\(cropH):\(cropX):\(cropY)"]
+                    // Crop then scale to fill original dimensions (full screen)
+                    args += ["-vf", "crop=\(cropW):\(cropH):\(cropX):\(cropY),scale=\(metadata.width):\(metadata.height):flags=lanczos"]
                 }
             }
 
-        case .circle, .freehand:
+        case .circle, .freehand, .ai:
             // Generate mask and use it
             let maskURL = try await generateMaskImage(cropConfig: cropConfig, size: CGSize(width: metadata.width, height: metadata.height))
             args = ["-y", "-i", sourceURL.path, "-i", maskURL.path]
@@ -102,9 +112,11 @@ final class FFmpegExportService {
                 bboxH = bboxH % 2 == 0 ? bboxH : bboxH - 1
 
                 if enableAlpha {
-                    args += ["-filter_complex", "[1:v]format=gray[mask];[0:v][mask]alphamerge,crop=\(bboxW):\(bboxH):\(bboxX):\(bboxY)"]
+                    // Crop to bounding box then scale to fill original dimensions
+                    args += ["-filter_complex", "[1:v]format=gray[mask];[0:v][mask]alphamerge,crop=\(bboxW):\(bboxH):\(bboxX):\(bboxY),scale=\(metadata.width):\(metadata.height):flags=lanczos"]
                 } else {
-                    args += ["-filter_complex", "[0:v][1:v]blend=all_mode=multiply,crop=\(bboxW):\(bboxH):\(bboxX):\(bboxY)"]
+                    // Crop to bounding box then scale to fill original dimensions
+                    args += ["-filter_complex", "[0:v][1:v]blend=all_mode=multiply,crop=\(bboxW):\(bboxH):\(bboxX):\(bboxY),scale=\(metadata.width):\(metadata.height):flags=lanczos"]
                 }
             }
         }
@@ -117,11 +129,16 @@ final class FFmpegExportService {
             args += ["-c:v", "copy"]
         } else {
             // Custom crops need re-encode - use VideoToolbox hardware acceleration
+            // Note: VideoToolbox doesn't support -q:v, use bitrate instead
+            // Calculate target bitrate based on source (or use reasonable default)
+            let sourceBitrate = metadata.bitRate > 0 ? metadata.bitRate : 10_000_000  // 10 Mbps default
+            let targetBitrate = "\(Int(Double(sourceBitrate) * 0.9 / 1000))k"  // 90% of source in kbps
+
             let codec = metadata.codecType.lowercased()
             if codec.contains("h.264") || codec.contains("avc") {
-                args += ["-c:v", "h264_videotoolbox", "-q:v", "65"]
+                args += ["-c:v", "h264_videotoolbox", "-b:v", targetBitrate]
             } else if codec.contains("hevc") || codec.contains("h.265") {
-                args += ["-c:v", "hevc_videotoolbox", "-q:v", "65"]
+                args += ["-c:v", "hevc_videotoolbox", "-b:v", targetBitrate]
             } else if codec.contains("prores") || codec.hasPrefix("ap") {
                 // Use VideoToolbox ProRes hardware encoder - match source profile by fourCC
                 args += ["-c:v", "prores_videotoolbox"]
@@ -184,6 +201,7 @@ final class FFmpegExportService {
         print("FFmpeg: \(ffmpegPath) \(args.joined(separator: " "))")
 
         // Run FFmpeg
+        defer { cleanupTempFiles() }  // Always clean up temp files
         try await runFFmpeg(path: ffmpegPath, arguments: args, duration: metadata.duration, progressHandler: progressHandler)
 
         return outputURL
@@ -234,11 +252,19 @@ final class FFmpegExportService {
             let minY = ys.min() ?? 0
             let maxY = ys.max() ?? size.height
             return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+
+        case .ai:
+            // Use AI bounding box if available
+            if cropConfig.aiBoundingBox.width > 0 {
+                return cropConfig.aiBoundingBox.denormalized(to: size)
+            }
+            return CGRect(origin: .zero, size: size)
         }
     }
 
     private func generateMaskImage(cropConfig: CropConfiguration, size: CGSize) async throws -> URL {
         let maskURL = FileManager.default.temporaryDirectory.appendingPathComponent("mask_\(UUID().uuidString).png")
+        tempMaskURLs.append(maskURL)  // Track for cleanup
 
         let width = Int(size.width)
         let height = Int(size.height)
@@ -311,6 +337,17 @@ final class FFmpegExportService {
                 path.close()
                 path.fill()
             }
+
+        case .ai:
+            // For AI mode, decode the RLE mask and render it (handles column-major COCO format)
+            guard let maskData = cropConfig.aiMaskData,
+                  let (maskImage, _, _) = AIMaskResult.decodeMaskToImage(maskData) else {
+                throw ExportError.maskGenerationFailed
+            }
+
+            // Draw the mask image scaled to target size
+            let nsImage = NSImage(cgImage: maskImage, size: size)
+            nsImage.draw(in: CGRect(origin: .zero, size: size))
         }
 
         NSGraphicsContext.restoreGraphicsState()
@@ -378,7 +415,8 @@ final class FFmpegExportService {
         self.process = process
 
         process.executableURL = URL(fileURLWithPath: path)
-        process.arguments = arguments
+        // Add -progress pipe:1 for more reliable progress output
+        process.arguments = ["-progress", "pipe:1"] + arguments
 
         // Set environment for Homebrew FFmpeg
         var env = ProcessInfo.processInfo.environment
@@ -394,42 +432,88 @@ final class FFmpegExportService {
 
         try process.run()
 
-        // Collect stderr for error reporting
-        var stderrOutput = ""
         let runningProcess = process
-        let handle = stderrPipe.fileHandleForReading
+        let stderrHandle = stderrPipe.fileHandleForReading
+        let stdoutHandle = stdoutPipe.fileHandleForReading
 
-        Task.detached {
+        // Thread-safe stderr collection using actor
+        actor StderrCollector {
+            var output = ""
+            func append(_ text: String) { output += text }
+            func get() -> String { output }
+        }
+        let stderrCollector = StderrCollector()
+
+        // Monitor both stdout (progress) and stderr (errors/fallback progress)
+        let monitorTask = Task.detached {
+            var lastProgress: Double = 0
+
             while runningProcess.isRunning {
-                if let data = try? handle.availableData, !data.isEmpty,
+                // Read stdout for -progress output (more reliable)
+                if let data = try? stdoutHandle.availableData, !data.isEmpty,
                    let output = String(data: data, encoding: .utf8) {
-                    stderrOutput += output
-                    // Parse "time=00:00:01.23"
-                    if let range = output.range(of: "time=\\d+:\\d+:\\d+\\.\\d+", options: .regularExpression),
-                       let time = self.parseTime(String(output[range].dropFirst(5))) {
-                        let progress = min(1.0, time / duration)
-                        await MainActor.run { progressHandler(progress) }
+                    // Parse "out_time_ms=12345678" or "out_time=00:00:01.234"
+                    if let range = output.range(of: "out_time_ms=\\d+", options: .regularExpression) {
+                        let msString = String(output[range].dropFirst(12))
+                        if let ms = Double(msString) {
+                            let seconds = ms / 1_000_000.0
+                            let progress = min(0.99, seconds / duration)  // Cap at 99% until complete
+                            if progress > lastProgress {
+                                lastProgress = progress
+                                await MainActor.run { progressHandler(progress) }
+                            }
+                        }
+                    } else if let range = output.range(of: "out_time=\\d+:\\d+:\\d+\\.\\d+", options: .regularExpression) {
+                        if let time = self.parseTime(String(output[range].dropFirst(9))) {
+                            let progress = min(0.99, time / duration)
+                            if progress > lastProgress {
+                                lastProgress = progress
+                                await MainActor.run { progressHandler(progress) }
+                            }
+                        }
                     }
                 }
-                try? await Task.sleep(nanoseconds: 50_000_000)
+
+                // Also read stderr for errors and fallback progress
+                if let data = try? stderrHandle.availableData, !data.isEmpty,
+                   let output = String(data: data, encoding: .utf8) {
+                    await stderrCollector.append(output)
+                    // Fallback: Parse "time=00:00:01.23" from stderr
+                    if lastProgress == 0,  // Only use if stdout progress not working
+                       let range = output.range(of: "time=\\d+:\\d+:\\d+\\.\\d+", options: .regularExpression),
+                       let time = self.parseTime(String(output[range].dropFirst(5))) {
+                        let progress = min(0.99, time / duration)
+                        if progress > lastProgress {
+                            lastProgress = progress
+                            await MainActor.run { progressHandler(progress) }
+                        }
+                    }
+                }
+
+                try? await Task.sleep(nanoseconds: 20_000_000)  // Reduced to 20ms for smoother updates
             }
-            // Read any remaining stderr
-            if let data = try? handle.readToEnd(), let output = String(data: data, encoding: .utf8) {
-                stderrOutput += output
+            // Read any remaining output
+            if let data = try? stderrHandle.readToEnd(), let output = String(data: data, encoding: .utf8) {
+                await stderrCollector.append(output)
             }
         }
 
         process.waitUntilExit()
+
+        // Wait for monitor task to finish collecting output
+        await monitorTask.value
 
         if isCancelled {
             throw ExportError.cancelled
         }
 
         if process.terminationStatus != 0 {
+            let stderrOutput = await stderrCollector.get()
             print("FFmpeg stderr: \(stderrOutput)")
             throw ExportError.ffmpegFailed(process.terminationStatus)
         }
 
+        // Ensure we report 100% on successful completion
         await MainActor.run { progressHandler(1.0) }
     }
 

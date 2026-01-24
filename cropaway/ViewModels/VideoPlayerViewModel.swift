@@ -261,6 +261,31 @@ final class VideoPlayerViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Frame Capture
+
+    /// Capture the current frame as an NSImage
+    func captureCurrentFrame() async -> NSImage? {
+        guard let player = player,
+              let currentItem = player.currentItem,
+              let asset = currentItem.asset as? AVURLAsset else {
+            return nil
+        }
+
+        let time = player.currentTime()
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.requestedTimeToleranceAfter = .zero
+        generator.requestedTimeToleranceBefore = .zero
+
+        do {
+            let (cgImage, _) = try await generator.image(at: time)
+            return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+        } catch {
+            print("Frame capture error: \(error)")
+            return nil
+        }
+    }
+
     deinit {
         if let observer = observerForCleanup {
             playerForCleanup?.removeTimeObserver(observer)

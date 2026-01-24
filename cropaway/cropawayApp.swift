@@ -7,13 +7,42 @@ import SwiftUI
 
 @main
 struct CropawayApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var projectVM = ProjectViewModel()
+    @StateObject private var updateService = UpdateService.shared
+
+    @State private var showUpdateDialog = false
+    @State private var showUpdateCheckResult = false
 
     var body: some Scene {
         WindowGroup {
             MainContentView()
                 .environmentObject(projectVM)
                 .frame(minWidth: 900, minHeight: 600)
+                .sheet(isPresented: $showUpdateDialog) {
+                    UpdateAvailableView(updateService: updateService)
+                }
+                .sheet(isPresented: $showUpdateCheckResult) {
+                    UpdateCheckView(updateService: updateService)
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .showUpdateDialog)) { _ in
+                    showUpdateDialog = true
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .checkForUpdates)) { _ in
+                    Task {
+                        await updateService.checkForUpdates(force: true)
+                        showUpdateCheckResult = true
+                    }
+                }
+                .task {
+                    // Check for updates on launch (if 24h has passed)
+                    if updateService.shouldCheckAutomatically {
+                        await updateService.checkForUpdates()
+                        if case .available = updateService.status {
+                            showUpdateDialog = true
+                        }
+                    }
+                }
         }
         .windowStyle(.automatic)
         .windowToolbarStyle(.unified)
@@ -23,8 +52,42 @@ struct CropawayApp: App {
     }
 }
 
+// MARK: - App Delegate
+
+class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // Configure window for glass effect
+        configureWindowForGlass()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        // Cleanup on app quit (if needed)
+    }
+
+    private func configureWindowForGlass() {
+        guard let window = NSApplication.shared.windows.first else { return }
+
+        if #available(macOS 26.0, *) {
+            // macOS 26: Use glass-compatible window styling
+            window.isOpaque = false
+            window.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.8)
+            window.titlebarAppearsTransparent = true
+        } else {
+            // Earlier macOS: Standard window background
+            window.titlebarAppearsTransparent = true
+        }
+    }
+}
+
 struct CropawayCommands: Commands {
     var body: some Commands {
+        // App menu - Check for Updates
+        CommandGroup(after: .appInfo) {
+            Button("Check for Updates...") {
+                NotificationCenter.default.post(name: .checkForUpdates, object: nil)
+            }
+        }
+
         // File menu
         CommandGroup(after: .newItem) {
             Button("Add Videos...") {
@@ -157,6 +220,11 @@ struct CropawayCommands: Commands {
                 NotificationCenter.default.post(name: .setCropMode, object: CropMode.freehand)
             }
             .keyboardShortcut("3", modifiers: .command)
+
+            Button("AI Track") {
+                NotificationCenter.default.post(name: .setCropMode, object: CropMode.ai)
+            }
+            .keyboardShortcut("4", modifiers: .command)
 
             Divider()
 

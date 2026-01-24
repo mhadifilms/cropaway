@@ -102,6 +102,16 @@ final class KeyframeViewModel: ObservableObject {
             circleRadius: cropEditor.circleRadius
         )
 
+        // Include freehand path data
+        keyframe.freehandPathData = cropEditor.freehandPathData
+
+        // Include AI mask data
+        if cropEditor.mode == .ai || cropEditor.aiMaskData != nil {
+            keyframe.aiMaskData = cropEditor.aiMaskData
+            keyframe.aiPromptPoints = cropEditor.aiPromptPoints.isEmpty ? nil : cropEditor.aiPromptPoints
+            keyframe.aiBoundingBox = cropEditor.aiBoundingBox.width > 0 ? cropEditor.aiBoundingBox : nil
+        }
+
         // Insert in sorted order
         if let insertIndex = keyframes.firstIndex(where: { $0.timestamp > timestamp }) {
             keyframes.insert(keyframe, at: insertIndex)
@@ -161,6 +171,16 @@ final class KeyframeViewModel: ObservableObject {
         keyframe.circleCenter = cropEditor.circleCenter
         keyframe.circleRadius = cropEditor.circleRadius
 
+        // Update freehand path data
+        keyframe.freehandPathData = cropEditor.freehandPathData
+
+        // Update AI mask data
+        if cropEditor.mode == .ai || cropEditor.aiMaskData != nil {
+            keyframe.aiMaskData = cropEditor.aiMaskData
+            keyframe.aiPromptPoints = cropEditor.aiPromptPoints.isEmpty ? nil : cropEditor.aiPromptPoints
+            keyframe.aiBoundingBox = cropEditor.aiBoundingBox.width > 0 ? cropEditor.aiBoundingBox : nil
+        }
+
         currentVideo?.cropConfiguration.keyframes = keyframes
     }
 
@@ -178,9 +198,19 @@ final class KeyframeViewModel: ObservableObject {
             cropEditor.edgeInsets = state.edgeInsets
             cropEditor.circleCenter = state.circleCenter
             cropEditor.circleRadius = state.circleRadius
+
+            // Also update AI mask data for AI mode
+            if cropEditor.mode == .ai {
+                // Apply interpolated mask data (hold interpolation - uses nearest keyframe's mask)
+                cropEditor.aiMaskData = state.aiMaskData
+                cropEditor.aiBoundingBox = state.aiBoundingBox
+                // Sync cropRect with aiBoundingBox in AI mode
+                if state.aiBoundingBox.width > 0 {
+                    cropEditor.cropRect = state.aiBoundingBox
+                }
+            }
         }
     }
-
     // MARK: - Query
 
     func hasKeyframe(at timestamp: Double, tolerance: Double = 0.1) -> Bool {
@@ -195,10 +225,21 @@ final class KeyframeViewModel: ObservableObject {
         guard keyframesEnabled, let cropEditor = cropEditor else { return }
 
         if let existingKeyframe = keyframes.first(where: { abs($0.timestamp - timestamp) < tolerance }) {
+            // Update all crop state properties
             existingKeyframe.cropRect = cropEditor.cropRect
             existingKeyframe.edgeInsets = cropEditor.edgeInsets
             existingKeyframe.circleCenter = cropEditor.circleCenter
             existingKeyframe.circleRadius = cropEditor.circleRadius
+
+            // Update freehand path data
+            existingKeyframe.freehandPathData = cropEditor.freehandPathData
+
+            // Update AI mask data
+            if cropEditor.mode == .ai || cropEditor.aiMaskData != nil {
+                existingKeyframe.aiMaskData = cropEditor.aiMaskData
+                existingKeyframe.aiPromptPoints = cropEditor.aiPromptPoints.isEmpty ? nil : cropEditor.aiPromptPoints
+                existingKeyframe.aiBoundingBox = cropEditor.aiBoundingBox.width > 0 ? cropEditor.aiBoundingBox : nil
+            }
 
             currentVideo?.cropConfiguration.keyframes = keyframes
             selectedKeyframeIDs = [existingKeyframe.id]

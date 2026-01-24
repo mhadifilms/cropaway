@@ -6,8 +6,13 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		AFDBD6B92F252A6800B896FD /* cropaway.icon in Resources */ = {isa = PBXBuildFile; fileRef = AFDBD6B82F252A6800B896FD /* cropaway.icon */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
-		AF3164AC2F224F0200D55C04 /* cropaway.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = cropaway.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AF3164AC2F224F0200D55C04 /* Cropaway.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Cropaway.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AFDBD6B82F252A6800B896FD /* cropaway.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = cropaway.icon; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -34,13 +39,14 @@
 			children = (
 				AF3164AE2F224F0200D55C04 /* cropaway */,
 				AF3164AD2F224F0200D55C04 /* Products */,
+				AFDBD6B82F252A6800B896FD /* cropaway.icon */,
 			);
 			sourceTree = "<group>";
 		};
 		AF3164AD2F224F0200D55C04 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				AF3164AC2F224F0200D55C04 /* cropaway.app */,
+				AF3164AC2F224F0200D55C04 /* Cropaway.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -48,9 +54,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		AF3164AB2F224F0200D55C04 /* cropaway */ = {
+		AF3164AB2F224F0200D55C04 /* Cropaway */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = AF3164B92F224F0200D55C04 /* Build configuration list for PBXNativeTarget "cropaway" */;
+			buildConfigurationList = AF3164B92F224F0200D55C04 /* Build configuration list for PBXNativeTarget "Cropaway" */;
 			buildPhases = (
 				AF3164A82F224F0200D55C04 /* Sources */,
 				AF3164A92F224F0200D55C04 /* Frameworks */,
@@ -63,11 +69,11 @@
 			fileSystemSynchronizedGroups = (
 				AF3164AE2F224F0200D55C04 /* cropaway */,
 			);
-			name = cropaway;
+			name = Cropaway;
 			packageProductDependencies = (
 			);
-			productName = cropaway;
-			productReference = AF3164AC2F224F0200D55C04 /* cropaway.app */;
+			productName = Cropaway;
+			productReference = AF3164AC2F224F0200D55C04 /* Cropaway.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -99,7 +105,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				AF3164AB2F224F0200D55C04 /* cropaway */,
+				AF3164AB2F224F0200D55C04 /* Cropaway */,
 			);
 		};
 /* End PBXProject section */
@@ -109,6 +115,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AFDBD6B92F252A6800B896FD /* cropaway.icon in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -248,9 +255,9 @@
 		AF3164BA2F224F0200D55C04 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = cropaway;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = cropaway/cropaway.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
@@ -259,6 +266,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readwrite;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleName = Cropaway;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -266,7 +274,7 @@
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.cropaway.app;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = Cropaway;
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -280,9 +288,9 @@
 		AF3164BB2F224F0200D55C04 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = cropaway;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = cropaway/cropaway.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
@@ -291,6 +299,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readwrite;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleName = Cropaway;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -298,7 +307,7 @@
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.cropaway.app;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = Cropaway;
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -321,7 +330,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		AF3164B92F224F0200D55C04 /* Build configuration list for PBXNativeTarget "cropaway" */ = {
+		AF3164B92F224F0200D55C04 /* Build configuration list for PBXNativeTarget "Cropaway" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				AF3164BA2F224F0200D55C04 /* Debug */,

@@ -20,41 +20,41 @@ struct VideoPlayerControlsView: View {
             .help("Go to start (Home)")
 
             // Shuttle controls (J/K/L)
-            HStack(spacing: 4) {
-                Button(action: playerVM.shuttleReverse) {
-                    Text("J")
-                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                        .frame(width: 20, height: 20)
-                        .background(playerVM.currentRate < 0 ? Color.accentColor.opacity(0.2) : Color.clear)
-                        .clipShape(RoundedRectangle(cornerRadius: 4))
-                }
-                .buttonStyle(.borderless)
-                .help("Shuttle reverse (J) - press multiple times to increase speed")
+            GlassEffectContainer {
+                HStack(spacing: 4) {
+                    Button(action: playerVM.shuttleReverse) {
+                        Text("J")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .foregroundStyle(playerVM.currentRate < 0 ? Color.accentColor : Color(NSColor.labelColor))
+                            .frame(width: 20, height: 20)
+                    }
+                    .buttonStyle(.borderless)
+                    .interactiveGlassButton(isSelected: playerVM.currentRate < 0)
+                    .help("Shuttle reverse (J) - press multiple times to increase speed")
 
-                Button(action: playerVM.shuttleStop) {
-                    Text("K")
-                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                        .frame(width: 20, height: 20)
-                        .background(playerVM.currentRate == 0 && !playerVM.isPlaying ? Color.accentColor.opacity(0.2) : Color.clear)
-                        .clipShape(RoundedRectangle(cornerRadius: 4))
-                }
-                .buttonStyle(.borderless)
-                .help("Stop (K)")
+                    Button(action: playerVM.shuttleStop) {
+                        Text("K")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .foregroundStyle(playerVM.currentRate == 0 && !playerVM.isPlaying ? Color.accentColor : Color(NSColor.labelColor))
+                            .frame(width: 20, height: 20)
+                    }
+                    .buttonStyle(.borderless)
+                    .interactiveGlassButton(isSelected: playerVM.currentRate == 0 && !playerVM.isPlaying)
+                    .help("Stop (K)")
 
-                Button(action: playerVM.shuttleForward) {
-                    Text("L")
-                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                        .frame(width: 20, height: 20)
-                        .background(playerVM.currentRate > 1 ? Color.accentColor.opacity(0.2) : Color.clear)
-                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                    Button(action: playerVM.shuttleForward) {
+                        Text("L")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .foregroundStyle(playerVM.currentRate > 1 ? Color.accentColor : Color(NSColor.labelColor))
+                            .frame(width: 20, height: 20)
+                    }
+                    .buttonStyle(.borderless)
+                    .interactiveGlassButton(isSelected: playerVM.currentRate > 1)
+                    .help("Shuttle forward (L) - press multiple times to increase speed")
                 }
-                .buttonStyle(.borderless)
-                .help("Shuttle forward (L) - press multiple times to increase speed")
+                .padding(.horizontal, 4)
+                .padding(.vertical, 2)
             }
-            .padding(.horizontal, 4)
-            .padding(.vertical, 2)
-            .background(Color(NSColor.controlBackgroundColor))
-            .clipShape(RoundedRectangle(cornerRadius: 6))
 
             Divider()
                 .frame(height: 20)
@@ -75,6 +75,7 @@ struct VideoPlayerControlsView: View {
                     .frame(width: 28, height: 28)
             }
             .buttonStyle(.borderless)
+            .circularGlassButton()
             .help("Play/Pause (Space)")
 
             // Step forward

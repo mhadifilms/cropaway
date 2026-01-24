@@ -38,6 +38,11 @@ final class Keyframe: Identifiable, ObservableObject {
     @Published var circleRadius: Double
     @Published var freehandPathData: Data?
 
+    // AI mask data for this keyframe
+    @Published var aiMaskData: Data?
+    @Published var aiPromptPoints: [AIPromptPoint]?
+    @Published var aiBoundingBox: CGRect?
+
     // Interpolation to next keyframe
     @Published var interpolation: KeyframeInterpolation
 
@@ -68,29 +73,46 @@ final class Keyframe: Identifiable, ObservableObject {
             interpolation: interpolation
         )
         kf.freehandPathData = freehandPathData
+        kf.aiMaskData = aiMaskData
+        kf.aiPromptPoints = aiPromptPoints
+        kf.aiBoundingBox = aiBoundingBox
         return kf
     }
 }
 
-struct EdgeInsets: Equatable {
+struct EdgeInsets: Equatable, Codable {
     var top: Double = 0
     var left: Double = 0
     var bottom: Double = 0
     var right: Double = 0
 
     init(top: Double = 0, left: Double = 0, bottom: Double = 0, right: Double = 0) {
-        self.top = top
-        self.left = left
-        self.bottom = bottom
-        self.right = right
+        // Clamp values to valid 0-1 range
+        self.top = top.clamped(to: 0...1)
+        self.left = left.clamped(to: 0...1)
+        self.bottom = bottom.clamped(to: 0...1)
+        self.right = right.clamped(to: 0...1)
     }
 
     var cropRect: CGRect {
         CGRect(
             x: left,
             y: top,
-            width: 1.0 - left - right,
-            height: 1.0 - top - bottom
+            width: max(0, 1.0 - left - right),
+            height: max(0, 1.0 - top - bottom)
         )
+    }
+
+    /// Returns true if insets produce a valid (non-negative size) crop area
+    var isValid: Bool {
+        left + right < 1.0 && top + bottom < 1.0
+    }
+}
+
+// MARK: - Double Clamping Extension
+
+private extension Double {
+    func clamped(to range: ClosedRange<Double>) -> Double {
+        min(max(self, range.lowerBound), range.upperBound)
     }
 }

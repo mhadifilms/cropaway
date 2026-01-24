@@ -2,227 +2,327 @@
 //  CropToolbarView.swift
 //  cropaway
 //
+//  Main toolbar for crop editing with macOS 26 Liquid Glass styling.
+//
 
 import SwiftUI
 
 struct CropToolbarView: View {
     @ObservedObject var video: VideoItem
+    @ObservedObject var cropConfig: CropConfiguration
 
     @EnvironmentObject var cropEditorVM: CropEditorViewModel
     @EnvironmentObject var keyframeVM: KeyframeViewModel
     @EnvironmentObject var undoManager: CropUndoManager
 
+    init(video: VideoItem) {
+        self.video = video
+        self.cropConfig = video.cropConfiguration
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            HStack(alignment: .center, spacing: 12) {
-                // Crop mode buttons - like Preview.app markup tools
-                HStack(spacing: 2) {
-                    ForEach(Array(CropMode.allCases.enumerated()), id: \.element.id) { index, mode in
-                        Button {
-                            cropEditorVM.mode = mode
-                        } label: {
-                            Image(systemName: mode.iconName)
-                                .font(.system(size: 13))
-                                .frame(width: 28, height: 24)
-                        }
-                        .buttonStyle(ToolbarButtonStyle(isSelected: cropEditorVM.mode == mode))
-                        .help("\(mode.displayName) (\u{2318}\(index + 1))")
-                    }
-                }
-                .padding(3)
-                .background(Color(NSColor.controlBackgroundColor))
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-
-                Divider()
-                    .frame(height: 20)
-
-                // Keyframes toggle - only available when Preserve Size is enabled
-                Button {
-                    if !video.cropConfiguration.preserveWidth {
-                        // Auto-enable preserve size when enabling keyframes
-                        video.cropConfiguration.preserveWidth = true
-                    }
-                    let wasEnabled = keyframeVM.keyframesEnabled
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        keyframeVM.keyframesEnabled.toggle()
-                    }
-                    // Auto-create first keyframe when enabling keyframes
-                    if !wasEnabled && keyframeVM.keyframesEnabled {
-                        NotificationCenter.default.post(name: .addKeyframe, object: nil)
-                    }
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "diamond")
-                            .font(.system(size: 11))
-                        Text("Keyframes")
-                            .font(.system(size: 11))
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                }
-                .buttonStyle(ToolbarButtonStyle(isSelected: keyframeVM.keyframesEnabled))
-                .disabled(!video.cropConfiguration.preserveWidth && !keyframeVM.keyframesEnabled)
-                .opacity(video.cropConfiguration.preserveWidth || keyframeVM.keyframesEnabled ? 1.0 : 0.5)
-                .help(video.cropConfiguration.preserveWidth ? "Toggle keyframe animation (\u{2318}K to add)" : "Keyframes require Preserve Size to be enabled")
-
-                // Add keyframe button when keyframes are enabled
-                if keyframeVM.keyframesEnabled {
-                    Button {
-                        NotificationCenter.default.post(name: .addKeyframe, object: nil)
-                    } label: {
-                        Image(systemName: "plus.diamond")
-                            .font(.system(size: 12))
-                            .frame(width: 24, height: 24)
-                    }
-                    .buttonStyle(.borderless)
-                    .help("Add keyframe at current time (\u{2318}K)")
-                }
-
-                Spacer()
-
-                // Options - per-video settings
-                HStack(spacing: 12) {
-                    Toggle(isOn: Binding(
-                        get: { video.cropConfiguration.preserveWidth },
-                        set: { newValue in
-                            video.cropConfiguration.preserveWidth = newValue
-                            // If preserve size is disabled, disable keyframes
-                            if !newValue && keyframeVM.keyframesEnabled {
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    keyframeVM.keyframesEnabled = false
-                                }
-                            }
-                        }
-                    )) {
-                        Text("Preserve Size")
-                            .font(.system(size: 11))
-                    }
-                    .toggleStyle(.checkbox)
-                    .help(keyframeVM.keyframesEnabled ? "Required for keyframe animation" : "Keep original dimensions, black fill outside crop")
-                    .disabled(keyframeVM.keyframesEnabled) // Can't disable while keyframes active
-
-                    Toggle(isOn: Binding(
-                        get: { video.cropConfiguration.enableAlphaChannel },
-                        set: { video.cropConfiguration.enableAlphaChannel = $0 }
-                    )) {
-                        Text("Alpha")
-                            .font(.system(size: 11))
-                    }
-                    .toggleStyle(.checkbox)
-                    .help("Export with transparency (ProRes 4444)")
-                }
-
-                Divider()
-                    .frame(height: 20)
-
-                // Undo/Redo buttons
-                HStack(spacing: 2) {
-                    Button {
-                        NotificationCenter.default.post(name: .undoCrop, object: nil)
-                    } label: {
-                        Image(systemName: "arrow.uturn.backward")
-                            .font(.system(size: 12))
-                            .frame(width: 24, height: 24)
-                    }
-                    .buttonStyle(.borderless)
-                    .disabled(!undoManager.canUndo)
-                    .help("Undo (\u{2318}Z)")
-
-                    Button {
-                        NotificationCenter.default.post(name: .redoCrop, object: nil)
-                    } label: {
-                        Image(systemName: "arrow.uturn.forward")
-                            .font(.system(size: 12))
-                            .frame(width: 24, height: 24)
-                    }
-                    .buttonStyle(.borderless)
-                    .disabled(!undoManager.canRedo)
-                    .help("Redo (\u{21E7}\u{2318}Z)")
-                }
-
-                Divider()
-                    .frame(height: 20)
-
-                // Reset
-                Button {
-                    NotificationCenter.default.post(name: .resetCrop, object: nil)
-                } label: {
-                    Image(systemName: "arrow.counterclockwise")
-                        .font(.system(size: 12))
-                        .frame(width: 24, height: 24)
-                }
-                .buttonStyle(.borderless)
-                .help("Reset crop (\u{21E7}\u{2318}R)")
-
-                // Export menu with primary action
-                Menu {
-                    Button {
-                        NotificationCenter.default.post(name: .exportVideo, object: nil)
-                    } label: {
-                        Label("Export Video...", systemImage: "film")
-                    }
-                    .keyboardShortcut("e", modifiers: .command)
-
-                    Divider()
-
-                    Button {
-                        NotificationCenter.default.post(name: .exportJSON, object: nil)
-                    } label: {
-                        Label("Export Crop Data (JSON)...", systemImage: "doc.text")
-                    }
-
-                    Button {
-                        NotificationCenter.default.post(name: .exportBoundingBox, object: nil)
-                    } label: {
-                        Label("Export Bounding Boxes...", systemImage: "rectangle.dashed")
-                    }
-                } label: {
-                    Label("Export", systemImage: "square.and.arrow.up")
-                        .labelStyle(.titleOnly)
-                } primaryAction: {
-                    NotificationCenter.default.post(name: .exportVideo, object: nil)
-                }
-                .menuStyle(.borderedButton)
-                .fixedSize()
-                .disabled(!video.hasCropChanges)
-                .help(video.hasCropChanges ? "Export video (\u{2318}E) • Click arrow for more options" : "Make crop changes to enable export")
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .frame(height: 44)
+            // Main toolbar
+            toolbarContent
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .frame(height: 52)
+                .background(.bar)
 
             Divider()
+
+            // AI sub-toolbar
+            if cropEditorVM.mode == .ai {
+                AIToolbarView(video: video)
+                Divider()
+            }
         }
-        .background(Color(NSColor.windowBackgroundColor))
+    }
+
+    private var toolbarContent: some View {
+        HStack(spacing: 12) {
+            cropModeButtons
+            keyframeControls
+
+            Spacer()
+
+            optionsSection
+
+            Divider().frame(height: 20)
+
+            editActions
+
+            Divider().frame(height: 20)
+
+            exportButton
+        }
+    }
+
+    // MARK: - Crop Mode Buttons
+
+    private var cropModeButtons: some View {
+        HStack(spacing: 2) {
+            ForEach(Array(CropMode.allCases.enumerated()), id: \.element.id) { index, mode in
+                let isSelected = cropEditorVM.mode == mode
+                Button {
+                    withAnimation(.snappy(duration: 0.2)) {
+                        cropEditorVM.mode = mode
+                    }
+                } label: {
+                    Image(systemName: mode.iconName)
+                        .font(.system(size: 14, weight: isSelected ? .semibold : .regular))
+                        .foregroundStyle(isSelected ? Color.white : Color.primary)
+                        .frame(width: 36, height: 32)
+                        .contentShape(RoundedRectangle(cornerRadius: 8))
+                }
+                .buttonStyle(.borderless)
+                .liquidGlassButton(isSelected: isSelected)
+                .help("\(mode.displayName) (⌘\(index + 1))")
+            }
+        }
+    }
+
+    // MARK: - Keyframe Controls
+
+    private var keyframeControls: some View {
+        HStack(spacing: 4) {
+            Button {
+                if !cropConfig.preserveWidth {
+                    cropConfig.preserveWidth = true
+                }
+                withAnimation(.snappy(duration: 0.2)) {
+                    keyframeVM.keyframesEnabled.toggle()
+                }
+                if keyframeVM.keyframesEnabled && keyframeVM.keyframes.isEmpty {
+                    NotificationCenter.default.post(name: .addKeyframe, object: nil)
+                }
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: keyframeVM.keyframesEnabled ? "diamond.fill" : "diamond")
+                        .font(.system(size: 11))
+                        .contentTransition(.symbolEffect(.replace))
+                    Text("Keyframes")
+                        .font(.system(size: 11, weight: keyframeVM.keyframesEnabled ? .medium : .regular))
+                }
+                .foregroundStyle(keyframeVM.keyframesEnabled ? Color.white : Color.primary)
+                .padding(.horizontal, 10)
+                .frame(height: 32)
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.borderless)
+            .liquidGlassCapsule(isSelected: keyframeVM.keyframesEnabled)
+            .help("Toggle keyframe animation")
+
+            if keyframeVM.keyframesEnabled {
+                Button {
+                    NotificationCenter.default.post(name: .addKeyframe, object: nil)
+                } label: {
+                    Image(systemName: "plus.diamond")
+                        .font(.system(size: 12))
+                        .frame(width: 32, height: 32)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.borderless)
+                .liquidGlassCircle()
+                .transition(.scale.combined(with: .opacity))
+                .help("Add keyframe (⌘K)")
+            }
+        }
+    }
+
+    // MARK: - Options Section
+
+    private var optionsSection: some View {
+        HStack(spacing: 10) {
+            Toggle(isOn: Binding(
+                get: { cropConfig.preserveWidth },
+                set: { newValue in
+                    cropConfig.preserveWidth = newValue
+                    if !newValue {
+                        keyframeVM.keyframesEnabled = false
+                        cropConfig.enableAlphaChannel = false
+                    }
+                }
+            )) {
+                Text("Preserve Size")
+                    .font(.system(size: 11))
+            }
+            .toggleStyle(.checkbox)
+            .disabled(keyframeVM.keyframesEnabled || cropConfig.enableAlphaChannel)
+            .help("Keep original dimensions")
+
+            Toggle(isOn: Binding(
+                get: { cropConfig.enableAlphaChannel },
+                set: { newValue in
+                    if newValue { cropConfig.preserveWidth = true }
+                    cropConfig.enableAlphaChannel = newValue
+                }
+            )) {
+                Text("Alpha")
+                    .font(.system(size: 11))
+            }
+            .toggleStyle(.checkbox)
+            .disabled(!cropConfig.preserveWidth)
+            .help("Export with transparency")
+        }
+    }
+
+    // MARK: - Edit Actions
+
+    private var editActions: some View {
+        HStack(spacing: 2) {
+            Button {
+                NotificationCenter.default.post(name: .undoCrop, object: nil)
+            } label: {
+                Image(systemName: "arrow.uturn.backward")
+                    .font(.system(size: 12))
+                    .frame(width: 32, height: 32)
+                    .contentShape(RoundedRectangle(cornerRadius: 8))
+            }
+            .buttonStyle(.borderless)
+            .liquidGlassButton()
+            .disabled(!undoManager.canUndo)
+            .opacity(undoManager.canUndo ? 1.0 : 0.4)
+            .help("Undo (⌘Z)")
+
+            Button {
+                NotificationCenter.default.post(name: .redoCrop, object: nil)
+            } label: {
+                Image(systemName: "arrow.uturn.forward")
+                    .font(.system(size: 12))
+                    .frame(width: 32, height: 32)
+                    .contentShape(RoundedRectangle(cornerRadius: 8))
+            }
+            .buttonStyle(.borderless)
+            .liquidGlassButton()
+            .disabled(!undoManager.canRedo)
+            .opacity(undoManager.canRedo ? 1.0 : 0.4)
+            .help("Redo (⇧⌘Z)")
+
+            Button {
+                NotificationCenter.default.post(name: .resetCrop, object: nil)
+            } label: {
+                Image(systemName: "arrow.counterclockwise")
+                    .font(.system(size: 12))
+                    .frame(width: 32, height: 32)
+                    .contentShape(RoundedRectangle(cornerRadius: 8))
+            }
+            .buttonStyle(.borderless)
+            .liquidGlassButton()
+            .help("Reset (⇧⌘R)")
+        }
+    }
+
+    // MARK: - Export Button
+
+    private var exportButton: some View {
+        Menu {
+            Button {
+                NotificationCenter.default.post(name: .exportVideo, object: nil)
+            } label: {
+                Label("Export Video...", systemImage: "film")
+            }
+
+            Divider()
+
+            Button {
+                NotificationCenter.default.post(name: .exportJSON, object: nil)
+            } label: {
+                Label("Export Crop Data (JSON)...", systemImage: "doc.text")
+            }
+
+            Button {
+                NotificationCenter.default.post(name: .exportBoundingBox, object: nil)
+            } label: {
+                Label("Export Bounding Boxes...", systemImage: "rectangle.dashed")
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.system(size: 11))
+                Text("Export")
+                    .font(.system(size: 11, weight: .medium))
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .semibold))
+                    .opacity(0.7)
+            }
+            .foregroundStyle(cropConfig.hasCropChanges ? Color.white : Color.secondary)
+            .padding(.horizontal, 12)
+        } primaryAction: {
+            NotificationCenter.default.post(name: .exportVideo, object: nil)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .frame(height: 32)
+        .liquidGlassCapsule(isSelected: cropConfig.hasCropChanges, tint: .accentColor)
+        .disabled(!cropConfig.hasCropChanges)
+        .help(cropConfig.hasCropChanges ? "Export video (⌘E)" : "Make changes to enable export")
     }
 }
 
-struct ToolbarButtonStyle: ButtonStyle {
-    let isSelected: Bool
+// MARK: - Liquid Glass Modifiers (with fallback for older macOS)
 
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
-            .background(
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(isSelected ? Color.accentColor.opacity(0.15) : Color.clear)
+extension View {
+    @ViewBuilder
+    func liquidGlassButton(isSelected: Bool = false) -> some View {
+        if #available(macOS 26.0, *) {
+            self.glassEffect(
+                isSelected ? .regular.tint(.accentColor).interactive() : .regular.interactive(),
+                in: .rect(cornerRadius: 8)
             )
-            .background(
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(configuration.isPressed ? Color.primary.opacity(0.1) : Color.clear)
+        } else {
+            self.background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(isSelected ? Color.accentColor.opacity(0.2) : Color.primary.opacity(0.05))
             )
+            .contentShape(RoundedRectangle(cornerRadius: 8))
+        }
     }
+
+    @ViewBuilder
+    func liquidGlassCapsule(isSelected: Bool = false, tint: Color = .accentColor) -> some View {
+        if #available(macOS 26.0, *) {
+            self.glassEffect(
+                isSelected ? .regular.tint(tint).interactive() : .regular.interactive(),
+                in: .capsule
+            )
+        } else {
+            self.background(
+                Capsule()
+                    .fill(isSelected ? tint.opacity(0.2) : Color.primary.opacity(0.05))
+            )
+            .contentShape(Capsule())
+        }
+    }
+
+    @ViewBuilder
+    func liquidGlassCircle() -> some View {
+        if #available(macOS 26.0, *) {
+            self.glassEffect(.regular.interactive(), in: .circle)
+        } else {
+            self.background(
+                Circle()
+                    .fill(Color.primary.opacity(0.05))
+            )
+            .contentShape(Circle())
+        }
+    }
+
 }
 
 #Preview {
     struct PreviewWrapper: View {
         @StateObject var video = VideoItem(sourceURL: URL(fileURLWithPath: "/test.mov"))
         var body: some View {
-            CropToolbarView(video: video)
-                .environmentObject(CropEditorViewModel())
-                .environmentObject(KeyframeViewModel())
-                .environmentObject(CropUndoManager())
-                .frame(width: 800)
+            VStack {
+                CropToolbarView(video: video)
+                    .environmentObject(CropEditorViewModel())
+                    .environmentObject(KeyframeViewModel())
+                    .environmentObject(CropUndoManager())
+                Spacer()
+            }
+            .frame(width: 900, height: 400)
+            .background(Color.black)
         }
     }
     return PreviewWrapper()

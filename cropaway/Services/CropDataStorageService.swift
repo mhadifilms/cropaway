@@ -15,6 +15,9 @@ final class CropDataStorageService {
     private let storageVersion = "2.0"
     private let folderName = ".cropaway"
 
+    /// Serial queue for thread-safe file operations
+    private let fileQueue = DispatchQueue(label: "com.cropaway.storage", qos: .userInitiated)
+
     private init() {}
 
     // MARK: - Public API
@@ -27,46 +30,66 @@ final class CropDataStorageService {
         encoder.dateEncodingStrategy = .iso8601
 
         let data = try encoder.encode(document)
-        let fileURL = try createStorageURL(for: video.sourceURL)
-        try data.write(to: fileURL)
 
-        print("Crop data saved to: \(fileURL.path)")
+        // Thread-safe file write
+        var writeError: Error?
+        var savedURL: URL?
+        fileQueue.sync {
+            do {
+                let fileURL = try createStorageURL(for: video.sourceURL)
+                try data.write(to: fileURL)
+                savedURL = fileURL
+            } catch {
+                writeError = error
+            }
+        }
+
+        if let error = writeError {
+            throw error
+        }
+
+        if let url = savedURL {
+            print("Crop data saved to: \(url.path)")
+        }
     }
 
     /// Load most recent crop data for a video (returns nil if not found)
     func load(for sourceURL: URL) -> CropStorageDocument? {
-        guard let storageFolder = storageFolder(for: sourceURL),
-              fileManager.fileExists(atPath: storageFolder.path) else {
-            return nil
-        }
-
-        // Find all crop files for this video
-        let videoName = sourceURL.deletingPathExtension().lastPathComponent
-        let prefix = "\(videoName)_"
-
-        guard let files = try? fileManager.contentsOfDirectory(at: storageFolder, includingPropertiesForKeys: [.contentModificationDateKey]) else {
-            return nil
-        }
-
-        // Filter to matching files and sort by modification date (newest first)
-        let matchingFiles = files
-            .filter { $0.lastPathComponent.hasPrefix(prefix) && $0.pathExtension == "json" }
-            .sorted { url1, url2 in
-                let date1 = (try? url1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-                let date2 = (try? url2.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-                return date1 > date2
+        // Thread-safe file read
+        return fileQueue.sync {
+            guard let storageFolder = storageFolder(for: sourceURL),
+                  fileManager.fileExists(atPath: storageFolder.path) else {
+                return nil
             }
 
-        // Load the most recent file
-        guard let mostRecent = matchingFiles.first,
-              let data = try? Data(contentsOf: mostRecent) else {
-            return nil
+            // Find all crop files for this video
+            let videoName = sourceURL.deletingPathExtension().lastPathComponent
+            let prefix = "\(videoName)_"
+
+            guard let files = try? fileManager.contentsOfDirectory(at: storageFolder, includingPropertiesForKeys: [.contentModificationDateKey]) else {
+                return nil
+            }
+
+            // Filter to matching files and sort by modification date (newest first)
+            let matchingFiles = files
+                .filter { $0.lastPathComponent.hasPrefix(prefix) && $0.pathExtension == "json" }
+                .sorted { url1, url2 in
+                    let date1 = (try? url1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                    let date2 = (try? url2.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                    return date1 > date2
+                }
+
+            // Load the most recent file
+            guard let mostRecent = matchingFiles.first,
+                  let data = try? Data(contentsOf: mostRecent) else {
+                return nil
+            }
+
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+
+            return try? decoder.decode(CropStorageDocument.self, from: data)
         }
-
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-
-        return try? decoder.decode(CropStorageDocument.self, from: data)
     }
 
     /// Apply loaded crop data to a VideoItem
@@ -111,6 +134,26 @@ final class CropDataStorageService {
             }
         }
 
+        // AI
+        if let ai = document.crop.ai {
+            if let maskBase64 = ai.maskDataBase64 {
+                config.aiMaskData = Data(base64Encoded: maskBase64)
+            }
+            config.aiBoundingBox = CGRect(
+                x: ai.boundingBoxX,
+                y: ai.boundingBoxY,
+                width: ai.boundingBoxWidth,
+                height: ai.boundingBoxHeight
+            )
+            config.aiTextPrompt = ai.textPrompt
+            config.aiConfidence = ai.confidence
+            if let promptPoints = ai.promptPoints {
+                config.aiPromptPoints = promptPoints.map {
+                    AIPromptPoint(position: CGPoint(x: $0.x, y: $0.y), isPositive: $0.isPositive)
+                }
+            }
+        }
+
         // Keyframes
         if let keyframes = document.crop.keyframes, !keyframes.isEmpty {
             config.keyframesEnabled = true
@@ -141,6 +184,22 @@ final class CropDataStorageService {
                         kf.freehandPathData = data
                     }
                 }
+                if let ai = kfData.ai {
+                    if let maskBase64 = ai.maskDataBase64 {
+                        kf.aiMaskData = Data(base64Encoded: maskBase64)
+                    }
+                    kf.aiBoundingBox = CGRect(
+                        x: ai.boundingBoxX,
+                        y: ai.boundingBoxY,
+                        width: ai.boundingBoxWidth,
+                        height: ai.boundingBoxHeight
+                    )
+                    if let promptPoints = ai.promptPoints {
+                        kf.aiPromptPoints = promptPoints.map {
+                            AIPromptPoint(position: CGPoint(x: $0.x, y: $0.y), isPositive: $0.isPositive)
+                        }
+                    }
+                }
 
                 return kf
             }
@@ -149,6 +208,37 @@ final class CropDataStorageService {
 
     /// List all crop data files for a video
     func listFiles(for sourceURL: URL) -> [URL] {
+        // Thread-safe file listing
+        return fileQueue.sync {
+            guard let storageFolder = storageFolder(for: sourceURL),
+                  fileManager.fileExists(atPath: storageFolder.path) else {
+                return []
+            }
+
+            let videoName = sourceURL.deletingPathExtension().lastPathComponent
+            let prefix = "\(videoName)_"
+
+            guard let files = try? fileManager.contentsOfDirectory(at: storageFolder, includingPropertiesForKeys: nil) else {
+                return []
+            }
+
+            return files.filter { $0.lastPathComponent.hasPrefix(prefix) && $0.pathExtension == "json" }
+        }
+    }
+
+    /// Delete all crop data for a video
+    func deleteAll(for sourceURL: URL) {
+        // Thread-safe file deletion
+        fileQueue.sync {
+            let files = listFilesUnsafe(for: sourceURL)
+            for file in files {
+                try? fileManager.removeItem(at: file)
+            }
+        }
+    }
+
+    /// Internal non-thread-safe listing (call only from within fileQueue)
+    private func listFilesUnsafe(for sourceURL: URL) -> [URL] {
         guard let storageFolder = storageFolder(for: sourceURL),
               fileManager.fileExists(atPath: storageFolder.path) else {
             return []
@@ -162,13 +252,6 @@ final class CropDataStorageService {
         }
 
         return files.filter { $0.lastPathComponent.hasPrefix(prefix) && $0.pathExtension == "json" }
-    }
-
-    /// Delete all crop data for a video
-    func deleteAll(for sourceURL: URL) {
-        for file in listFiles(for: sourceURL) {
-            try? fileManager.removeItem(at: file)
-        }
     }
 
     /// Export crop data to a custom folder (for user export, not auto-save)
@@ -371,6 +454,25 @@ final class CropDataStorageService {
             }
 
             cropData.freehand = CropStorageDocument.FreehandData(vertices: vertices)
+
+        case .ai:
+            let promptPointsData = config.aiPromptPoints.map {
+                CropStorageDocument.AIData.AIPromptPointData(
+                    x: $0.position.x,
+                    y: $0.position.y,
+                    isPositive: $0.isPositive
+                )
+            }
+            cropData.ai = CropStorageDocument.AIData(
+                maskDataBase64: config.aiMaskData?.base64EncodedString(),
+                boundingBoxX: config.aiBoundingBox.origin.x,
+                boundingBoxY: config.aiBoundingBox.origin.y,
+                boundingBoxWidth: config.aiBoundingBox.width,
+                boundingBoxHeight: config.aiBoundingBox.height,
+                textPrompt: config.aiTextPrompt,
+                confidence: config.aiConfidence,
+                promptPoints: promptPointsData.isEmpty ? nil : promptPointsData
+            )
         }
 
         // Keyframes
@@ -407,6 +509,27 @@ final class CropDataStorageService {
                         )
                     }
                     kfData.freehand = CropStorageDocument.FreehandData(vertices: vertices)
+                }
+
+                // Include AI data in keyframe
+                if let aiMaskData = kf.aiMaskData, let bbox = kf.aiBoundingBox {
+                    let promptPointsData = kf.aiPromptPoints?.map {
+                        CropStorageDocument.AIData.AIPromptPointData(
+                            x: $0.position.x,
+                            y: $0.position.y,
+                            isPositive: $0.isPositive
+                        )
+                    }
+                    kfData.ai = CropStorageDocument.AIData(
+                        maskDataBase64: aiMaskData.base64EncodedString(),
+                        boundingBoxX: bbox.origin.x,
+                        boundingBoxY: bbox.origin.y,
+                        boundingBoxWidth: bbox.width,
+                        boundingBoxHeight: bbox.height,
+                        textPrompt: nil,
+                        confidence: 0,
+                        promptPoints: promptPointsData
+                    )
                 }
 
                 return kfData
@@ -475,6 +598,7 @@ struct CropStorageDocument: Codable {
         var rectangle: RectangleData?
         var circle: CircleData?
         var freehand: FreehandData?
+        var ai: AIData?
         var keyframes: [KeyframeData]?
 
         init(mode: String) {
@@ -497,6 +621,23 @@ struct CropStorageDocument: Codable {
 
     struct FreehandData: Codable {
         let vertices: [VertexData]
+    }
+
+    struct AIData: Codable {
+        let maskDataBase64: String?
+        let boundingBoxX: Double
+        let boundingBoxY: Double
+        let boundingBoxWidth: Double
+        let boundingBoxHeight: Double
+        let textPrompt: String?
+        let confidence: Double
+        let promptPoints: [AIPromptPointData]?
+
+        struct AIPromptPointData: Codable {
+            let x: Double
+            let y: Double
+            let isPositive: Bool
+        }
     }
 
     struct VertexData: Codable {
@@ -523,6 +664,7 @@ struct CropStorageDocument: Codable {
         var rectangle: RectangleData?
         var circle: CircleData?
         var freehand: FreehandData?
+        var ai: AIData?
 
         init(timestamp: Double, interpolation: String) {
             self.timestamp = timestamp

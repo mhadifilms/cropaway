@@ -324,6 +324,7 @@ struct FreehandMaskView: View {
             if !isShapeClosed && i == 0 && vertices.count >= 3 {
                 // Clicking first vertex closes the shape
                 closeShape()
+                onEditEnded?()
             } else {
                 // Toggle selection
                 selectedVertexIndex = selectedVertexIndex == i ? nil : i
@@ -345,6 +346,7 @@ struct FreehandMaskView: View {
                     let firstPos = vertices[0].position.denormalized(to: videoSize)
                     if point.distance(to: firstPos) < closeThreshold {
                         closeShape()
+                        onEditEnded?()
                         return
                     }
                 }
@@ -356,6 +358,7 @@ struct FreehandMaskView: View {
                 selectedVertexIndex = vertices.count - 1
                 saveToPathData()
                 triggerRedraw()
+                onEditEnded?()
             } else {
                 selectedVertexIndex = nil
                 triggerRedraw()

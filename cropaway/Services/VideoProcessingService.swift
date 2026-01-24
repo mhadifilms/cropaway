@@ -12,6 +12,23 @@ final class VideoProcessingService {
     private let maskRenderer = CropMaskRenderer()
     private var isCancelled = false
 
+    // Valid AVVideoYCbCrMatrix values
+    private static let validYCbCrMatrices: Set<String> = [
+        AVVideoYCbCrMatrix_ITU_R_709_2,
+        AVVideoYCbCrMatrix_ITU_R_601_4,
+        AVVideoYCbCrMatrix_ITU_R_2020,
+        AVVideoYCbCrMatrix_SMPTE_240M_1995
+    ]
+
+    /// Validate and return a valid YCbCr matrix, or nil if invalid
+    private func validatedColorMatrix(_ matrix: String?, isHDR: Bool) -> String {
+        if let matrix = matrix, Self.validYCbCrMatrices.contains(matrix) {
+            return matrix
+        }
+        // Default based on content type
+        return isHDR ? AVVideoYCbCrMatrix_ITU_R_2020 : AVVideoYCbCrMatrix_ITU_R_709_2
+    }
+
     func cancel() {
         isCancelled = true
     }
@@ -194,30 +211,41 @@ final class VideoProcessingService {
         }
         print("Using codec: \(settings[AVVideoCodecKey] ?? "unknown") (source: \(metadata.codecType))")
 
-        // Add compression properties for H.264/HEVC to preserve quality
+        // Add compression properties for H.264/HEVC to match source bitrate
         let codec = settings[AVVideoCodecKey] as? AVVideoCodecType
         if codec == .h264 || codec == .hevc {
             var compressionProperties: [String: Any] = [:]
 
+            // Use source bitrate to avoid bloating file size
+            // Note: Do NOT set AVVideoQualityKey as it overrides bitrate and causes huge files
             if metadata.bitRate > 0 {
                 compressionProperties[AVVideoAverageBitRateKey] = metadata.bitRate
+                // Set max bitrate slightly higher to allow for peaks
+                compressionProperties[AVVideoMaxKeyFrameIntervalKey] = 30
             }
-
-            // Preserve quality
-            compressionProperties[AVVideoQualityKey] = 1.0
 
             if !compressionProperties.isEmpty {
                 settings[AVVideoCompressionPropertiesKey] = compressionProperties
-                print("Compression: bitRate=\(metadata.bitRate), quality=1.0")
+                print("Compression: bitRate=\(metadata.bitRate)")
             }
         }
 
-        // Color properties for HDR
+        // Color properties - preserve for both HDR and SDR
+        // Validate YCbCr matrix to avoid AVAssetWriterInput crash
+        let validMatrix = validatedColorMatrix(metadata.colorMatrix, isHDR: metadata.isHDR)
+
         if metadata.isHDR {
             settings[AVVideoColorPropertiesKey] = [
                 AVVideoColorPrimariesKey: metadata.colorPrimaries ?? AVVideoColorPrimaries_ITU_R_2020,
                 AVVideoTransferFunctionKey: metadata.transferFunction ?? AVVideoTransferFunction_SMPTE_ST_2084_PQ,
-                AVVideoYCbCrMatrixKey: metadata.colorMatrix ?? AVVideoYCbCrMatrix_ITU_R_2020
+                AVVideoYCbCrMatrixKey: validMatrix
+            ]
+        } else {
+            // SDR: preserve color space (typically BT.709 or BT.601)
+            settings[AVVideoColorPropertiesKey] = [
+                AVVideoColorPrimariesKey: metadata.colorPrimaries ?? AVVideoColorPrimaries_ITU_R_709_2,
+                AVVideoTransferFunctionKey: metadata.transferFunction ?? AVVideoTransferFunction_ITU_R_709_2,
+                AVVideoYCbCrMatrixKey: validMatrix
             ]
         }
 
@@ -251,60 +279,68 @@ final class VideoProcessingService {
                     print("Frame \(frameCount) (\(percent)%)")
                 }
 
-                // Get pixel buffer
-                guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
-                    continue
-                }
+                // Wrap frame processing in autorelease pool to prevent memory buildup
+                let appendSuccess = try autoreleasepool { () -> Bool in
+                    // Get pixel buffer
+                    guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
+                        return true // Skip frame but don't fail
+                    }
 
-                // Get interpolated crop state
-                let cropState: InterpolatedCropState
-                if cropConfig.hasKeyframes {
-                    cropState = KeyframeInterpolator.shared.interpolate(
-                        keyframes: cropConfig.keyframes,
-                        at: timestamp,
-                        mode: cropConfig.mode
+                    // Get interpolated crop state
+                    let cropState: InterpolatedCropState
+                    if cropConfig.hasKeyframes {
+                        cropState = KeyframeInterpolator.shared.interpolate(
+                            keyframes: cropConfig.keyframes,
+                            at: timestamp,
+                            mode: cropConfig.mode
+                        )
+                    } else {
+                        cropState = InterpolatedCropState(
+                            cropRect: cropConfig.cropRect,
+                            edgeInsets: cropConfig.edgeInsets,
+                            circleCenter: cropConfig.circleCenter,
+                            circleRadius: cropConfig.circleRadius,
+                            freehandPoints: cropConfig.freehandPoints,
+                            freehandPathData: cropConfig.freehandPathData,
+                            aiMaskData: cropConfig.aiMaskData,
+                            aiBoundingBox: cropConfig.aiBoundingBox
+                        )
+                    }
+
+                    // Generate mask
+                    let mask = maskRenderer.generateMask(
+                        mode: cropConfig.mode,
+                        state: cropState,
+                        size: videoSize
                     )
-                } else {
-                    cropState = InterpolatedCropState(
-                        cropRect: cropConfig.cropRect,
-                        edgeInsets: cropConfig.edgeInsets,
-                        circleCenter: cropConfig.circleCenter,
-                        circleRadius: cropConfig.circleRadius,
-                        freehandPoints: cropConfig.freehandPoints
+
+                    // Apply mask
+                    let inputImage = CIImage(cvPixelBuffer: pixelBuffer)
+                    let outputImage = maskRenderer.applyMask(
+                        to: inputImage,
+                        mask: mask,
+                        preserveWidth: cropConfig.preserveWidth,
+                        enableAlpha: cropConfig.enableAlphaChannel
                     )
+
+                    // Create output pixel buffer
+                    guard let outputBuffer = createPixelBuffer(
+                        from: adaptor.pixelBufferPool,
+                        size: videoSize,
+                        enableAlpha: cropConfig.enableAlphaChannel
+                    ) else {
+                        print("WARNING: Failed to create pixel buffer for frame \(frameCount)")
+                        return true // Skip frame but don't fail
+                    }
+
+                    // Render with alpha support if enabled
+                    maskRenderer.render(outputImage, to: outputBuffer, enableAlpha: cropConfig.enableAlphaChannel)
+
+                    // Append
+                    return adaptor.append(outputBuffer, withPresentationTime: presentationTime)
                 }
 
-                // Generate mask
-                let mask = maskRenderer.generateMask(
-                    mode: cropConfig.mode,
-                    state: cropState,
-                    size: videoSize
-                )
-
-                // Apply mask
-                let inputImage = CIImage(cvPixelBuffer: pixelBuffer)
-                let outputImage = maskRenderer.applyMask(
-                    to: inputImage,
-                    mask: mask,
-                    preserveWidth: cropConfig.preserveWidth,
-                    enableAlpha: cropConfig.enableAlphaChannel
-                )
-
-                // Create output pixel buffer
-                guard let outputBuffer = createPixelBuffer(
-                    from: adaptor.pixelBufferPool,
-                    size: videoSize,
-                    enableAlpha: cropConfig.enableAlphaChannel
-                ) else {
-                    print("WARNING: Failed to create pixel buffer for frame \(frameCount)")
-                    continue
-                }
-
-                // Render
-                maskRenderer.render(outputImage, to: outputBuffer)
-
-                // Append
-                if !adaptor.append(outputBuffer, withPresentationTime: presentationTime) {
+                if !appendSuccess {
                     print("ERROR: Failed to append frame \(frameCount)")
                     throw ProcessingError.appendFailed
                 }

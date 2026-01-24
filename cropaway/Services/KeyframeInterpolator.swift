@@ -12,6 +12,9 @@ struct InterpolatedCropState {
     var circleCenter: CGPoint
     var circleRadius: Double
     var freehandPoints: [CGPoint]
+    var freehandPathData: Data?
+    var aiMaskData: Data?
+    var aiBoundingBox: CGRect
 }
 
 final class KeyframeInterpolator {
@@ -74,17 +77,30 @@ final class KeyframeInterpolator {
             edgeInsets: EdgeInsets(),
             circleCenter: CGPoint(x: 0.5, y: 0.5),
             circleRadius: 0.4,
-            freehandPoints: []
+            freehandPoints: [],
+            freehandPathData: nil,
+            aiMaskData: nil,
+            aiBoundingBox: .zero
         )
     }
 
     private func stateFromKeyframe(_ keyframe: Keyframe) -> InterpolatedCropState {
-        InterpolatedCropState(
+        // Extract freehand points from path data for backward compatibility
+        var freehandPoints: [CGPoint] = []
+        if let pathData = keyframe.freehandPathData,
+           let vertices = try? JSONDecoder().decode([MaskVertex].self, from: pathData) {
+            freehandPoints = vertices.map { $0.position }
+        }
+
+        return InterpolatedCropState(
             cropRect: keyframe.cropRect,
             edgeInsets: keyframe.edgeInsets,
             circleCenter: keyframe.circleCenter,
             circleRadius: keyframe.circleRadius,
-            freehandPoints: [] // Freehand not interpolated
+            freehandPoints: freehandPoints,
+            freehandPathData: keyframe.freehandPathData,
+            aiMaskData: keyframe.aiMaskData,
+            aiBoundingBox: keyframe.aiBoundingBox ?? .zero
         )
     }
 
@@ -113,7 +129,10 @@ final class KeyframeInterpolator {
             edgeInsets: interpolateEdgeInsets(from.edgeInsets, to.edgeInsets, t),
             circleCenter: lerp(from.circleCenter, to.circleCenter, t),
             circleRadius: lerp(from.circleRadius, to.circleRadius, t),
-            freehandPoints: t < 0.5 ? from.freehandPoints : to.freehandPoints
+            freehandPoints: t < 0.5 ? from.freehandPoints : to.freehandPoints,
+            freehandPathData: t < 0.5 ? from.freehandPathData : to.freehandPathData,  // Hold interpolation for freehand
+            aiMaskData: t < 0.5 ? from.aiMaskData : to.aiMaskData,  // Hold interpolation for AI masks
+            aiBoundingBox: lerp(from.aiBoundingBox, to.aiBoundingBox, t)  // Linear interpolation for AI bounding box
         )
     }
 

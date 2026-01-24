@@ -93,6 +93,11 @@ final class CropUndoManager: ObservableObject {
         freehandPoints: [CGPoint]
     )?
 
+    deinit {
+        debounceTimer?.invalidate()
+        debounceTimer = nil
+    }
+
     func bind(to cropEditor: CropEditorViewModel) {
         self.cropEditor = cropEditor
         snapshotCurrentState()

@@ -33,7 +33,30 @@
       "Bash(gh run:*)",
       "Bash(curl:*)",
       "Bash(python3:*)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(swift -parse:*)",
+      "Bash(open:*)",
+      "Bash(/opt/homebrew/bin/python3 -m pip:*)",
+      "Bash(/opt/homebrew/bin/python3:*)",
+      "Bash(defaults delete:*)",
+      "Bash(pkill:*)",
+      "Bash(# Kill any existing server on port 8765 pkill -f \"\"sam3_server.py\"\" || true lsof -ti:8765)",
+      "Bash(xargs kill:*)",
+      "Bash(cat:*)",
+      "Bash(# Kill test server pkill -f sam3_server.py || true lsof -ti:8765)",
+      "Bash(MTL_DEBUG_LAYER=0 MTL_SHADER_VALIDATION=0 METAL_DEVICE_WRAPPER_TYPE=0 METAL_CAPTURE_ENABLED=0 /opt/homebrew/bin/python3:*)",
+      "Bash(cd:*)",
+      "Bash(pip3 show:*)",
+      "Bash(pip3 list:*)",
+      "Bash(/opt/homebrew/bin/pip3 list:*)",
+      "WebFetch(domain:fal.ai)",
+      "WebFetch(domain:docs.fal.ai)",
+      "Bash(ls:*)",
+      "Bash(grep:*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(defaults read:*)",
+      "Bash(ffprobe:*)",
+      "Bash(xargs -I {} sh -c 'echo \"\"=== {} ===\"\" && ffprobe -v error -select_streams v:0 -show_entries stream=codec_name,profile,width,height,pix_fmt,r_frame_rate,bit_rate:format=size,bit_rate,duration -of default=noprint_wrappers=1 \"\"{}\"\" 2>&1')"
     ]
   }
 }
