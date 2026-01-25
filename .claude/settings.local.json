@@ -56,7 +56,8 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(defaults read:*)",
       "Bash(ffprobe:*)",
-      "Bash(xargs -I {} sh -c 'echo \"\"=== {} ===\"\" && ffprobe -v error -select_streams v:0 -show_entries stream=codec_name,profile,width,height,pix_fmt,r_frame_rate,bit_rate:format=size,bit_rate,duration -of default=noprint_wrappers=1 \"\"{}\"\" 2>&1')"
+      "Bash(xargs -I {} sh -c 'echo \"\"=== {} ===\"\" && ffprobe -v error -select_streams v:0 -show_entries stream=codec_name,profile,width,height,pix_fmt,r_frame_rate,bit_rate:format=size,bit_rate,duration -of default=noprint_wrappers=1 \"\"{}\"\" 2>&1')",
+      "Bash(tee:*)"
     ]
   }
 }
