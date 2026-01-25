@@ -127,22 +127,21 @@ final class FFmpegExportService {
             args += ["-c:v", "copy"]
         } else {
             // Custom crops need re-encode - use VideoToolbox hardware acceleration
-            // Note: VideoToolbox doesn't support -q:v, use bitrate instead
-            // Calculate target bitrate based on source (or use reasonable default)
+            // Preserve source bitrate for H.264/HEVC (ProRes uses profile, not bitrate)
             let sourceBitrate = metadata.bitRate > 0 ? metadata.bitRate : 10_000_000  // 10 Mbps default
-            let targetBitrate = "\(Int(Double(sourceBitrate) * 0.9 / 1000))k"  // 90% of source in kbps
+            let targetBitrate = "\(Int(Double(sourceBitrate) / 1000))k"  // match source in kbps
 
             let codec = metadata.codecType.lowercased()
             if codec.contains("h.264") || codec.contains("avc") {
                 args += ["-c:v", "h264_videotoolbox", "-b:v", targetBitrate]
-            } else if codec.contains("hevc") || codec.contains("h.265") {
+            } else if codec.contains("hevc") || codec.contains("h.265") || codec.hasPrefix("hvc") || codec.hasPrefix("hev") {
                 args += ["-c:v", "hevc_videotoolbox", "-b:v", targetBitrate]
             } else if codec.contains("prores") || codec.hasPrefix("ap") {
                 // Use VideoToolbox ProRes hardware encoder - match source profile by fourCC
                 args += ["-c:v", "prores_videotoolbox"]
                 if codec == "ap4x" {
                     args += ["-profile:v", "xq"]
-                } else if codec == "ap4h" || enableAlpha {
+                } else if codec == "ap4h" || codec == "ap4c" || enableAlpha {
                     args += ["-profile:v", "4444"]
                 } else if codec == "apch" {
                     args += ["-profile:v", "hq"]
@@ -160,38 +159,75 @@ final class FFmpegExportService {
                 args += ["-c:v", "prores_videotoolbox", "-profile:v", "hq"]
             }
 
-            // Add pixel format for alpha support or HDR
+            // Pixel format: preserve bit depth (8/10/12/16) and chroma. ProRes 4444/XQ support 12-bit; 422 is 10-bit. HEVC 10-bit max; H.264 8-bit.
+            let isProRes4444 = codec == "ap4x" || codec == "ap4h" || codec == "ap4c"
+            let bitDepth = metadata.bitDepth
             if enableAlpha {
-                args += ["-pix_fmt", "yuva444p10le"]
-            } else if metadata.bitDepth > 8 {
-                // Preserve 10-bit for HDR content
-                args += ["-pix_fmt", "yuv422p10le"]
+                // Alpha requires 4:4:4. ProRes 4444 supports 12-bit; else 10-bit.
+                if isProRes4444 && bitDepth >= 12 {
+                    args += ["-pix_fmt", "yuva444p12le"]
+                } else {
+                    args += ["-pix_fmt", "yuva444p10le"]
+                }
+            } else if codec.contains("h.264") || codec.contains("avc") {
+                // H.264 is 8-bit only; do not set pix_fmt (encoder default)
+            } else if codec.contains("hevc") || codec.contains("h.265") || codec.hasPrefix("hvc") || codec.hasPrefix("hev") {
+                if bitDepth > 8 {
+                    args += ["-pix_fmt", "yuv422p10le"]  // 10-bit max for HEVC; 12/16→10
+                }
+            } else if isProRes4444 {
+                if bitDepth >= 12 {
+                    args += ["-pix_fmt", "yuv444p12le"]
+                } else if bitDepth > 8 {
+                    args += ["-pix_fmt", "yuv444p10le"]
+                }
+            } else if codec.contains("prores") || codec.hasPrefix("ap") {
+                // ProRes 422 (apch, apcn, apcs, apco): 10-bit max
+                if bitDepth > 8 {
+                    args += ["-pix_fmt", "yuv422p10le"]
+                }
             }
 
-            // Preserve HDR color metadata
+            // Preserve color metadata (HDR and SDR): primaries, transfer, YCbCr matrix
             if metadata.isHDR {
-                // Color primaries
                 if let primaries = metadata.colorPrimaries {
-                    if primaries.contains("2020") {
-                        args += ["-color_primaries", "bt2020"]
-                        args += ["-colorspace", "bt2020nc"]
-                    } else if primaries.contains("P3") {
-                        args += ["-color_primaries", "smpte432"]
-                    }
+                    if primaries.contains("2020") { args += ["-color_primaries", "bt2020"] }
+                    else if primaries.contains("P3") { args += ["-color_primaries", "smpte432"] }
+                    else if primaries.contains("709") { args += ["-color_primaries", "bt709"] }
+                    else if primaries.contains("601") { args += ["-color_primaries", "bt601-625"] }
                 }
-                // Transfer function (PQ for HDR10, ARIB for HLG)
                 if let transfer = metadata.transferFunction {
-                    if transfer.contains("2084") || transfer.contains("PQ") {
-                        args += ["-color_trc", "smpte2084"]
-                    } else if transfer.contains("HLG") {
-                        args += ["-color_trc", "arib-std-b67"]
-                    }
+                    if transfer.contains("2084") || transfer.contains("PQ") { args += ["-color_trc", "smpte2084"] }
+                    else if transfer.contains("HLG") { args += ["-color_trc", "arib-std-b67"] }
+                    else if transfer.contains("709") { args += ["-color_trc", "bt709"] }
                 }
+            } else if let primaries = metadata.colorPrimaries {
+                if primaries.contains("709") { args += ["-color_primaries", "bt709"] }
+                else if primaries.contains("601") { args += ["-color_primaries", "bt601-625"] }
+                else if primaries.contains("2020") { args += ["-color_primaries", "bt2020"] }
+                else if primaries.contains("P3") { args += ["-color_primaries", "smpte432"] }
+            }
+            if !metadata.isHDR, let transfer = metadata.transferFunction {
+                if transfer.contains("709") { args += ["-color_trc", "bt709"] }
+                else if transfer.contains("2084") || transfer.contains("PQ") { args += ["-color_trc", "smpte2084"] }
+                else if transfer.contains("HLG") { args += ["-color_trc", "arib-std-b67"] }
+            }
+            // YCbCr matrix (colorspace) for both HDR and SDR
+            if let matrix = metadata.colorMatrix {
+                if matrix.contains("2020") { args += ["-colorspace", "bt2020nc"] }
+                else if matrix.contains("709") { args += ["-colorspace", "bt709"] }
+                else if matrix.contains("601") { args += ["-colorspace", "bt601-6"] }
+                else if matrix.contains("240") { args += ["-colorspace", "smpte240m"] }
+            } else if metadata.isHDR, (metadata.colorPrimaries?.contains("2020") ?? false) {
+                args += ["-colorspace", "bt2020nc"]
             }
         }
 
         // Copy audio
         args += ["-c:a", "copy"]
+
+        // Copy global/container metadata from source (creation time, etc.)
+        args += ["-map_metadata", "0"]
 
         // Output
         args += [outputURL.path]

@@ -72,7 +72,9 @@ final class VideoMetadataExtractor: Sendable {
             metadata.codecDescription = "H.264/AVC"
         case "hvc1", "hev1":
             metadata.codecDescription = "H.265/HEVC"
-        case "ap4h":
+        case "ap4x":
+            metadata.codecDescription = "Apple ProRes 4444 XQ"
+        case "ap4h", "ap4c":
             metadata.codecDescription = "Apple ProRes 4444"
         case "apch":
             metadata.codecDescription = "Apple ProRes 422 HQ"
@@ -94,7 +96,7 @@ final class VideoMetadataExtractor: Sendable {
         metadata.transferFunction = extensions[kCVImageBufferTransferFunctionKey as String] as? String
         metadata.colorMatrix = extensions[kCVImageBufferYCbCrMatrixKey as String] as? String
 
-        // Bit depth
+        // Bit depth (8, 10, 12, or 16 for ProRes, DPX, etc.)
         if let bitsPerComponent = extensions["BitsPerComponent"] as? Int {
             metadata.bitDepth = bitsPerComponent
         }

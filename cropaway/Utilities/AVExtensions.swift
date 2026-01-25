@@ -79,7 +79,7 @@ extension AVVideoCodecType {
         case "ap4x":
             // ProRes 4444 XQ - map to ProRes 4444 (highest quality available in AVFoundation)
             self = .proRes4444
-        case "ap4h":
+        case "ap4h", "ap4c":
             self = .proRes4444
         case "apch":
             self = .proRes422HQ

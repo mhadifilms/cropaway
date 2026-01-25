@@ -66,10 +66,10 @@ final class VideoProcessingService {
             throw ProcessingError.noVideoTrack
         }
 
-        // Determine pixel format based on export settings
+        // Pixel format: 16-bit (64RGBALE) preserves 10/12/16-bit from ProRes, DPX, etc.; 8-bit uses 32BGRA
         let pixelFormat: OSType
         if cropConfig.enableAlphaChannel || metadata.bitDepth > 8 {
-            pixelFormat = kCVPixelFormatType_64RGBALE // 16-bit with alpha for HDR/alpha
+            pixelFormat = kCVPixelFormatType_64RGBALE  // 16-bit RGBA; ProRes 4444 encoder can output 12-bit
         } else {
             pixelFormat = kCVPixelFormatType_32BGRA
         }
@@ -88,6 +88,9 @@ final class VideoProcessingService {
 
         // Setup writer
         let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mov)
+
+        // Copy global/container metadata from source (creation time, copyright, etc.)
+        writer.metadata = asset.metadata
 
         // Build video output settings
         let videoSettings = try await buildVideoOutputSettings(
