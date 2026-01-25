@@ -6,7 +6,7 @@ set -e
 
 VERSION="${1:-1.0.0}"
 APP_NAME="Cropaway"
-SCHEME="cropaway"
+SCHEME="Cropaway"
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 BUILD_DIR="$PROJECT_DIR/build"
 DMG_DIR="$BUILD_DIR/dmg"
@@ -28,18 +28,12 @@ xcodebuild -scheme "$SCHEME" \
     archive \
     CODE_SIGN_IDENTITY="-" \
     CODE_SIGNING_REQUIRED=NO \
-    CODE_SIGNING_ALLOWED=NO
+    CODE_SIGNING_ALLOWED=NO \
+    MARKETING_VERSION="$VERSION"
 
-# Export archive
-xcodebuild -exportArchive \
-    -archivePath "$BUILD_DIR/${APP_NAME}.xcarchive" \
-    -exportPath "$BUILD_DIR/Release" \
-    -exportOptionsPlist "$PROJECT_DIR/scripts/export-options.plist" \
-    2>/dev/null || {
-    # If export fails, copy from archive directly
-    echo "📦 Extracting from archive..."
-    cp -R "$BUILD_DIR/${APP_NAME}.xcarchive/Products/Applications/${APP_NAME}.app" "$BUILD_DIR/Release/"
-}
+# Extract app from archive (matches CI; exportArchive requires signing config)
+mkdir -p "$BUILD_DIR/Release"
+cp -R "$BUILD_DIR/${APP_NAME}.xcarchive/Products/Applications/${APP_NAME}.app" "$BUILD_DIR/Release/"
 
 # Verify app exists
 if [ ! -d "$APP_PATH" ]; then

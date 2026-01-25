@@ -81,8 +81,8 @@ final class FFmpegExportService {
                         args += ["-vf", "crop=\(cropW):\(cropH):\(cropX):\(cropY),pad=\(metadata.width):\(metadata.height):\(cropX):\(cropY):black"]
                     }
                 } else {
-                    // Crop then scale to fill original dimensions (full screen)
-                    args += ["-vf", "crop=\(cropW):\(cropH):\(cropX):\(cropY),scale=\(metadata.width):\(metadata.height):flags=lanczos"]
+                    // Crop only — output is the cropped region at its natural size (no stretch)
+                    args += ["-vf", "crop=\(cropW):\(cropH):\(cropX):\(cropY)"]
                 }
             }
 
@@ -101,7 +101,7 @@ final class FFmpegExportService {
                     args += ["-filter_complex", "[0:v][1:v]blend=all_mode=multiply"]
                 }
             } else {
-                // Crop to bounding box of the mask
+                // Crop to bounding box of the mask — output at natural size (no stretch)
                 let boundingBox = getMaskBoundingBox(cropConfig: cropConfig, size: CGSize(width: metadata.width, height: metadata.height))
                 let bboxX = Int(boundingBox.origin.x)
                 let bboxY = Int(boundingBox.origin.y)
@@ -112,11 +112,9 @@ final class FFmpegExportService {
                 bboxH = bboxH % 2 == 0 ? bboxH : bboxH - 1
 
                 if enableAlpha {
-                    // Crop to bounding box then scale to fill original dimensions
-                    args += ["-filter_complex", "[1:v]format=gray[mask];[0:v][mask]alphamerge,crop=\(bboxW):\(bboxH):\(bboxX):\(bboxY),scale=\(metadata.width):\(metadata.height):flags=lanczos"]
+                    args += ["-filter_complex", "[1:v]format=gray[mask];[0:v][mask]alphamerge,crop=\(bboxW):\(bboxH):\(bboxX):\(bboxY)"]
                 } else {
-                    // Crop to bounding box then scale to fill original dimensions
-                    args += ["-filter_complex", "[0:v][1:v]blend=all_mode=multiply,crop=\(bboxW):\(bboxH):\(bboxX):\(bboxY),scale=\(metadata.width):\(metadata.height):flags=lanczos"]
+                    args += ["-filter_complex", "[0:v][1:v]blend=all_mode=multiply,crop=\(bboxW):\(bboxH):\(bboxX):\(bboxY)"]
                 }
             }
         }
@@ -231,6 +229,24 @@ final class FFmpegExportService {
     }
 
     private func getMaskBoundingBox(cropConfig: CropConfiguration, size: CGSize) -> CGRect {
+        Self.getCropPixelRect(cropConfig: cropConfig, size: size)
+    }
+
+    /// Returns output (width, height) for export. When preserveDimensions is false, uses the crop’s natural pixel size.
+    static func getOutputDimensions(cropConfig: CropConfiguration, sourceWidth: Int, sourceHeight: Int, preserveDimensions: Bool) -> (width: Int, height: Int) {
+        if preserveDimensions {
+            return (sourceWidth, sourceHeight)
+        }
+        let size = CGSize(width: sourceWidth, height: sourceHeight)
+        let rect = getCropPixelRect(cropConfig: cropConfig, size: size)
+        var w = Int(rect.width)
+        var h = Int(rect.height)
+        w = w % 2 == 0 ? w : max(2, w - 1)
+        h = h % 2 == 0 ? h : max(2, h - 1)
+        return (max(2, w), max(2, h))
+    }
+
+    private static func getCropPixelRect(cropConfig: CropConfiguration, size: CGSize) -> CGRect {
         switch cropConfig.mode {
         case .rectangle:
             return cropConfig.cropRect.denormalized(to: size)
@@ -254,7 +270,6 @@ final class FFmpegExportService {
             return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
 
         case .ai:
-            // Use AI bounding box if available
             if cropConfig.aiBoundingBox.width > 0 {
                 return cropConfig.aiBoundingBox.denormalized(to: size)
             }
@@ -450,8 +465,9 @@ final class FFmpegExportService {
 
             while runningProcess.isRunning {
                 // Read stdout for -progress output (more reliable)
-                if let data = try? stdoutHandle.availableData, !data.isEmpty,
-                   let output = String(data: data, encoding: .utf8) {
+                let stdoutData = stdoutHandle.availableData
+                if !stdoutData.isEmpty,
+                   let output = String(data: stdoutData, encoding: .utf8) {
                     // Parse "out_time_ms=12345678" or "out_time=00:00:01.234"
                     if let range = output.range(of: "out_time_ms=\\d+", options: .regularExpression) {
                         let msString = String(output[range].dropFirst(12))
@@ -464,7 +480,7 @@ final class FFmpegExportService {
                             }
                         }
                     } else if let range = output.range(of: "out_time=\\d+:\\d+:\\d+\\.\\d+", options: .regularExpression) {
-                        if let time = self.parseTime(String(output[range].dropFirst(9))) {
+                        if let time = FFmpegExportService.parseTime(String(output[range].dropFirst(9))) {
                             let progress = min(0.99, time / duration)
                             if progress > lastProgress {
                                 lastProgress = progress
@@ -475,13 +491,14 @@ final class FFmpegExportService {
                 }
 
                 // Also read stderr for errors and fallback progress
-                if let data = try? stderrHandle.availableData, !data.isEmpty,
-                   let output = String(data: data, encoding: .utf8) {
+                let stderrData = stderrHandle.availableData
+                if !stderrData.isEmpty,
+                   let output = String(data: stderrData, encoding: .utf8) {
                     await stderrCollector.append(output)
                     // Fallback: Parse "time=00:00:01.23" from stderr
                     if lastProgress == 0,  // Only use if stdout progress not working
                        let range = output.range(of: "time=\\d+:\\d+:\\d+\\.\\d+", options: .regularExpression),
-                       let time = self.parseTime(String(output[range].dropFirst(5))) {
+                       let time = FFmpegExportService.parseTime(String(output[range].dropFirst(5))) {
                         let progress = min(0.99, time / duration)
                         if progress > lastProgress {
                             lastProgress = progress
@@ -517,7 +534,7 @@ final class FFmpegExportService {
         await MainActor.run { progressHandler(1.0) }
     }
 
-    private func parseTime(_ str: String) -> Double? {
+    nonisolated private static func parseTime(_ str: String) -> Double? {
         let parts = str.split(separator: ":")
         guard parts.count == 3,
               let h = Double(parts[0]),

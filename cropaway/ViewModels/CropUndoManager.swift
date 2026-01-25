@@ -138,7 +138,8 @@ final class CropUndoManager: ObservableObject {
         // Reset debounce timer
         debounceTimer?.invalidate()
         debounceTimer = Timer.scheduledTimer(withTimeInterval: debounceInterval, repeats: false) { [weak self] _ in
-            Task { @MainActor in
+            guard let self = self else { return }
+            Task { @MainActor [weak self] in
                 self?.finalizeDragOperation()
             }
         }

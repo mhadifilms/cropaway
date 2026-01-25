@@ -56,7 +56,7 @@ struct ExportProgressView: View {
                 .frame(width: 280)
         }
 
-        Text("Encoding with VideoToolbox...")
+        Text("Rendering video...")
             .font(.system(size: 11))
             .foregroundStyle(.secondary)
 

@@ -2,12 +2,15 @@
 //  CropDataStorageService.swift
 //  cropaway
 //
-//  Persistent storage for crop configurations in .cropaway folder next to video
+//  Persistent storage for crop configurations. Default: Application Support.
+//  Export (File → Export Crop JSON) copies to the user's chosen folder.
 
-import Foundation
 import CoreGraphics
+import CryptoKit
+import Foundation
 
-/// Service for saving/loading crop data to .cropaway folder alongside video files
+/// Service for saving/loading crop data. By default stores in Application Support;
+/// use Export Crop JSON to copy data to a user-chosen location.
 final class CropDataStorageService {
     static let shared = CropDataStorageService()
 
@@ -19,6 +22,27 @@ final class CropDataStorageService {
     private let fileQueue = DispatchQueue(label: "com.cropaway.storage", qos: .userInitiated)
 
     private init() {}
+
+    /// Application Support subfolder for crop data: ~/Library/Application Support/Cropaway/crop-data/
+    private var applicationSupportCropDataDirectory: URL {
+        let base = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        return base
+            .appendingPathComponent("Cropaway", isDirectory: true)
+            .appendingPathComponent("crop-data", isDirectory: true)
+    }
+
+    /// Stable, filesystem-safe key for a video (SHA256 of path)
+    private func storageKey(for sourceURL: URL) -> String {
+        let path = sourceURL.standardizedFileURL.path
+        let data = Data(path.utf8)
+        let hash = SHA256.hash(data: data)
+        return hash.map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Legacy: .cropaway folder next to the video (for migration only)
+    private func legacyStorageFolder(for sourceURL: URL) -> URL {
+        sourceURL.deletingLastPathComponent().appendingPathComponent(folderName, isDirectory: true)
+    }
 
     // MARK: - Public API
 
@@ -53,42 +77,65 @@ final class CropDataStorageService {
         }
     }
 
-    /// Load most recent crop data for a video (returns nil if not found)
+    /// Load most recent crop data for a video (returns nil if not found).
+    /// Uses Application Support; migrates from legacy .cropaway sidecar if found.
     func load(for sourceURL: URL) -> CropStorageDocument? {
-        // Thread-safe file read
         return fileQueue.sync {
-            guard let storageFolder = storageFolder(for: sourceURL),
-                  fileManager.fileExists(atPath: storageFolder.path) else {
-                return nil
-            }
-
-            // Find all crop files for this video
-            let videoName = sourceURL.deletingPathExtension().lastPathComponent
-            let prefix = "\(videoName)_"
-
-            guard let files = try? fileManager.contentsOfDirectory(at: storageFolder, includingPropertiesForKeys: [.contentModificationDateKey]) else {
-                return nil
-            }
-
-            // Filter to matching files and sort by modification date (newest first)
-            let matchingFiles = files
-                .filter { $0.lastPathComponent.hasPrefix(prefix) && $0.pathExtension == "json" }
-                .sorted { url1, url2 in
-                    let date1 = (try? url1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-                    let date2 = (try? url2.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-                    return date1 > date2
+            // 1. Try Application Support (default)
+            let folder = storageFolder(for: sourceURL)
+            if fileManager.fileExists(atPath: folder.path) {
+                let prefix = "\(storageKey(for: sourceURL))_"
+                if let doc = loadMostRecent(in: folder, prefix: prefix) {
+                    return doc
                 }
-
-            // Load the most recent file
-            guard let mostRecent = matchingFiles.first,
-                  let data = try? Data(contentsOf: mostRecent) else {
-                return nil
             }
 
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
+            // 2. Migrate from legacy .cropaway next to video
+            let legacyFolder = legacyStorageFolder(for: sourceURL)
+            guard fileManager.fileExists(atPath: legacyFolder.path) else { return nil }
 
-            return try? decoder.decode(CropStorageDocument.self, from: data)
+            let videoName = sourceURL.deletingPathExtension().lastPathComponent
+            let legacyPrefix = "\(videoName)_"
+            if let doc = loadMostRecent(in: legacyFolder, prefix: legacyPrefix) {
+                migrateDocumentToApplicationSupport(doc, for: sourceURL)
+                return doc
+            }
+            return nil
+        }
+    }
+
+    /// Load the most recent JSON in folder whose filename has the given prefix
+    private func loadMostRecent(in folder: URL, prefix: String) -> CropStorageDocument? {
+        guard let files = try? fileManager.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.contentModificationDateKey]) else {
+            return nil
+        }
+        let matching = files
+            .filter { $0.lastPathComponent.hasPrefix(prefix) && $0.pathExtension == "json" }
+            .sorted { url1, url2 in
+                let d1 = (try? url1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                let d2 = (try? url2.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                return d1 > d2
+            }
+        guard let mostRecent = matching.first, let data = try? Data(contentsOf: mostRecent) else {
+            return nil
+        }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try? decoder.decode(CropStorageDocument.self, from: data)
+    }
+
+    /// Copy a document from legacy into Application Support (call inside fileQueue)
+    private func migrateDocumentToApplicationSupport(_ document: CropStorageDocument, for sourceURL: URL) {
+        do {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            encoder.dateEncodingStrategy = .iso8601
+            let data = try encoder.encode(document)
+            let fileURL = try createStorageURL(for: sourceURL)
+            try data.write(to: fileURL)
+            print("Migrated crop data to Application Support for: \(sourceURL.lastPathComponent)")
+        } catch {
+            print("Failed to migrate crop data: \(error)")
         }
     }
 
@@ -206,51 +253,43 @@ final class CropDataStorageService {
         }
     }
 
-    /// List all crop data files for a video
+    /// List all crop data files for a video (Application Support only)
     func listFiles(for sourceURL: URL) -> [URL] {
-        // Thread-safe file listing
-        return fileQueue.sync {
-            guard let storageFolder = storageFolder(for: sourceURL),
-                  fileManager.fileExists(atPath: storageFolder.path) else {
-                return []
-            }
-
-            let videoName = sourceURL.deletingPathExtension().lastPathComponent
-            let prefix = "\(videoName)_"
-
-            guard let files = try? fileManager.contentsOfDirectory(at: storageFolder, includingPropertiesForKeys: nil) else {
-                return []
-            }
-
-            return files.filter { $0.lastPathComponent.hasPrefix(prefix) && $0.pathExtension == "json" }
-        }
+        return fileQueue.sync { listFilesUnsafe(for: sourceURL) }
     }
 
-    /// Delete all crop data for a video
+    /// Delete all crop data for a video (Application Support and legacy .cropaway)
     func deleteAll(for sourceURL: URL) {
-        // Thread-safe file deletion
         fileQueue.sync {
-            let files = listFilesUnsafe(for: sourceURL)
-            for file in files {
+            for file in listFilesUnsafe(for: sourceURL) {
+                try? fileManager.removeItem(at: file)
+            }
+            for file in listLegacyFilesUnsafe(for: sourceURL) {
                 try? fileManager.removeItem(at: file)
             }
         }
     }
 
-    /// Internal non-thread-safe listing (call only from within fileQueue)
+    /// List crop files in Application Support (call only from within fileQueue)
     private func listFilesUnsafe(for sourceURL: URL) -> [URL] {
-        guard let storageFolder = storageFolder(for: sourceURL),
-              fileManager.fileExists(atPath: storageFolder.path) else {
+        let folder = storageFolder(for: sourceURL)
+        guard fileManager.fileExists(atPath: folder.path) else { return [] }
+        let prefix = "\(storageKey(for: sourceURL))_"
+        guard let files = try? fileManager.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil) else {
             return []
         }
+        return files.filter { $0.lastPathComponent.hasPrefix(prefix) && $0.pathExtension == "json" }
+    }
 
+    /// List crop files in legacy .cropaway (call only from within fileQueue)
+    private func listLegacyFilesUnsafe(for sourceURL: URL) -> [URL] {
+        let folder = legacyStorageFolder(for: sourceURL)
+        guard fileManager.fileExists(atPath: folder.path) else { return [] }
         let videoName = sourceURL.deletingPathExtension().lastPathComponent
         let prefix = "\(videoName)_"
-
-        guard let files = try? fileManager.contentsOfDirectory(at: storageFolder, includingPropertiesForKeys: nil) else {
+        guard let files = try? fileManager.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil) else {
             return []
         }
-
         return files.filter { $0.lastPathComponent.hasPrefix(prefix) && $0.pathExtension == "json" }
     }
 
@@ -366,28 +405,25 @@ final class CropDataStorageService {
 
     // MARK: - Private Helpers
 
-    private func storageFolder(for sourceURL: URL) -> URL? {
-        let videoFolder = sourceURL.deletingLastPathComponent()
-        return videoFolder.appendingPathComponent(folderName, isDirectory: true)
+    /// Default storage folder (Application Support)
+    private func storageFolder(for sourceURL: URL) -> URL {
+        applicationSupportCropDataDirectory
     }
 
     private func createStorageURL(for sourceURL: URL) throws -> URL {
-        guard let storageFolder = storageFolder(for: sourceURL) else {
-            throw StorageError.invalidPath
-        }
+        let storageFolder = storageFolder(for: sourceURL)
 
-        // Create .cropaway folder if needed
+        // Create Cropaway/crop-data in Application Support if needed
         if !fileManager.fileExists(atPath: storageFolder.path) {
             try fileManager.createDirectory(at: storageFolder, withIntermediateDirectories: true)
         }
 
-        // Create filename: videoname_YYYY-MM-DD_HH-MM-SS.json
-        let videoName = sourceURL.deletingPathExtension().lastPathComponent
+        // Filename: {hash}_YYYY-MM-DD_HH-MM-SS.json
+        let key = storageKey(for: sourceURL)
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
         let timestamp = dateFormatter.string(from: Date())
-
-        let fileName = "\(videoName)_\(timestamp).json"
+        let fileName = "\(key)_\(timestamp).json"
         return storageFolder.appendingPathComponent(fileName)
     }
 

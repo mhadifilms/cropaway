@@ -237,7 +237,8 @@ final class VideoPlayerViewModel: ObservableObject {
                 object: player?.currentItem,
                 queue: .main
             ) { [weak self] _ in
-                Task { @MainActor in
+                guard let self = self else { return }
+                Task { @MainActor [weak self] in
                     self?.seek(to: 0)
                     self?.play()
                 }

@@ -41,7 +41,7 @@ ProjectViewModel (video list, selection)
 
 **Normalized coordinates:** All crop coordinates (rectangle, circle center, freehand points) are stored as normalized 0-1 values relative to video dimensions. Conversion to pixel coordinates happens at export time using `denormalized(to:)` extensions in `Utilities/CGExtensions.swift`.
 
-**Per-video crop persistence:** Crop data auto-saves to sidecar JSON files (via `CropDataStorageService`) alongside source videos. Settings restore automatically when reopening videos.
+**Per-video crop persistence:** Crop data auto-saves to Application Support (via `CropDataStorageService`). Use File → Export Crop JSON to copy data to a user-chosen folder. Settings restore when reopening videos. Legacy `.cropaway` sidecar data is migrated on first load.
 
 ### ViewModels
 
@@ -59,7 +59,7 @@ ProjectViewModel (video list, selection)
 - `KeyframeInterpolator` - Singleton that interpolates between keyframes with easing
 - `CropMaskRenderer` - Generates mask images for circle/freehand crops
 - `VideoMetadataExtractor` - Reads video properties via AVFoundation
-- `CropDataStorageService` - JSON persistence for crop configurations
+- `CropDataStorageService` - JSON in Application Support; Export Crop JSON copies to user-chosen location
 
 ### AI Video Tracking (fal.ai)
 

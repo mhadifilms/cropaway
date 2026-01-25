@@ -280,7 +280,7 @@ final class VideoProcessingService {
                 }
 
                 // Wrap frame processing in autorelease pool to prevent memory buildup
-                let appendSuccess = try autoreleasepool { () -> Bool in
+                let appendSuccess = autoreleasepool { () -> Bool in
                     // Get pixel buffer
                     guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
                         return true // Skip frame but don't fail

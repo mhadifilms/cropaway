@@ -35,17 +35,17 @@ final class KeyframeInterpolator {
 
         // Before first keyframe
         if timestamp <= sorted.first!.timestamp {
-            return stateFromKeyframe(sorted.first!)
+            return stateFromKeyframe(sorted.first!, mode: mode)
         }
 
         // After last keyframe
         if timestamp >= sorted.last!.timestamp {
-            return stateFromKeyframe(sorted.last!)
+            return stateFromKeyframe(sorted.last!, mode: mode)
         }
 
         // Find surrounding keyframes
         guard let nextIndex = sorted.firstIndex(where: { $0.timestamp > timestamp }) else {
-            return stateFromKeyframe(sorted.last!)
+            return stateFromKeyframe(sorted.last!, mode: mode)
         }
 
         let prev = sorted[nextIndex - 1]
@@ -54,7 +54,7 @@ final class KeyframeInterpolator {
         // Calculate interpolation factor
         let duration = next.timestamp - prev.timestamp
         guard duration > 0 else {
-            return stateFromKeyframe(prev)
+            return stateFromKeyframe(prev, mode: mode)
         }
 
         let elapsed = timestamp - prev.timestamp
@@ -65,8 +65,8 @@ final class KeyframeInterpolator {
 
         // Interpolate
         return interpolateStates(
-            from: stateFromKeyframe(prev),
-            to: stateFromKeyframe(next),
+            from: stateFromKeyframe(prev, mode: mode),
+            to: stateFromKeyframe(next, mode: mode),
             t: t
         )
     }
@@ -84,7 +84,7 @@ final class KeyframeInterpolator {
         )
     }
 
-    private func stateFromKeyframe(_ keyframe: Keyframe) -> InterpolatedCropState {
+    private func stateFromKeyframe(_ keyframe: Keyframe, mode: CropMode) -> InterpolatedCropState {
         // Extract freehand points from path data for backward compatibility
         var freehandPoints: [CGPoint] = []
         if let pathData = keyframe.freehandPathData,
@@ -92,8 +92,17 @@ final class KeyframeInterpolator {
             freehandPoints = vertices.map { $0.position }
         }
 
+        // In AI mode, use aiBoundingBox as the effective crop rect when present
+        // so export (bbox, video) and interpolation use the tracked box
+        let effectiveCropRect: CGRect
+        if mode == .ai, let box = keyframe.aiBoundingBox, box.width > 0 {
+            effectiveCropRect = box
+        } else {
+            effectiveCropRect = keyframe.cropRect
+        }
+
         return InterpolatedCropState(
-            cropRect: keyframe.cropRect,
+            cropRect: effectiveCropRect,
             edgeInsets: keyframe.edgeInsets,
             circleCenter: keyframe.circleCenter,
             circleRadius: keyframe.circleRadius,

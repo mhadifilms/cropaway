@@ -5,6 +5,7 @@
 
 import Foundation
 import CoreGraphics
+import CoreImage
 
 /// AI interaction mode for segmentation
 enum AIInteractionMode: String, CaseIterable, Identifiable, Codable {
@@ -150,57 +151,63 @@ extension AIMaskResult {
             return nil
         }
 
-        // Validate that this looks like (start, length) pairs:
-        // - Lengths should be positive
-        // - Positions should be within valid range for the image
-        let totalPixels = w * h
-        var validPairs = 0
-        var invalidPairs = 0
-        var invalidExamples: [(Int, Int, String)] = []  // (start, length, reason)
+        // Find the maximum pixel position to validate/detect resolution
+        var maxPixel = 0
+        var hasNegative = false
 
         for i in stride(from: 0, to: intValues.count, by: 2) {
             let start = intValues[i]
             let length = intValues[i + 1]
 
-            // Check basic validity - start and end should be within image bounds
-            if start < 0 {
-                invalidPairs += 1
-                if invalidExamples.count < 3 {
-                    invalidExamples.append((start, length, "negative start"))
-                }
-            } else if length <= 0 {
-                invalidPairs += 1
-                if invalidExamples.count < 3 {
-                    invalidExamples.append((start, length, "non-positive length"))
-                }
-            } else if start >= totalPixels {
-                invalidPairs += 1
-                if invalidExamples.count < 3 {
-                    invalidExamples.append((start, length, "start >= totalPixels(\(totalPixels))"))
-                }
-            } else {
-                validPairs += 1
-            }
+            if start < 0 { hasNegative = true }
+            let end = start + length
+            if end > maxPixel { maxPixel = end }
         }
 
-        let totalPairs = intValues.count / 2
-
-        // Log details about invalid pairs for debugging
-        if invalidPairs > 0 {
-            print("[AIMaskResult] Found \(invalidPairs)/\(totalPairs) invalid pairs. Examples: \(invalidExamples)")
-            print("[AIMaskResult] First 10 values: \(Array(intValues.prefix(10)))")
-        }
-
-        // If most pairs are valid, treat it as fal.ai format (allow some invalid for edge cases)
-        guard validPairs > 0 && Double(validPairs) / Double(totalPairs) >= 0.5 else {
-            print("[AIMaskResult] Values don't match (start, length) pair pattern: \(validPairs)/\(totalPairs) valid pairs")
+        // Basic validity checks
+        if hasNegative {
+            print("[AIMaskResult] RLE has negative start values - invalid")
             return nil
         }
 
-        print("[AIMaskResult] Decoding fal.ai format: \(intValues.count / 2) (start, length) pairs")
+        // Determine actual dimensions to use
+        var actualW = w
+        var actualH = h
+        let totalPixels = w * h
+
+        // If max pixel exceeds declared size, the size might be wrong
+        // Auto-detect dimensions based on common aspect ratios
+        if maxPixel > totalPixels {
+            print("[AIMaskResult] Max pixel (\(maxPixel)) exceeds declared size (\(w)x\(h)=\(totalPixels)), detecting actual size...")
+
+            // Try common resolutions that match the video's aspect ratio
+            let aspectRatio = Double(w) / Double(h)
+            let commonWidths = [3840, 1920, 1280, 960, 854, 640]
+
+            for testW in commonWidths {
+                let testH = Int(Double(testW) / aspectRatio)
+                if maxPixel <= testW * testH {
+                    actualW = testW
+                    actualH = testH
+                    print("[AIMaskResult] Using detected size: \(actualW)x\(actualH)")
+                    break
+                }
+            }
+        }
+
+        let actualTotal = actualW * actualH
+
+        // Final validation
+        if maxPixel > actualTotal {
+            print("[AIMaskResult] Max pixel (\(maxPixel)) still exceeds \(actualW)x\(actualH)=\(actualTotal)")
+            // Still try to decode, clamping out-of-bounds pixels
+        }
+
+        let totalPairs = intValues.count / 2
+        print("[AIMaskResult] Decoding fal.ai format: \(totalPairs) (start, length) pairs for \(actualW)x\(actualH)")
 
         // Create mask bitmap - fal.ai uses ROW-MAJOR order (standard image order)
-        var mask = [UInt8](repeating: 0, count: totalPixels)
+        var mask = [UInt8](repeating: 0, count: actualTotal)
         var foregroundPixels = 0
 
         for i in stride(from: 0, to: intValues.count, by: 2) {
@@ -213,7 +220,7 @@ extension AIMaskResult {
             // Fill foreground pixels directly (row-major, no transpose needed)
             for j in 0..<length {
                 let idx = start + j
-                if idx >= 0 && idx < totalPixels {
+                if idx >= 0 && idx < actualTotal {
                     mask[idx] = 255
                     foregroundPixels += 1
                 }
@@ -222,15 +229,15 @@ extension AIMaskResult {
 
         // Verify the mask was created correctly
         let actualForeground = mask.filter { $0 > 0 }.count
-        print("[AIMaskResult] Decoded fal.ai RLE: \(foregroundPixels) foreground pixels (\(String(format: "%.1f", Double(foregroundPixels) / Double(totalPixels) * 100))% of \(totalPixels) total)")
+        print("[AIMaskResult] Decoded fal.ai RLE: \(foregroundPixels) foreground pixels (\(String(format: "%.1f", Double(foregroundPixels) / Double(actualTotal) * 100))% of \(actualTotal) total)")
 
         // Sanity check: foreground should be less than total pixels and match what we counted
         if actualForeground != foregroundPixels {
             print("[AIMaskResult] Warning: Pixel count mismatch - counted \(foregroundPixels) but mask has \(actualForeground)")
         }
 
-        // Create CGImage from bitmap
-        return createGrayscaleCGImage(from: mask, width: w, height: h)
+        // Create CGImage from bitmap with detected dimensions
+        return createGrayscaleCGImage(from: mask, width: actualW, height: actualH)
     }
 
     /// Decode COCO compressed RLE format (LEB128-like encoding with zigzag and delta)
@@ -330,6 +337,7 @@ extension AIMaskResult {
 
     /// Create a grayscale CGImage from a bitmap array
     /// This creates an image with alpha channel where the mask values become the alpha
+    /// Applies a small amount of edge smoothing to reduce pixelated/jagged edges
     private static func createGrayscaleCGImage(from bitmap: [UInt8], width w: Int, height h: Int) -> CGImage? {
         // Create RGBA image where grayscale values become alpha channel
         // This is needed for CALayer masks which use alpha channel for masking
@@ -346,7 +354,7 @@ extension AIMaskResult {
             return nil
         }
 
-        return CGImage(
+        guard let rawImage = CGImage(
             width: w,
             height: h,
             bitsPerComponent: 8,
@@ -358,7 +366,49 @@ extension AIMaskResult {
             decode: nil,
             shouldInterpolate: false,
             intent: .defaultIntent
-        )
+        ) else {
+            return nil
+        }
+
+        // Apply edge smoothing using Core Image
+        return applyEdgeSmoothing(to: rawImage)
+    }
+
+    /// Apply subtle edge smoothing to a mask image using Core Image filters
+    /// This reduces jagged/pixelated edges from RLE-decoded masks without significantly changing the mask shape
+    private static func applyEdgeSmoothing(to image: CGImage) -> CGImage {
+        let ciImage = CIImage(cgImage: image)
+        let context = CIContext(options: [.useSoftwareRenderer: false])
+
+        // Use a small Gaussian blur to smooth edges
+        // Radius is calculated relative to image size for consistent results across resolutions
+        // A blur of ~0.5-1.0 pixels is enough to anti-alias without losing detail
+        let blurRadius = max(0.5, min(Double(image.width), Double(image.height)) / 1500.0)
+
+        guard let blurFilter = CIFilter(name: "CIGaussianBlur") else {
+            print("[AIMaskResult] Warning: Could not create blur filter, returning unsmoothed mask")
+            return image
+        }
+
+        blurFilter.setValue(ciImage, forKey: kCIInputImageKey)
+        blurFilter.setValue(blurRadius, forKey: kCIInputRadiusKey)
+
+        guard let blurredImage = blurFilter.outputImage else {
+            print("[AIMaskResult] Warning: Blur filter produced no output, returning unsmoothed mask")
+            return image
+        }
+
+        // Gaussian blur expands the image extent, so we need to crop back to original size
+        let croppedImage = blurredImage.cropped(to: ciImage.extent)
+
+        // Render the smoothed image back to CGImage
+        guard let smoothedCGImage = context.createCGImage(croppedImage, from: ciImage.extent) else {
+            print("[AIMaskResult] Warning: Could not render smoothed mask, returning unsmoothed mask")
+            return image
+        }
+
+        print("[AIMaskResult] Applied edge smoothing with blur radius \(String(format: "%.2f", blurRadius))")
+        return smoothedCGImage
     }
 
     /// Decode RLE mask data to a bitmap (legacy interface for compatibility)

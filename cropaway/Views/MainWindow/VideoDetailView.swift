@@ -100,10 +100,13 @@ struct LiveCropPreviewView: View {
                     // Video layer - behavior depends on preserveSize and enableAlpha
                     if !preserveSize {
                         // Preserve Size OFF: Show only cropped area filling the frame
-                        // Just clip the video - no dimming or masking needed
-                        VideoPlayerView()
-                            .frame(width: displayConfig.videoDisplaySize.width, height: displayConfig.videoDisplaySize.height)
-                            .offset(x: displayConfig.videoOffset.width, y: displayConfig.videoOffset.height)
+                        // Use ClippedVideoPlayerView which uses AVPlayerLayer with proper CALayer clipping
+                        let _ = print("[VideoDetailView] preserveSize=OFF, cropRect=\(cropRect), frameSize=\(displayConfig.frameSize), frameAspect=\(displayConfig.frameSize.width/displayConfig.frameSize.height)")
+                        ClippedVideoPlayerView(
+                            cropRect: cropRect,
+                            frameSize: displayConfig.frameSize
+                        )
+                        .frame(width: displayConfig.frameSize.width, height: displayConfig.frameSize.height)
                     } else if enableAlpha {
                         // Preserve Size ON + Alpha ON: Show full video with mask (transparency outside crop)
                         MaskedVideoPlayerView(
@@ -139,7 +142,8 @@ struct LiveCropPreviewView: View {
                         .offset(x: displayConfig.videoOffset.width, y: displayConfig.videoOffset.height)
                     }
 
-                    // Crop handles overlay - only show when preserveSize is ON (editing full video)
+                    // Crop handles overlay - only show when preserveSize is ON
+                    // When preserveSize is OFF, the cropped view fills the frame and handles would be confusing
                     if preserveSize {
                         CropHandlesView(videoDisplaySize: displayConfig.videoDisplaySize)
                             .offset(x: displayConfig.videoOffset.width, y: displayConfig.videoOffset.height)
@@ -192,20 +196,24 @@ struct LiveCropPreviewView: View {
                 videoOffset: .zero
             )
         } else {
-            // Show only cropped region
-            let croppedSize = CGSize(
+            // Show only cropped region, zoomed to fill container
+            // Calculate the pixel dimensions of the crop region
+            let croppedPixelSize = CGSize(
                 width: videoSize.width * cropRect.width,
                 height: videoSize.height * cropRect.height
             )
-            let fittedCroppedSize = croppedSize.fitting(in: containerSize)
-            let scale = fittedCroppedSize.width / croppedSize.width
+            // Fit the crop region to the container (maintains crop aspect ratio)
+            let fittedCroppedSize = croppedPixelSize.fitting(in: containerSize)
 
+            // For the handles overlay, calculate the full video display size
+            // This allows handles to be positioned correctly when editing while zoomed
+            let scale = fittedCroppedSize.width / croppedPixelSize.width
             let fullVideoDisplaySize = CGSize(
                 width: videoSize.width * scale,
                 height: videoSize.height * scale
             )
 
-            // Offset to center the crop region
+            // Offset to position handles correctly (crop center at frame center)
             let offsetX = -(cropRect.midX - 0.5) * fullVideoDisplaySize.width
             let offsetY = -(cropRect.midY - 0.5) * fullVideoDisplaySize.height
 

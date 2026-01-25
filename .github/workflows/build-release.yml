@@ -16,7 +16,7 @@ on:
 
 env:
   APP_NAME: Cropaway
-  SCHEME: cropaway
+  SCHEME: Cropaway
 
 permissions:
   contents: write
@@ -92,10 +92,23 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           DMG_NAME="${APP_NAME}-${VERSION}.dmg"
 
+          # Resolve --volicon: app icon comes from cropaway.icon (Icon Composer);
+          # output may be AppIcon.icns, cropaway.icns, or another .icns in Resources
+          RESOURCES="build/Release/${APP_NAME}.app/Contents/Resources"
+          VOLICON_OPT=""
+          if [ -f "$RESOURCES/AppIcon.icns" ]; then
+            VOLICON_OPT="--volicon $RESOURCES/AppIcon.icns"
+          elif [ -f "$RESOURCES/cropaway.icns" ]; then
+            VOLICON_OPT="--volicon $RESOURCES/cropaway.icns"
+          else
+            ICNS=$(find "$RESOURCES" -maxdepth 1 -name "*.icns" 2>/dev/null | head -1)
+            [ -n "$ICNS" ] && VOLICON_OPT="--volicon $ICNS"
+          fi
+
           # Create DMG with create-dmg for professional appearance
           create-dmg \
             --volname "${APP_NAME}" \
-            --volicon "build/Release/${APP_NAME}.app/Contents/Resources/AppIcon.icns" \
+            $VOLICON_OPT \
             --window-pos 200 120 \
             --window-size 660 400 \
             --icon-size 100 \
@@ -139,6 +152,14 @@ jobs:
           name: ${{ steps.dmg.outputs.dmg_name }}
           path: ${{ steps.dmg.outputs.dmg_path }}
           retention-days: 30
+
+      - name: Delete existing latest tag
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+          git push origin :refs/tags/latest 2>/dev/null || true
 
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/v')

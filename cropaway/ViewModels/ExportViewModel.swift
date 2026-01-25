@@ -74,10 +74,6 @@ final class ExportViewModel: ObservableObject {
                 }
             }
 
-            // Export companion JSON
-            let jsonURL = outputURL.deletingPathExtension().appendingPathExtension("json")
-            try await exportJSON(for: video, to: jsonURL)
-
             // Update video item
             video.lastExportURL = videoURL
             video.lastExportDate = Date()
@@ -150,10 +146,6 @@ final class ExportViewModel: ObservableObject {
                         }
                     }
                 }
-
-                // Export companion JSON
-                let jsonURL = outputURL.deletingPathExtension().appendingPathExtension("json")
-                try await exportJSON(for: video, to: jsonURL)
 
                 video.lastExportURL = videoURL
                 video.lastExportDate = Date()
@@ -233,111 +225,5 @@ final class ExportViewModel: ObservableObject {
 
         let response = await panel.begin()
         return response == .OK ? panel.url : nil
-    }
-
-    private func exportJSON(for video: VideoItem, to url: URL) async throws {
-        let metadata = video.metadata
-        let cropConfig = video.cropConfiguration
-
-        let sourceInfo = CropMetadataDocument.SourceFileInfo(
-            fileName: video.sourceURL.lastPathComponent,
-            originalWidth: metadata.width,
-            originalHeight: metadata.height,
-            duration: metadata.duration,
-            frameRate: metadata.frameRate,
-            codec: metadata.codecType,
-            isHDR: metadata.isHDR,
-            colorSpace: metadata.colorSpaceDescription
-        )
-
-        let staticCrop: CropMetadataDocument.StaticCropInfo
-        switch cropConfig.mode {
-        case .rectangle:
-            staticCrop = CropMetadataDocument.StaticCropInfo(
-                rectX: cropConfig.cropRect.origin.x,
-                rectY: cropConfig.cropRect.origin.y,
-                rectWidth: cropConfig.cropRect.width,
-                rectHeight: cropConfig.cropRect.height
-            )
-        case .circle:
-            staticCrop = CropMetadataDocument.StaticCropInfo(
-                circleCenterX: cropConfig.circleCenter.x,
-                circleCenterY: cropConfig.circleCenter.y,
-                circleRadius: cropConfig.circleRadius
-            )
-        case .freehand:
-            let svgPath = pointsToSVGPath(cropConfig.freehandPoints)
-            staticCrop = CropMetadataDocument.StaticCropInfo(freehandPathSVG: svgPath)
-        case .ai:
-            staticCrop = CropMetadataDocument.StaticCropInfo(
-                aiBoundingBoxX: cropConfig.aiBoundingBox.origin.x,
-                aiBoundingBoxY: cropConfig.aiBoundingBox.origin.y,
-                aiBoundingBoxWidth: cropConfig.aiBoundingBox.width,
-                aiBoundingBoxHeight: cropConfig.aiBoundingBox.height,
-                aiTextPrompt: cropConfig.aiTextPrompt,
-                aiConfidence: cropConfig.aiConfidence
-            )
-        }
-
-        let keyframeInfos: [CropMetadataDocument.KeyframeInfo]? = cropConfig.hasKeyframes ?
-            cropConfig.keyframes.map { kf in
-                let kfCrop = CropMetadataDocument.StaticCropInfo(
-                    rectX: kf.cropRect.origin.x,
-                    rectY: kf.cropRect.origin.y,
-                    rectWidth: kf.cropRect.width,
-                    rectHeight: kf.cropRect.height,
-                    edgeTop: kf.edgeInsets.top,
-                    edgeLeft: kf.edgeInsets.left,
-                    edgeBottom: kf.edgeInsets.bottom,
-                    edgeRight: kf.edgeInsets.right,
-                    circleCenterX: kf.circleCenter.x,
-                    circleCenterY: kf.circleCenter.y,
-                    circleRadius: kf.circleRadius
-                )
-                return CropMetadataDocument.KeyframeInfo(
-                    timestamp: kf.timestamp,
-                    interpolation: kf.interpolation.rawValue,
-                    crop: kfCrop
-                )
-            } : nil
-
-        let cropData = CropMetadataDocument.CropData(
-            mode: cropConfig.mode.rawValue,
-            isAnimated: cropConfig.hasKeyframes,
-            staticCrop: cropConfig.hasKeyframes ? nil : staticCrop,
-            keyframes: keyframeInfos
-        )
-
-        let exportSettings = CropMetadataDocument.ExportSettingsInfo(
-            preserveWidth: config.preserveWidth,
-            enableAlphaChannel: config.enableAlphaChannel,
-            outputCodec: config.enableAlphaChannel ? "ap4h" : metadata.codecType,
-            outputWidth: metadata.width,
-            outputHeight: metadata.height
-        )
-
-        let document = CropMetadataDocument(
-            sourceFile: sourceInfo,
-            cropData: cropData,
-            exportSettings: exportSettings
-        )
-
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        encoder.dateEncodingStrategy = .iso8601
-
-        let data = try encoder.encode(document)
-        try data.write(to: url)
-    }
-
-    private func pointsToSVGPath(_ points: [CGPoint]) -> String {
-        guard !points.isEmpty else { return "" }
-
-        var path = "M \(points[0].x) \(points[0].y)"
-        for point in points.dropFirst() {
-            path += " L \(point.x) \(point.y)"
-        }
-        path += " Z"
-        return path
     }
 }

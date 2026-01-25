@@ -40,17 +40,31 @@ struct MaskedVideoPlayerView: NSViewRepresentable {
     private func createMaskPath(size: CGSize) -> CGPath? {
         guard size.width > 0 && size.height > 0 else { return nil }
 
+        // CALayer uses bottom-left origin (Y increases upward), but SwiftUI/crop coordinates
+        // use top-left origin (Y increases downward). We need to flip Y coordinates.
+        // For a normalized Y value, flipped Y = 1 - Y
+        // For a pixel Y value, flipped Y = size.height - Y
+
         switch maskMode {
         case .rectangle:
             let pixelRect = cropRect.denormalized(to: size)
-            return CGPath(rect: pixelRect, transform: nil)
+            // Flip Y: new origin.y = size.height - (origin.y + height)
+            let flippedRect = CGRect(
+                x: pixelRect.origin.x,
+                y: size.height - pixelRect.origin.y - pixelRect.height,
+                width: pixelRect.width,
+                height: pixelRect.height
+            )
+            return CGPath(rect: flippedRect, transform: nil)
 
         case .circle:
             let center = circleCenter.denormalized(to: size)
+            // Flip Y coordinate for center
+            let flippedCenter = CGPoint(x: center.x, y: size.height - center.y)
             let radius = circleRadius * min(size.width, size.height)
             let circleRect = CGRect(
-                x: center.x - radius,
-                y: center.y - radius,
+                x: flippedCenter.x - radius,
+                y: flippedCenter.y - radius,
                 width: radius * 2,
                 height: radius * 2
             )
@@ -67,9 +81,11 @@ struct MaskedVideoPlayerView: NSViewRepresentable {
             guard freehandPoints.count >= 3 else { return nil }
             let path = CGMutablePath()
             let first = freehandPoints[0].denormalized(to: size)
-            path.move(to: first)
+            // Flip Y coordinate
+            path.move(to: CGPoint(x: first.x, y: size.height - first.y))
             for point in freehandPoints.dropFirst() {
-                path.addLine(to: point.denormalized(to: size))
+                let denorm = point.denormalized(to: size)
+                path.addLine(to: CGPoint(x: denorm.x, y: size.height - denorm.y))
             }
             path.closeSubpath()
             return path
@@ -84,7 +100,9 @@ struct MaskedVideoPlayerView: NSViewRepresentable {
         let path = CGMutablePath()
         guard vertices.count >= 3 else { return path }
 
-        path.move(to: vertices[0].position.denormalized(to: size))
+        // Flip Y coordinate for CALayer coordinate system
+        let firstPos = vertices[0].position.denormalized(to: size)
+        path.move(to: CGPoint(x: firstPos.x, y: size.height - firstPos.y))
 
         for i in 1..<vertices.count {
             addBezierSegment(to: path, from: vertices[i-1], to: vertices[i], size: size)
@@ -101,33 +119,38 @@ struct MaskedVideoPlayerView: NSViewRepresentable {
         let fromPx = from.position.denormalized(to: size)
         let toPx = to.position.denormalized(to: size)
 
+        // Flip Y coordinates for CALayer coordinate system (bottom-left origin)
+        let fromFlipped = CGPoint(x: fromPx.x, y: size.height - fromPx.y)
+        let toFlipped = CGPoint(x: toPx.x, y: size.height - toPx.y)
+
         let hasFromHandle = from.controlOut != nil
         let hasToHandle = to.controlIn != nil
 
         if hasFromHandle && hasToHandle {
+            // Control points: add offset to flipped position, but also flip the Y offset
             let ctrl1 = CGPoint(
-                x: fromPx.x + from.controlOut!.x * size.width,
-                y: fromPx.y + from.controlOut!.y * size.height
+                x: fromFlipped.x + from.controlOut!.x * size.width,
+                y: fromFlipped.y - from.controlOut!.y * size.height  // Flip Y offset
             )
             let ctrl2 = CGPoint(
-                x: toPx.x + to.controlIn!.x * size.width,
-                y: toPx.y + to.controlIn!.y * size.height
+                x: toFlipped.x + to.controlIn!.x * size.width,
+                y: toFlipped.y - to.controlIn!.y * size.height  // Flip Y offset
             )
-            path.addCurve(to: toPx, control1: ctrl1, control2: ctrl2)
+            path.addCurve(to: toFlipped, control1: ctrl1, control2: ctrl2)
         } else if hasFromHandle {
             let ctrl = CGPoint(
-                x: fromPx.x + from.controlOut!.x * size.width,
-                y: fromPx.y + from.controlOut!.y * size.height
+                x: fromFlipped.x + from.controlOut!.x * size.width,
+                y: fromFlipped.y - from.controlOut!.y * size.height  // Flip Y offset
             )
-            path.addQuadCurve(to: toPx, control: ctrl)
+            path.addQuadCurve(to: toFlipped, control: ctrl)
         } else if hasToHandle {
             let ctrl = CGPoint(
-                x: toPx.x + to.controlIn!.x * size.width,
-                y: toPx.y + to.controlIn!.y * size.height
+                x: toFlipped.x + to.controlIn!.x * size.width,
+                y: toFlipped.y - to.controlIn!.y * size.height  // Flip Y offset
             )
-            path.addQuadCurve(to: toPx, control: ctrl)
+            path.addQuadCurve(to: toFlipped, control: ctrl)
         } else {
-            path.addLine(to: toPx)
+            path.addLine(to: toFlipped)
         }
     }
 }
@@ -210,8 +233,12 @@ class MaskedPlayerContainerView: NSView {
                 }
                 imageMaskLayer?.frame = layerFrame
                 imageMaskLayer?.contents = cgImage
+                // Flip the image vertically to match CALayer coordinate system
+                // CGImage origin is top-left, but CALayer uses bottom-left origin
+                imageMaskLayer?.transform = CATransform3DMakeScale(1, -1, 1)
+                imageMaskLayer?.anchorPoint = CGPoint(x: 0.5, y: 0.5)
                 playerLayer.mask = imageMaskLayer
-                print("[MaskedPlayerContainerView] AI mask applied to playerLayer")
+                print("[MaskedPlayerContainerView] AI mask applied to playerLayer (with Y-flip)")
             } else {
                 print("[MaskedPlayerContainerView] AI mask decode FAILED")
                 playerLayer.mask = nil
