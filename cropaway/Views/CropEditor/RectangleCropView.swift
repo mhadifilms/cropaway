@@ -15,19 +15,15 @@ struct RectangleCropView: View {
     private let edgeHandleThickness: CGFloat = 6
     private let strokeWidth: CGFloat = 2
 
-    // Hit area sizes (larger than visual for easier grabbing)
-    private let cornerHitSize: CGFloat = 36
-    private let edgeHitSize: CGFloat = 28
+    // Hit area sizes
+    private let cornerHitSize: CGFloat = 44
+    private let edgeHitSize: CGFloat = 32
 
-    // Inset from edge when handle is at boundary (prevents clipping)
+    // Inset from edge when handle is at boundary
     private let edgeInset: CGFloat = 8
 
-    // Store initial rect when drag starts
-    @State private var initialRect: CGRect = .zero
-    @State private var hoveredHandle: Handle? = nil
-
     var body: some View {
-        GeometryReader { geometry in
+        GeometryReader { _ in
             if videoSize.isValid {
                 let pixelRect = rect.denormalized(to: videoSize)
 
@@ -35,249 +31,257 @@ struct RectangleCropView: View {
                     // Border
                     Rectangle()
                         .stroke(Color.white, lineWidth: strokeWidth)
-                        .shadow(color: .black.opacity(0.5), radius: 2)
                         .frame(width: pixelRect.width, height: pixelRect.height)
                         .position(x: pixelRect.midX, y: pixelRect.midY)
 
                     // Rule of thirds
                     RuleOfThirdsGrid(rect: pixelRect)
 
-                    // Corner handles (draw order: bottom first so top is on top)
-                    cornerHandle(.bottomLeft, pixelRect: pixelRect)
-                    cornerHandle(.bottomRight, pixelRect: pixelRect)
-                    cornerHandle(.topLeft, pixelRect: pixelRect)
-                    cornerHandle(.topRight, pixelRect: pixelRect)
+                    // All handles rendered directly (no ForEach for better performance)
+                    HandleView(handle: .topLeft, rect: $rect, videoSize: videoSize, pixelRect: pixelRect, cornerHitSize: cornerHitSize, cornerHandleSize: cornerHandleSize, edgeInset: edgeInset, onEditEnded: onEditEnded)
+                    HandleView(handle: .topRight, rect: $rect, videoSize: videoSize, pixelRect: pixelRect, cornerHitSize: cornerHitSize, cornerHandleSize: cornerHandleSize, edgeInset: edgeInset, onEditEnded: onEditEnded)
+                    HandleView(handle: .bottomLeft, rect: $rect, videoSize: videoSize, pixelRect: pixelRect, cornerHitSize: cornerHitSize, cornerHandleSize: cornerHandleSize, edgeInset: edgeInset, onEditEnded: onEditEnded)
+                    HandleView(handle: .bottomRight, rect: $rect, videoSize: videoSize, pixelRect: pixelRect, cornerHitSize: cornerHitSize, cornerHandleSize: cornerHandleSize, edgeInset: edgeInset, onEditEnded: onEditEnded)
 
-                    // Edge handles
-                    edgeHandle(.bottom, pixelRect: pixelRect)
-                    edgeHandle(.top, pixelRect: pixelRect)
-                    edgeHandle(.left, pixelRect: pixelRect)
-                    edgeHandle(.right, pixelRect: pixelRect)
+                    EdgeHandleView(handle: .top, rect: $rect, videoSize: videoSize, pixelRect: pixelRect, edgeHitSize: edgeHitSize, edgeHandleThickness: edgeHandleThickness, edgeInset: edgeInset, onEditEnded: onEditEnded)
+                    EdgeHandleView(handle: .bottom, rect: $rect, videoSize: videoSize, pixelRect: pixelRect, edgeHitSize: edgeHitSize, edgeHandleThickness: edgeHandleThickness, edgeInset: edgeInset, onEditEnded: onEditEnded)
+                    EdgeHandleView(handle: .left, rect: $rect, videoSize: videoSize, pixelRect: pixelRect, edgeHitSize: edgeHitSize, edgeHandleThickness: edgeHandleThickness, edgeInset: edgeInset, onEditEnded: onEditEnded)
+                    EdgeHandleView(handle: .right, rect: $rect, videoSize: videoSize, pixelRect: pixelRect, edgeHitSize: edgeHitSize, edgeHandleThickness: edgeHandleThickness, edgeInset: edgeInset, onEditEnded: onEditEnded)
 
-                    // Center drag area
-                    Rectangle()
-                        .fill(Color.white.opacity(0.001))
-                        .frame(
-                            width: max(1, pixelRect.width - cornerHitSize),
-                            height: max(1, pixelRect.height - cornerHitSize)
-                        )
-                        .position(x: pixelRect.midX, y: pixelRect.midY)
-                        .gesture(makeDragGesture(for: .center))
-                        .onHover { hoveredHandle = $0 ? .center : nil }
+                    // Center drag
+                    CenterDragView(rect: $rect, videoSize: videoSize, pixelRect: pixelRect, cornerHitSize: cornerHitSize, onEditEnded: onEditEnded)
                 }
             }
         }
     }
+}
 
-    enum Handle {
-        case topLeft, topRight, bottomLeft, bottomRight
-        case top, bottom, left, right
-        case center
+// MARK: - Corner Handle View (isolated state)
+
+private struct HandleView: View {
+    let handle: RectHandle
+    @Binding var rect: CGRect
+    let videoSize: CGSize
+    let pixelRect: CGRect
+    let cornerHitSize: CGFloat
+    let cornerHandleSize: CGFloat
+    let edgeInset: CGFloat
+    var onEditEnded: (() -> Void)?
+
+    @State private var initialRect: CGRect? = nil
+
+    var body: some View {
+        let pos = handlePosition()
+
+        Circle()
+            .fill(Color.white)
+            .frame(width: cornerHandleSize, height: cornerHandleSize)
+            .shadow(color: .black.opacity(0.3), radius: 1)
+            .frame(width: cornerHitSize, height: cornerHitSize)
+            .contentShape(Circle())
+            .position(pos)
+            .gesture(dragGesture)
     }
 
-    // MARK: - Corner Handles
-
-    @ViewBuilder
-    private func cornerHandle(_ handle: Handle, pixelRect: CGRect) -> some View {
-        let pos = handlePosition(handle, in: pixelRect, videoSize: videoSize)
-        let isHovered = hoveredHandle == handle
-
-        ZStack {
-            // Large invisible hit area
-            Circle()
-                .fill(Color.clear)
-                .frame(width: cornerHitSize, height: cornerHitSize)
-                .contentShape(Circle())
-
-            // Visible handle
-            Circle()
-                .fill(Color.white)
-                .frame(
-                    width: isHovered ? cornerHandleSize + 4 : cornerHandleSize,
-                    height: isHovered ? cornerHandleSize + 4 : cornerHandleSize
-                )
-                .shadow(color: .black.opacity(0.5), radius: isHovered ? 3 : 2)
-                .animation(.easeOut(duration: 0.1), value: isHovered)
-        }
-        .position(pos)
-        .gesture(makeDragGesture(for: handle))
-        .onHover { hoveredHandle = $0 ? handle : nil }
-    }
-
-    // MARK: - Edge Handles
-
-    @ViewBuilder
-    private func edgeHandle(_ handle: Handle, pixelRect: CGRect) -> some View {
-        let pos = handlePosition(handle, in: pixelRect, videoSize: videoSize)
-        let isVertical = handle == .left || handle == .right
-        let isHovered = hoveredHandle == handle
-
-        // Calculate visual handle size (proportional to rect, capped)
-        let maxHandleLength: CGFloat = 60
-        let visualLength = isVertical
-            ? min(maxHandleLength, pixelRect.height * 0.4)
-            : min(maxHandleLength, pixelRect.width * 0.4)
-
-        ZStack {
-            // Large invisible hit area extending inward
-            RoundedRectangle(cornerRadius: 4)
-                .fill(Color.clear)
-                .frame(
-                    width: isVertical ? edgeHitSize : max(edgeHitSize, visualLength + 20),
-                    height: isVertical ? max(edgeHitSize, visualLength + 20) : edgeHitSize
-                )
-                .contentShape(Rectangle())
-
-            // Visible handle
-            RoundedRectangle(cornerRadius: 3)
-                .fill(Color.white)
-                .frame(
-                    width: isVertical ? (isHovered ? edgeHandleThickness + 2 : edgeHandleThickness) : visualLength,
-                    height: isVertical ? visualLength : (isHovered ? edgeHandleThickness + 2 : edgeHandleThickness)
-                )
-                .shadow(color: .black.opacity(0.5), radius: isHovered ? 3 : 2)
-                .animation(.easeOut(duration: 0.1), value: isHovered)
-        }
-        .position(pos)
-        .gesture(makeDragGesture(for: handle))
-        .onHover { hoveredHandle = $0 ? handle : nil }
-    }
-
-    // MARK: - Handle Positioning
-
-    private func handlePosition(_ handle: Handle, in rect: CGRect, videoSize: CGSize) -> CGPoint {
-        // Calculate insets for handles at boundaries
-        let atLeft = rect.minX < edgeInset
-        let atRight = rect.maxX > videoSize.width - edgeInset
-        let atTop = rect.minY < edgeInset
-        let atBottom = rect.maxY > videoSize.height - edgeInset
-
-        switch handle {
-        case .topLeft:
-            return CGPoint(
-                x: atLeft ? rect.minX + edgeInset : rect.minX,
-                y: atTop ? rect.minY + edgeInset : rect.minY
-            )
-        case .topRight:
-            return CGPoint(
-                x: atRight ? rect.maxX - edgeInset : rect.maxX,
-                y: atTop ? rect.minY + edgeInset : rect.minY
-            )
-        case .bottomLeft:
-            return CGPoint(
-                x: atLeft ? rect.minX + edgeInset : rect.minX,
-                y: atBottom ? rect.maxY - edgeInset : rect.maxY
-            )
-        case .bottomRight:
-            return CGPoint(
-                x: atRight ? rect.maxX - edgeInset : rect.maxX,
-                y: atBottom ? rect.maxY - edgeInset : rect.maxY
-            )
-        case .top:
-            return CGPoint(
-                x: rect.midX,
-                y: atTop ? rect.minY + edgeInset : rect.minY
-            )
-        case .bottom:
-            return CGPoint(
-                x: rect.midX,
-                y: atBottom ? rect.maxY - edgeInset : rect.maxY
-            )
-        case .left:
-            return CGPoint(
-                x: atLeft ? rect.minX + edgeInset : rect.minX,
-                y: rect.midY
-            )
-        case .right:
-            return CGPoint(
-                x: atRight ? rect.maxX - edgeInset : rect.maxX,
-                y: rect.midY
-            )
-        case .center:
-            return CGPoint(x: rect.midX, y: rect.midY)
-        }
-    }
-
-    // MARK: - Drag Gesture
-
-    private func makeDragGesture(for handle: Handle) -> some Gesture {
-        DragGesture(minimumDistance: 2)
+    private var dragGesture: some Gesture {
+        DragGesture(minimumDistance: 0)
             .onChanged { value in
-                if initialRect == .zero {
+                if initialRect == nil {
                     initialRect = rect
                 }
+                guard let start = initialRect else { return }
 
-                // Calculate delta from drag start to current position
-                let deltaX = (value.location.x - value.startLocation.x) / videoSize.width
-                let deltaY = (value.location.y - value.startLocation.y) / videoSize.height
+                let dx = (value.translation.width) / videoSize.width
+                let dy = (value.translation.height) / videoSize.height
 
-                applyDelta(handle: handle, deltaX: deltaX, deltaY: deltaY)
+                var newRect = start
+                switch handle {
+                case .topLeft:
+                    newRect = CGRect(x: start.minX + dx, y: start.minY + dy, width: start.width - dx, height: start.height - dy)
+                case .topRight:
+                    newRect = CGRect(x: start.minX, y: start.minY + dy, width: start.width + dx, height: start.height - dy)
+                case .bottomLeft:
+                    newRect = CGRect(x: start.minX + dx, y: start.minY, width: start.width - dx, height: start.height + dy)
+                case .bottomRight:
+                    newRect = CGRect(x: start.minX, y: start.minY, width: start.width + dx, height: start.height + dy)
+                default: break
+                }
+
+                let clamped = newRect.clamped()
+                if clamped.width >= 0.05 && clamped.height >= 0.05 {
+                    rect = clamped
+                }
             }
             .onEnded { _ in
-                initialRect = .zero
-                hoveredHandle = nil
+                initialRect = nil
                 onEditEnded?()
             }
     }
 
-    private func applyDelta(handle: Handle, deltaX: CGFloat, deltaY: CGFloat) {
-        var newRect = initialRect
+    private func handlePosition() -> CGPoint {
+        let atLeft = pixelRect.minX < edgeInset
+        let atRight = pixelRect.maxX > videoSize.width - edgeInset
+        let atTop = pixelRect.minY < edgeInset
+        let atBottom = pixelRect.maxY > videoSize.height - edgeInset
 
         switch handle {
         case .topLeft:
-            let newX = initialRect.origin.x + deltaX
-            let newY = initialRect.origin.y + deltaY
-            let newWidth = initialRect.width - deltaX
-            let newHeight = initialRect.height - deltaY
-            newRect = CGRect(x: newX, y: newY, width: newWidth, height: newHeight)
-
+            return CGPoint(x: atLeft ? pixelRect.minX + edgeInset : pixelRect.minX, y: atTop ? pixelRect.minY + edgeInset : pixelRect.minY)
         case .topRight:
-            let newY = initialRect.origin.y + deltaY
-            let newWidth = initialRect.width + deltaX
-            let newHeight = initialRect.height - deltaY
-            newRect = CGRect(x: initialRect.origin.x, y: newY, width: newWidth, height: newHeight)
-
+            return CGPoint(x: atRight ? pixelRect.maxX - edgeInset : pixelRect.maxX, y: atTop ? pixelRect.minY + edgeInset : pixelRect.minY)
         case .bottomLeft:
-            let newX = initialRect.origin.x + deltaX
-            let newWidth = initialRect.width - deltaX
-            let newHeight = initialRect.height + deltaY
-            newRect = CGRect(x: newX, y: initialRect.origin.y, width: newWidth, height: newHeight)
-
+            return CGPoint(x: atLeft ? pixelRect.minX + edgeInset : pixelRect.minX, y: atBottom ? pixelRect.maxY - edgeInset : pixelRect.maxY)
         case .bottomRight:
-            let newWidth = initialRect.width + deltaX
-            let newHeight = initialRect.height + deltaY
-            newRect = CGRect(x: initialRect.origin.x, y: initialRect.origin.y, width: newWidth, height: newHeight)
-
-        case .top:
-            let newY = initialRect.origin.y + deltaY
-            let newHeight = initialRect.height - deltaY
-            newRect = CGRect(x: initialRect.origin.x, y: newY, width: initialRect.width, height: newHeight)
-
-        case .bottom:
-            let newHeight = initialRect.height + deltaY
-            newRect = CGRect(x: initialRect.origin.x, y: initialRect.origin.y, width: initialRect.width, height: newHeight)
-
-        case .left:
-            let newX = initialRect.origin.x + deltaX
-            let newWidth = initialRect.width - deltaX
-            newRect = CGRect(x: newX, y: initialRect.origin.y, width: newWidth, height: initialRect.height)
-
-        case .right:
-            let newWidth = initialRect.width + deltaX
-            newRect = CGRect(x: initialRect.origin.x, y: initialRect.origin.y, width: newWidth, height: initialRect.height)
-
-        case .center:
-            let newX = initialRect.origin.x + deltaX
-            let newY = initialRect.origin.y + deltaY
-            newRect = CGRect(x: newX, y: newY, width: initialRect.width, height: initialRect.height)
-        }
-
-        // Clamp and validate
-        newRect = newRect.clamped()
-        if newRect.width >= 0.05 && newRect.height >= 0.05 {
-            rect = newRect
+            return CGPoint(x: atRight ? pixelRect.maxX - edgeInset : pixelRect.maxX, y: atBottom ? pixelRect.maxY - edgeInset : pixelRect.maxY)
+        default:
+            return .zero
         }
     }
+}
+
+// MARK: - Edge Handle View (isolated state)
+
+private struct EdgeHandleView: View {
+    let handle: RectHandle
+    @Binding var rect: CGRect
+    let videoSize: CGSize
+    let pixelRect: CGRect
+    let edgeHitSize: CGFloat
+    let edgeHandleThickness: CGFloat
+    let edgeInset: CGFloat
+    var onEditEnded: (() -> Void)?
+
+    @State private var initialRect: CGRect? = nil
+
+    private var isVertical: Bool { handle == .left || handle == .right }
+
+    var body: some View {
+        let pos = handlePosition()
+        let maxLen: CGFloat = 60
+        let visualLen = isVertical ? min(maxLen, pixelRect.height * 0.4) : min(maxLen, pixelRect.width * 0.4)
+
+        RoundedRectangle(cornerRadius: 3)
+            .fill(Color.white)
+            .frame(
+                width: isVertical ? edgeHandleThickness : visualLen,
+                height: isVertical ? visualLen : edgeHandleThickness
+            )
+            .shadow(color: .black.opacity(0.3), radius: 1)
+            .frame(
+                width: isVertical ? edgeHitSize : max(edgeHitSize, visualLen + 20),
+                height: isVertical ? max(edgeHitSize, visualLen + 20) : edgeHitSize
+            )
+            .contentShape(Rectangle())
+            .position(pos)
+            .gesture(dragGesture)
+    }
+
+    private var dragGesture: some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { value in
+                if initialRect == nil {
+                    initialRect = rect
+                }
+                guard let start = initialRect else { return }
+
+                let dx = value.translation.width / videoSize.width
+                let dy = value.translation.height / videoSize.height
+
+                var newRect = start
+                switch handle {
+                case .top:
+                    newRect = CGRect(x: start.minX, y: start.minY + dy, width: start.width, height: start.height - dy)
+                case .bottom:
+                    newRect = CGRect(x: start.minX, y: start.minY, width: start.width, height: start.height + dy)
+                case .left:
+                    newRect = CGRect(x: start.minX + dx, y: start.minY, width: start.width - dx, height: start.height)
+                case .right:
+                    newRect = CGRect(x: start.minX, y: start.minY, width: start.width + dx, height: start.height)
+                default: break
+                }
+
+                let clamped = newRect.clamped()
+                if clamped.width >= 0.05 && clamped.height >= 0.05 {
+                    rect = clamped
+                }
+            }
+            .onEnded { _ in
+                initialRect = nil
+                onEditEnded?()
+            }
+    }
+
+    private func handlePosition() -> CGPoint {
+        let atLeft = pixelRect.minX < edgeInset
+        let atRight = pixelRect.maxX > videoSize.width - edgeInset
+        let atTop = pixelRect.minY < edgeInset
+        let atBottom = pixelRect.maxY > videoSize.height - edgeInset
+
+        switch handle {
+        case .top:
+            return CGPoint(x: pixelRect.midX, y: atTop ? pixelRect.minY + edgeInset : pixelRect.minY)
+        case .bottom:
+            return CGPoint(x: pixelRect.midX, y: atBottom ? pixelRect.maxY - edgeInset : pixelRect.maxY)
+        case .left:
+            return CGPoint(x: atLeft ? pixelRect.minX + edgeInset : pixelRect.minX, y: pixelRect.midY)
+        case .right:
+            return CGPoint(x: atRight ? pixelRect.maxX - edgeInset : pixelRect.maxX, y: pixelRect.midY)
+        default:
+            return .zero
+        }
+    }
+}
+
+// MARK: - Center Drag View (isolated state)
+
+private struct CenterDragView: View {
+    @Binding var rect: CGRect
+    let videoSize: CGSize
+    let pixelRect: CGRect
+    let cornerHitSize: CGFloat
+    var onEditEnded: (() -> Void)?
+
+    @State private var initialRect: CGRect? = nil
+
+    var body: some View {
+        Rectangle()
+            .fill(Color.white.opacity(0.001))
+            .frame(
+                width: max(1, pixelRect.width - cornerHitSize),
+                height: max(1, pixelRect.height - cornerHitSize)
+            )
+            .contentShape(Rectangle())
+            .position(x: pixelRect.midX, y: pixelRect.midY)
+            .gesture(dragGesture)
+    }
+
+    private var dragGesture: some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { value in
+                if initialRect == nil {
+                    initialRect = rect
+                }
+                guard let start = initialRect else { return }
+
+                let dx = value.translation.width / videoSize.width
+                let dy = value.translation.height / videoSize.height
+
+                let newRect = CGRect(x: start.minX + dx, y: start.minY + dy, width: start.width, height: start.height)
+                rect = newRect.clamped()
+            }
+            .onEnded { _ in
+                initialRect = nil
+                onEditEnded?()
+            }
+    }
+}
+
+// MARK: - Handle Enum
+
+enum RectHandle {
+    case topLeft, topRight, bottomLeft, bottomRight
+    case top, bottom, left, right
+    case center
 }
 
 // MARK: - Rule of Thirds Grid
@@ -286,40 +290,27 @@ struct RuleOfThirdsGrid: View {
     let rect: CGRect
 
     var body: some View {
-        Canvas { context, size in
-            context.stroke(
-                gridPath(in: rect),
-                with: .color(.white.opacity(0.3)),
-                lineWidth: 1
-            )
+        Canvas { context, _ in
+            var path = Path()
+            for i in 1...2 {
+                let x = rect.minX + rect.width * CGFloat(i) / 3
+                path.move(to: CGPoint(x: x, y: rect.minY))
+                path.addLine(to: CGPoint(x: x, y: rect.maxY))
+            }
+            for i in 1...2 {
+                let y = rect.minY + rect.height * CGFloat(i) / 3
+                path.move(to: CGPoint(x: rect.minX, y: y))
+                path.addLine(to: CGPoint(x: rect.maxX, y: y))
+            }
+            context.stroke(path, with: .color(.white.opacity(0.3)), lineWidth: 1)
         }
         .allowsHitTesting(false)
-    }
-
-    private func gridPath(in rect: CGRect) -> Path {
-        var path = Path()
-
-        // Vertical lines
-        for i in 1...2 {
-            let x = rect.minX + rect.width * CGFloat(i) / 3
-            path.move(to: CGPoint(x: x, y: rect.minY))
-            path.addLine(to: CGPoint(x: x, y: rect.maxY))
-        }
-
-        // Horizontal lines
-        for i in 1...2 {
-            let y = rect.minY + rect.height * CGFloat(i) / 3
-            path.move(to: CGPoint(x: rect.minX, y: y))
-            path.addLine(to: CGPoint(x: rect.maxX, y: y))
-        }
-
-        return path
     }
 }
 
 #Preview {
     RectangleCropView(
-        rect: .constant(CGRect(x: 0, y: 0, width: 1, height: 1)),
+        rect: .constant(CGRect(x: 0.1, y: 0.1, width: 0.8, height: 0.8)),
         videoSize: CGSize(width: 640, height: 360)
     )
     .frame(width: 640, height: 360)
