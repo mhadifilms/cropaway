@@ -185,29 +185,30 @@ final class KeyframeViewModel: ObservableObject {
     }
 
     func applyKeyframeState(at timestamp: Double) {
-        guard let cropEditor = cropEditor else { return }
+        guard let cropEditor = cropEditor, keyframesEnabled, !keyframes.isEmpty else { return }
 
-        if keyframesEnabled && keyframes.count >= 2 {
-            let state = KeyframeInterpolator.shared.interpolate(
-                keyframes: keyframes,
-                at: timestamp,
-                mode: cropEditor.mode
-            )
+        // Don't apply keyframe state while user is actively dragging/editing
+        guard !cropEditor.isDragging else { return }
 
-            cropEditor.cropRect = state.cropRect
-            cropEditor.edgeInsets = state.edgeInsets
-            cropEditor.circleCenter = state.circleCenter
-            cropEditor.circleRadius = state.circleRadius
+        let state = KeyframeInterpolator.shared.interpolate(
+            keyframes: keyframes,
+            at: timestamp,
+            mode: cropEditor.mode
+        )
 
-            // Also update AI mask data for AI mode
-            if cropEditor.mode == .ai {
-                // Apply interpolated mask data (hold interpolation - uses nearest keyframe's mask)
-                cropEditor.aiMaskData = state.aiMaskData
-                cropEditor.aiBoundingBox = state.aiBoundingBox
-                // Sync cropRect with aiBoundingBox in AI mode
-                if state.aiBoundingBox.width > 0 {
-                    cropEditor.cropRect = state.aiBoundingBox
-                }
+        cropEditor.cropRect = state.cropRect
+        cropEditor.edgeInsets = state.edgeInsets
+        cropEditor.circleCenter = state.circleCenter
+        cropEditor.circleRadius = state.circleRadius
+
+        // Also update AI mask data for AI mode
+        if cropEditor.mode == .ai {
+            // Apply interpolated mask data (hold interpolation - uses nearest keyframe's mask)
+            cropEditor.aiMaskData = state.aiMaskData
+            cropEditor.aiBoundingBox = state.aiBoundingBox
+            // Sync cropRect with aiBoundingBox in AI mode
+            if state.aiBoundingBox.width > 0 {
+                cropEditor.cropRect = state.aiBoundingBox
             }
         }
     }

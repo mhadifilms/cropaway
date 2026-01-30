@@ -44,6 +44,9 @@ struct CropOverlayView: View {
                                 set: { cropEditorVM.cropRect = $0 }
                             ),
                             videoSize: fittedSize,
+                            onDragStateChanged: { isDragging in
+                                cropEditorVM.isDragging = isDragging
+                            },
                             onEditEnded: cropEditorVM.notifyCropEditEnded
                         )
                     case .circle:

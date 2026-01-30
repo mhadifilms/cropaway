@@ -33,6 +33,37 @@ final class KeyframeInterpolator {
 
         let sorted = keyframes.sorted { $0.timestamp < $1.timestamp }
 
+        // Before first keyframe - use first keyframe's state
+        if timestamp <= sorted.first!.timestamp {
+            return stateFromKeyframe(sorted.first!, mode: mode)
+        }
+
+        // After last keyframe - use last keyframe's state
+        if timestamp >= sorted.last!.timestamp {
+            return stateFromKeyframe(sorted.last!, mode: mode)
+        }
+
+        // Find the keyframe at or just before the current timestamp (hold/step behavior)
+        // This means: use keyframe A's values until we reach keyframe B
+        if let currentKeyframe = sorted.last(where: { $0.timestamp <= timestamp }) {
+            return stateFromKeyframe(currentKeyframe, mode: mode)
+        }
+
+        return stateFromKeyframe(sorted.first!, mode: mode)
+    }
+
+    /// Interpolate with smooth transitions (for future use if user wants linear interpolation)
+    func interpolateSmooth(
+        keyframes: [Keyframe],
+        at timestamp: Double,
+        mode: CropMode
+    ) -> InterpolatedCropState {
+        guard !keyframes.isEmpty else {
+            return defaultState()
+        }
+
+        let sorted = keyframes.sorted { $0.timestamp < $1.timestamp }
+
         // Before first keyframe
         if timestamp <= sorted.first!.timestamp {
             return stateFromKeyframe(sorted.first!, mode: mode)

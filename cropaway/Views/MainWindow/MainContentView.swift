@@ -110,7 +110,9 @@ struct MainContentView: View {
     }
 
     private func handleTimeChange(_ oldValue: Double, _ newTime: Double) {
-        if keyframeVM.keyframesEnabled && keyframeVM.keyframes.count >= 2 {
+        // Apply keyframe interpolation when keyframes are enabled
+        // Works with 1+ keyframes (snaps to keyframe values, interpolates between them)
+        if keyframeVM.keyframesEnabled && !keyframeVM.keyframes.isEmpty {
             keyframeVM.applyKeyframeState(at: newTime)
         }
     }
