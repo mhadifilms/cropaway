@@ -125,8 +125,8 @@ struct VideoPlayerControlsView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 4))
             }
 
-            // Time display
-            Text("\(playerVM.currentTime.timeDisplayString) / \(playerVM.duration.timeDisplayString)")
+            // Frame display
+            Text(playerVM.frameDisplayString)
                 .font(.system(size: 11, weight: .medium, design: .monospaced))
                 .foregroundStyle(.secondary)
                 .frame(minWidth: 110, alignment: .trailing)

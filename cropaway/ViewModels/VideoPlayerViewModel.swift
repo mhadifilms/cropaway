@@ -13,6 +13,7 @@ final class VideoPlayerViewModel: ObservableObject {
     @Published var player: AVPlayer?
     @Published var currentTime: Double = 0
     @Published var duration: Double = 0
+    @Published var frameRate: Double = 0
     @Published var isPlaying: Bool = false
     @Published var videoSize: CGSize = .zero
     @Published var isLooping: Bool = false
@@ -25,6 +26,7 @@ final class VideoPlayerViewModel: ObservableObject {
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
     private var cancellables = Set<AnyCancellable>()
+    private var metadataCancellable: AnyCancellable?
 
     // Store weak references for cleanup in deinit
     nonisolated(unsafe) private var playerForCleanup: AVPlayer?
@@ -36,6 +38,14 @@ final class VideoPlayerViewModel: ObservableObject {
             player?.removeTimeObserver(observer)
             timeObserver = nil
         }
+
+        metadataCancellable?.cancel()
+        frameRate = video.metadata.frameRate
+        metadataCancellable = video.metadata.$frameRate
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] value in
+                self?.frameRate = value
+            }
 
         let asset = video.getAsset()
         let playerItem = AVPlayerItem(asset: asset)
@@ -260,6 +270,24 @@ final class VideoPlayerViewModel: ObservableObject {
         } else {
             return String(format: "%.1fx", currentRate)
         }
+    }
+
+    var totalFrameCount: Int {
+        guard duration > 0, frameRate > 0 else { return 0 }
+        let frames = Int((duration * frameRate).rounded(.down))
+        return max(frames, 1)
+    }
+
+    var currentFrameIndex: Int {
+        guard frameRate > 0 else { return 0 }
+        let frame = Int((currentTime * frameRate).rounded(.down))
+        let lastIndex = max(totalFrameCount - 1, 0)
+        return min(max(frame, 0), lastIndex)
+    }
+
+    var frameDisplayString: String {
+        let lastIndex = max(totalFrameCount - 1, 0)
+        return "\(currentFrameIndex) / \(lastIndex)"
     }
 
     // MARK: - Frame Capture

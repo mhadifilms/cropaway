@@ -48,15 +48,19 @@ struct VideoDetailView: View {
                         .padding(.vertical, 10)
                         .toolbarGlassBackground()
 
-                    // Keyframe timeline
-                    if keyframeVM.keyframesEnabled {
-                        Divider()
-                        KeyframeTimelineView()
-                            .frame(height: 56)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .toolbarGlassBackground()
-                    }
+                    // Keyframe timeline (kept mounted to avoid expensive reloads)
+                    let showTimeline = keyframeVM.keyframesEnabled
+
+                    Divider()
+                        .opacity(showTimeline ? 1.0 : 0.0)
+
+                    KeyframeTimelineView()
+                        .frame(height: showTimeline ? 56 : 0)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .toolbarGlassBackground()
+                        .clipped()
+                        .opacity(showTimeline ? 1.0 : 0.0)
                 }
             }
         }

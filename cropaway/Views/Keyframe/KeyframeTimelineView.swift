@@ -291,6 +291,7 @@ class KeyframeTrackNSView: NSView {
         }
     }
 
+
     private func drawKeyframeMarker(at x: CGFloat, selected: Bool, dragging: Bool) {
         let y = bounds.midY
         let size: CGFloat = dragging ? 14 : 12
