@@ -13,7 +13,9 @@ struct CropToolbarView: View {
 
     @EnvironmentObject var cropEditorVM: CropEditorViewModel
     @EnvironmentObject var keyframeVM: KeyframeViewModel
+    @EnvironmentObject var playerVM: VideoPlayerViewModel
     @EnvironmentObject var undoManager: CropUndoManager
+    @State private var absenceStartTime: Double? = nil
 
     init(video: VideoItem) {
         self.video = video
@@ -43,6 +45,7 @@ struct CropToolbarView: View {
         HStack(spacing: 12) {
             cropModeButtons
             keyframeControls
+            absenceControls
 
             Spacer()
 
@@ -128,6 +131,83 @@ struct CropToolbarView: View {
                 .help("Add keyframe (⌘K)")
             }
         }
+    }
+
+    private var absenceControls: some View {
+        HStack(spacing: 4) {
+            Button {
+                absenceStartTime = currentFrameTimestamp
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "nosign")
+                        .font(.system(size: 11))
+                    Text("None In")
+                        .font(.system(size: 11))
+                }
+                .foregroundStyle(absenceStartTime == nil ? Color.primary : Color.white)
+                .padding(.horizontal, 8)
+                .frame(height: 32)
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.borderless)
+            .liquidGlassCapsule(isSelected: absenceStartTime != nil, tint: .orange)
+            .help("Mark start of a 'None' range at the current frame")
+
+            Button {
+                let start = absenceStartTime ?? currentFrameTimestamp
+                let end = currentFrameTimestamp
+                cropEditorVM.addAbsenceRange(start: start, end: end)
+                absenceStartTime = nil
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "nosign")
+                        .font(.system(size: 11))
+                    Text("None Out")
+                        .font(.system(size: 11))
+                }
+                .foregroundStyle(Color.primary)
+                .padding(.horizontal, 8)
+                .frame(height: 32)
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.borderless)
+            .liquidGlassCapsule(isSelected: false, tint: .orange)
+            .help("Mark end of a 'None' range at the current frame")
+
+            Menu {
+                if cropEditorVM.isAbsent(at: currentFrameTimestamp) {
+                    Button("Clear None at Current Frame") {
+                        cropEditorVM.removeAbsenceRange(containing: currentFrameTimestamp)
+                    }
+                }
+
+                if absenceStartTime != nil {
+                    Button("Clear Pending None Start") {
+                        absenceStartTime = nil
+                    }
+                }
+
+                if !cropEditorVM.absenceRanges.isEmpty {
+                    Button("Clear All None Ranges") {
+                        cropEditorVM.clearAbsenceRanges()
+                        absenceStartTime = nil
+                    }
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.system(size: 12))
+                    .frame(width: 32, height: 32)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.borderless)
+            .liquidGlassCircle()
+            .help("Manage None ranges")
+        }
+    }
+
+    private var currentFrameTimestamp: Double {
+        guard playerVM.frameRate > 0 else { return playerVM.currentTime }
+        return Double(playerVM.currentFrameIndex) / playerVM.frameRate
     }
 
     // MARK: - Options Section
@@ -240,6 +320,13 @@ struct CropToolbarView: View {
             }
 
             Button {
+                // Export JSON but encode absent frames as Python-style None
+                NotificationCenter.default.post(name: .exportBoundingBox, object: true)
+            } label: {
+                Label("Export Bounding Boxes (JSON, Python None)...", systemImage: "rectangle.dashed")
+            }
+
+            Button {
                 NotificationCenter.default.post(name: .exportBoundingBoxPickle, object: nil)
             } label: {
                 Label("Export Bounding Boxes (Pickle)...", systemImage: "rectangle.dashed.badge.record")
@@ -324,6 +411,7 @@ extension View {
         var body: some View {
             VStack {
                 CropToolbarView(video: video)
+                    .environmentObject(VideoPlayerViewModel())
                     .environmentObject(CropEditorViewModel())
                     .environmentObject(KeyframeViewModel())
                     .environmentObject(CropUndoManager())
@@ -335,3 +423,4 @@ extension View {
     }
     return PreviewWrapper()
 }
+

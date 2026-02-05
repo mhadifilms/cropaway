@@ -38,6 +38,9 @@ final class CropConfiguration: ObservableObject {
     @Published var keyframes: [Keyframe] = []
     @Published var keyframesEnabled: Bool = false
 
+    // Frames where object is absent (timestamp ranges in seconds)
+    @Published var absenceRanges: [AbsenceRange] = []
+
     // Export settings (per-video)
     @Published var preserveWidth: Bool = true
     @Published var enableAlphaChannel: Bool = false
@@ -57,16 +60,16 @@ final class CropConfiguration: ObservableObject {
                               cropRect.origin.y < 0.001 &&
                               cropRect.width > 0.999 &&
                               cropRect.height > 0.999
-            return !isFullFrame || hasKeyframes
+            return !isFullFrame || hasKeyframes || !absenceRanges.isEmpty
         case .circle:
             // Circle mode always implies masking (parts will be black/transparent)
             return true
         case .freehand:
             // Freehand with points implies masking
-            return freehandPoints.count >= 3 || hasKeyframes
+            return freehandPoints.count >= 3 || hasKeyframes || !absenceRanges.isEmpty
         case .ai:
             // AI mode has changes if mask data exists
-            return aiMaskData != nil || hasKeyframes
+            return aiMaskData != nil || hasKeyframes || !absenceRanges.isEmpty
         }
     }
 
@@ -157,6 +160,7 @@ final class CropConfiguration: ObservableObject {
         aiConfidence = 0
         keyframes = []
         keyframesEnabled = false
+        absenceRanges = []
         // Note: Don't reset preserveWidth and enableAlphaChannel as they're user preferences per video
     }
 
@@ -215,5 +219,47 @@ final class CropConfiguration: ObservableObject {
         }
 
         return rectValid && circleValid && freehandValid
+    }
+
+    func addAbsenceRange(start: Double, end: Double) {
+        let normalizedStart = min(start, end)
+        let normalizedEnd = max(start, end)
+        guard normalizedEnd >= normalizedStart else { return }
+
+        var ranges = absenceRanges
+        ranges.append(AbsenceRange(start: normalizedStart, end: normalizedEnd))
+
+        // Merge overlapping ranges
+        ranges.sort { $0.start < $1.start }
+        var merged: [AbsenceRange] = []
+        for range in ranges {
+            if let last = merged.last, range.start <= last.end {
+                merged[merged.count - 1] = AbsenceRange(start: last.start, end: max(last.end, range.end))
+            } else {
+                merged.append(range)
+            }
+        }
+        absenceRanges = merged
+    }
+
+    func clearAbsenceRanges() {
+        absenceRanges = []
+    }
+
+    func removeAbsenceRange(containing timestamp: Double) {
+        absenceRanges.removeAll { $0.contains(timestamp) }
+    }
+
+    func isAbsent(at timestamp: Double) -> Bool {
+        absenceRanges.contains { $0.contains(timestamp) }
+    }
+}
+
+struct AbsenceRange: Codable, Equatable {
+    let start: Double
+    let end: Double
+
+    func contains(_ timestamp: Double) -> Bool {
+        timestamp >= start && timestamp <= end
     }
 }

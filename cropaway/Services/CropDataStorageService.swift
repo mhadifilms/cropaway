@@ -251,6 +251,12 @@ final class CropDataStorageService {
                 return kf
             }
         }
+
+        if let ranges = document.crop.absenceRanges {
+            config.absenceRanges = ranges.map { AbsenceRange(start: $0.start, end: $0.end) }
+        } else {
+            config.absenceRanges = []
+        }
     }
 
     /// List all crop data files for a video (Application Support only)
@@ -327,9 +333,9 @@ final class CropDataStorageService {
 
     // MARK: - Bounding Box Export
 
-    /// Export bounding box data as [[x1, y1, x2, y2], ...] for each frame
-    /// x1=left, y1=top, x2=right, y2=bottom in pixel coordinates
-    func exportBoundingBoxData(video: VideoItem, destinationFolder: URL) throws -> URL {
+    /// Export bounding box data as {"bounding_boxes": [[x1, y1, x2, y2], ...]} for each frame.
+    /// Absent frames are encoded as empty arrays [].
+    func exportBoundingBoxData(video: VideoItem, destinationFolder: URL, usePythonNone: Bool = false) throws -> URL {
         let config = video.cropConfiguration
         let meta = video.metadata
 
@@ -338,7 +344,7 @@ final class CropDataStorageService {
         }
 
         // Calculate total frames
-        let totalFrames = Int(ceil(meta.duration * meta.frameRate))
+        let totalFrames = meta.totalFrameCount
         guard totalFrames > 0 else {
             throw StorageError.invalidMetadata
         }
@@ -352,6 +358,12 @@ final class CropDataStorageService {
 
         for frameIndex in 0..<totalFrames {
             let timestamp = Double(frameIndex) / meta.frameRate
+
+            if config.isAbsent(at: timestamp) {
+                // Empty array for absent frames
+                boundingBoxes.append([])
+                continue
+            }
 
             // Get crop rect at this timestamp (interpolated if keyframes exist)
             let cropRect: CGRect
@@ -375,10 +387,14 @@ final class CropDataStorageService {
             boundingBoxes.append([x1, y1, x2, y2])
         }
 
-        // Encode as JSON
+        // Encode as JSON - absent frames are empty arrays []
+        struct BoundingBoxExport: Codable {
+            let boundingBoxes: [[Int]]
+            enum CodingKeys: String, CodingKey { case boundingBoxes = "bounding_boxes" }
+        }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
-        let data = try encoder.encode(boundingBoxes)
+        let data = try encoder.encode(BoundingBoxExport(boundingBoxes: boundingBoxes))
 
         // Create filename: videoname_bbox.json
         let videoName = video.sourceURL.deletingPathExtension().lastPathComponent
@@ -394,10 +410,10 @@ final class CropDataStorageService {
     }
 
     /// Export bounding box data for multiple videos
-    func exportMultipleBoundingBoxData(videos: [VideoItem], destinationFolder: URL) throws -> [URL] {
+    func exportMultipleBoundingBoxData(videos: [VideoItem], destinationFolder: URL, usePythonNone: Bool = false) throws -> [URL] {
         var exportedURLs: [URL] = []
         for video in videos where video.hasCropChanges {
-            let url = try exportBoundingBoxData(video: video, destinationFolder: destinationFolder)
+            let url = try exportBoundingBoxData(video: video, destinationFolder: destinationFolder, usePythonNone: usePythonNone)
             exportedURLs.append(url)
         }
         return exportedURLs
@@ -437,6 +453,7 @@ final class CropDataStorageService {
     }
 
     /// Generate bounding boxes array for a video (shared between JSON and pickle export)
+    /// Absent frames are represented as empty arrays []
     private func generateBoundingBoxes(for video: VideoItem) throws -> [[Int]] {
         let config = video.cropConfiguration
         let meta = video.metadata
@@ -446,7 +463,7 @@ final class CropDataStorageService {
         }
 
         // Calculate total frames
-        let totalFrames = Int(ceil(meta.duration * meta.frameRate))
+        let totalFrames = meta.totalFrameCount
         guard totalFrames > 0 else {
             throw StorageError.invalidMetadata
         }
@@ -460,6 +477,12 @@ final class CropDataStorageService {
 
         for frameIndex in 0..<totalFrames {
             let timestamp = Double(frameIndex) / meta.frameRate
+
+            // Empty array for absent frames
+            if config.isAbsent(at: timestamp) {
+                boundingBoxes.append([])
+                continue
+            }
 
             // Get crop rect at this timestamp (interpolated if keyframes exist)
             let cropRect: CGRect
@@ -711,6 +734,12 @@ final class CropDataStorageService {
             }
         }
 
+        if !config.absenceRanges.isEmpty {
+            cropData.absenceRanges = config.absenceRanges.map {
+                CropStorageDocument.AbsenceRangeData(start: $0.start, end: $0.end)
+            }
+        }
+
         // Pixel calculations for uncropping
         let outputBounds = CropStorageDocument.OutputBounds(
             cropPixelX: Int(Double(config.cropRect.origin.x) * Double(meta.width)),
@@ -775,6 +804,7 @@ struct CropStorageDocument: Codable {
         var freehand: FreehandData?
         var ai: AIData?
         var keyframes: [KeyframeData]?
+        var absenceRanges: [AbsenceRangeData]?
 
         init(mode: String) {
             self.mode = mode
@@ -847,6 +877,11 @@ struct CropStorageDocument: Codable {
         }
     }
 
+    struct AbsenceRangeData: Codable {
+        let start: Double
+        let end: Double
+    }
+
     /// Pre-calculated pixel values for easy uncropping
     struct OutputBounds: Codable {
         let cropPixelX: Int
@@ -867,3 +902,5 @@ struct CropStorageDocument: Codable {
         }
     }
 }
+
+

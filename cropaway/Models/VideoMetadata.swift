@@ -47,6 +47,12 @@ final class VideoMetadata: ObservableObject {
 
     init() {}
 
+    var totalFrameCount: Int {
+        guard duration > 0, frameRate > 0 else { return 0 }
+        let frames = Int((duration * frameRate).rounded(.down))
+        return max(frames, 1)
+    }
+
     var colorSpaceDescription: String? {
         guard let primaries = colorPrimaries else { return nil }
 

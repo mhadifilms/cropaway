@@ -36,6 +36,9 @@ final class CropEditorViewModel: ObservableObject {
     @Published var aiBoundingBox: CGRect = .zero
     @Published var aiInteractionMode: AIInteractionMode = .point
 
+    // Frames where object is absent
+    @Published var absenceRanges: [AbsenceRange] = []
+
     // Callback for when crop editing ends (drag gesture completed)
     // Used for auto-keyframe creation
     var onCropEditEnded: (() -> Void)?
@@ -63,6 +66,7 @@ final class CropEditorViewModel: ObservableObject {
         aiTextPrompt = config.aiTextPrompt
         aiBoundingBox = config.aiBoundingBox
         aiInteractionMode = config.aiInteractionMode
+        absenceRanges = config.absenceRanges
 
         // Sync changes back to config
         $mode
@@ -124,6 +128,27 @@ final class CropEditorViewModel: ObservableObject {
             .dropFirst()
             .sink { config.aiInteractionMode = $0 }
             .store(in: &cancellables)
+
+        $absenceRanges
+            .dropFirst()
+            .removeDuplicates()
+            .sink { ranges in
+                if config.absenceRanges != ranges {
+                    config.absenceRanges = ranges
+                }
+            }
+            .store(in: &cancellables)
+
+        config.$absenceRanges
+            .dropFirst()
+            .removeDuplicates()
+            .sink { [weak self] ranges in
+                guard let self else { return }
+                if self.absenceRanges != ranges {
+                    self.absenceRanges = ranges
+                }
+            }
+            .store(in: &cancellables)
     }
 
     // Get effective crop area for current mode
@@ -164,6 +189,36 @@ final class CropEditorViewModel: ObservableObject {
         aiPromptPoints = []
         aiTextPrompt = nil
         aiBoundingBox = .zero
+        absenceRanges = []
+    }
+
+    // MARK: - Absence Ranges
+
+    func addAbsenceRange(start: Double, end: Double) {
+        guard let config = currentVideo?.cropConfiguration else { return }
+        config.addAbsenceRange(start: start, end: end)
+        // Subscription to config.$absenceRanges handles syncing back to self
+    }
+
+    func clearAbsenceRanges() {
+        guard let config = currentVideo?.cropConfiguration else {
+            absenceRanges = []
+            return
+        }
+        config.clearAbsenceRanges()
+        // Subscription to config.$absenceRanges handles syncing back to self
+    }
+
+    func removeAbsenceRange(containing timestamp: Double) {
+        guard let config = currentVideo?.cropConfiguration else { return }
+        config.removeAbsenceRange(containing: timestamp)
+        // Subscription to config.$absenceRanges handles syncing back to self
+    }
+
+    func isAbsent(at timestamp: Double) -> Bool {
+        // Read from self.absenceRanges to avoid creating dependency on config
+        // (which would cause view re-render loops when both are observed)
+        absenceRanges.contains { $0.contains(timestamp) }
     }
 
     // Freehand drawing

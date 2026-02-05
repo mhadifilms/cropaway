@@ -139,8 +139,9 @@ struct FileNotificationHandler: ViewModifier {
             .onReceive(NotificationCenter.default.publisher(for: .exportJSON)) { _ in
                 handleExportJSON()
             }
-            .onReceive(NotificationCenter.default.publisher(for: .exportBoundingBox)) { _ in
-                handleExportBoundingBox()
+            .onReceive(NotificationCenter.default.publisher(for: .exportBoundingBox)) { notification in
+                let usePythonNone = (notification.object as? Bool) == true
+                handleExportBoundingBox(usePythonNone: usePythonNone)
             }
             .onReceive(NotificationCenter.default.publisher(for: .exportBoundingBoxPickle)) { _ in
                 handleExportBoundingBoxPickle()
@@ -236,7 +237,7 @@ struct FileNotificationHandler: ViewModifier {
         }
     }
 
-    private func handleExportBoundingBox() {
+    private func handleExportBoundingBox(usePythonNone: Bool = false) {
         // Get videos to export (selected ones with crop changes)
         let videosToExport: [VideoItem]
         if projectVM.selectedVideoIDs.count > 1 {
@@ -262,7 +263,8 @@ struct FileNotificationHandler: ViewModifier {
             do {
                 let exportedURLs = try CropDataStorageService.shared.exportMultipleBoundingBoxData(
                     videos: videosToExport,
-                    destinationFolder: folderURL
+                    destinationFolder: folderURL,
+                    usePythonNone: usePythonNone
                 )
                 // Show in Finder
                 if !exportedURLs.isEmpty {
@@ -712,3 +714,4 @@ struct EmptyStateView: View {
     MainContentView()
         .environmentObject(ProjectViewModel())
 }
+
