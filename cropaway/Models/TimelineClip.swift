@@ -217,9 +217,10 @@ final class TimelineClip: Identifiable, ObservableObject, Codable {
         // Cancel any pending thumbnail generation
         thumbnailGenerationTask?.cancel()
         
-        // Schedule new generation with 500ms delay (increased from 300ms to reduce AVAsset load)
+        // Schedule new generation with 300ms delay
+        // Safe now because we use cached asset (no file conflicts)
         thumbnailGenerationTask = Task {
-            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+            try? await Task.sleep(nanoseconds: 300_000_000) // 0.3 seconds
             
             // Check if task was cancelled
             guard !Task.isCancelled else { return }
@@ -236,15 +237,16 @@ final class TimelineClip: Identifiable, ObservableObject, Codable {
         // Check for cancellation before starting
         guard !Task.isCancelled else { return }
         
-        let asset = AVAsset(url: video.sourceURL)
+        // ✅ FIX: Use cached asset from VideoItem to prevent file lock conflicts
+        // All components (player, thumbnail generator, metadata) now share the same asset
+        let asset = video.getAsset()
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
         generator.maximumSize = CGSize(width: 120, height: 80)
         
-        // Use tolerance for faster generation and less resource usage
-        let tolerance = CMTime(seconds: 0.1, preferredTimescale: 600)
-        generator.requestedTimeToleranceBefore = tolerance
-        generator.requestedTimeToleranceAfter = tolerance
+        // Zero tolerance for accurate thumbnails at trim points
+        generator.requestedTimeToleranceBefore = .zero
+        generator.requestedTimeToleranceAfter = .zero
         
         var thumbs: [NSImage] = []
         let step = count > 1 ? (outPoint - inPoint) / Double(count - 1) : 0
