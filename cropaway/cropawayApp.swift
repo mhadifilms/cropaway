@@ -447,7 +447,6 @@ extension Notification.Name {
     static let exportAllVideos = Notification.Name("exportAllVideos")
     static let exportJSON = Notification.Name("exportJSON")
     static let exportBoundingBox = Notification.Name("exportBoundingBox")
-    static let exportBoundingBoxPickle = Notification.Name("exportBoundingBoxPickle")
     static let deleteSelectedVideo = Notification.Name("deleteSelectedVideo")
 
     // Edit operations

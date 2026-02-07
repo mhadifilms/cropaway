@@ -189,9 +189,6 @@ struct FileNotificationHandler: ViewModifier {
             .onReceive(NotificationCenter.default.publisher(for: .exportBoundingBox)) { _ in
                 handleExportBoundingBox()
             }
-            .onReceive(NotificationCenter.default.publisher(for: .exportBoundingBoxPickle)) { _ in
-                handleExportBoundingBoxPickle()
-            }
             .onReceive(NotificationCenter.default.publisher(for: .deleteSelectedVideo)) { _ in
                 deleteSelectedVideo()
             }
@@ -303,7 +300,7 @@ struct FileNotificationHandler: ViewModifier {
         panel.canCreateDirectories = true
         panel.allowsMultipleSelection = false
         panel.prompt = "Export"
-        panel.message = "Choose a folder to export \(videosToExport.count) bounding box file(s)\nFormat: [[x1, y1, x2, y2], ...] per frame (JSON)"
+        panel.message = "Choose a folder to export \(videosToExport.count) bounding box file(s)\nFormat: [[x1, y1, x2, y2], ...] per frame"
 
         if panel.runModal() == .OK, let folderURL = panel.url {
             do {
@@ -315,51 +312,6 @@ struct FileNotificationHandler: ViewModifier {
                 if !exportedURLs.isEmpty {
                     NSWorkspace.shared.activateFileViewerSelecting(exportedURLs)
                     print("Exported \(exportedURLs.count) bounding box file(s) to \(folderURL.path)")
-                }
-            } catch {
-                // Show error alert
-                let alert = NSAlert()
-                alert.messageText = "Export Failed"
-                alert.informativeText = error.localizedDescription
-                alert.alertStyle = .warning
-                alert.addButton(withTitle: "OK")
-                alert.runModal()
-            }
-        }
-    }
-
-    private func handleExportBoundingBoxPickle() {
-        // Get videos to export (selected ones with crop changes)
-        let videosToExport: [VideoItem]
-        if projectVM.selectedVideoIDs.count > 1 {
-            videosToExport = projectVM.selectedVideos.filter { $0.hasCropChanges }
-        } else if let video = projectVM.selectedVideo, video.hasCropChanges {
-            videosToExport = [video]
-        } else {
-            return
-        }
-
-        guard !videosToExport.isEmpty else { return }
-
-        // Show folder picker
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.canCreateDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.prompt = "Export"
-        panel.message = "Choose a folder to export \(videosToExport.count) bounding box file(s)\nFormat: Python pickle (.pkl) - [[x1, y1, x2, y2], ...] per frame"
-
-        if panel.runModal() == .OK, let folderURL = panel.url {
-            do {
-                let exportedURLs = try CropDataStorageService.shared.exportMultipleBoundingBoxPickle(
-                    videos: videosToExport,
-                    destinationFolder: folderURL
-                )
-                // Show in Finder
-                if !exportedURLs.isEmpty {
-                    NSWorkspace.shared.activateFileViewerSelecting(exportedURLs)
-                    print("Exported \(exportedURLs.count) bounding box pickle file(s) to \(folderURL.path)")
                 }
             } catch {
                 // Show error alert
