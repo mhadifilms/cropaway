@@ -9,7 +9,7 @@ import AVKit
 
 /// Video player that supports CALayer-based masking for alpha mode
 struct MaskedVideoPlayerView: NSViewRepresentable {
-    @EnvironmentObject var playerVM: VideoPlayerViewModel
+    @Environment(VideoPlayerViewModel.self) private var playerVM: VideoPlayerViewModel
 
     let maskMode: CropMode
     let cropRect: CGRect

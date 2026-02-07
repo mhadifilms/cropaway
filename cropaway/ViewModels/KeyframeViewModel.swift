@@ -6,16 +6,28 @@
 import Combine
 import Foundation
 import SwiftUI
+import Observation
 
+@Observable
 @MainActor
-final class KeyframeViewModel: ObservableObject {
-    @Published var keyframes: [Keyframe] = []
-    @Published var keyframesEnabled: Bool = false
-    @Published var selectedKeyframeIDs: Set<UUID> = []
+final class KeyframeViewModel {
+    var keyframes: [Keyframe] = [] {
+        didSet {
+            currentVideo?.cropConfiguration.keyframes = keyframes
+        }
+    }
+    
+    var keyframesEnabled: Bool = false {
+        didSet {
+            currentVideo?.cropConfiguration.keyframesEnabled = keyframesEnabled
+        }
+    }
+    
+    var selectedKeyframeIDs: Set<UUID> = []
 
-    private var currentVideo: VideoItem?
-    private var cropEditor: CropEditorViewModel?
-    private var cancellables = Set<AnyCancellable>()
+    @ObservationIgnored private var currentVideo: VideoItem?
+    @ObservationIgnored private var cropEditor: CropEditorViewModel?
+    @ObservationIgnored private var cancellables = Set<AnyCancellable>()
 
     // Convenience for single selection (primary selected keyframe)
     var selectedKeyframe: Keyframe? {
@@ -48,11 +60,8 @@ final class KeyframeViewModel: ObservableObject {
         keyframesEnabled = config.keyframesEnabled
         selectedKeyframeIDs.removeAll()
 
-        // Sync changes back
-        $keyframesEnabled
-            .dropFirst()
-            .sink { config.keyframesEnabled = $0 }
-            .store(in: &cancellables)
+        // Note: With @Observable, we manually sync changes when they occur
+        // instead of using Combine publishers
     }
 
     // MARK: - Selection

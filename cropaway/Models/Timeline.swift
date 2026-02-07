@@ -116,11 +116,6 @@ final class Timeline: Identifiable, ObservableObject, Codable {
 
     /// Add a clip to the end of the timeline
     func addClip(_ clip: TimelineClip) {
-        // Create a default cut transition if this isn't the first clip
-        if !clips.isEmpty {
-            let transition = ClipTransition(afterClipIndex: clips.count - 1)
-            transitions.append(transition)
-        }
         clips.append(clip)
     }
 
@@ -140,12 +135,6 @@ final class Timeline: Identifiable, ObservableObject, Codable {
             if let idx = transitions.firstIndex(where: { $0.id == transition.id }) {
                 transitions[idx] = transition.copy(withNewIndex: transition.afterClipIndex + 1)
             }
-        }
-
-        // Add transition before this clip if inserting in the middle
-        if safeIndex > 0 {
-            let transition = ClipTransition(afterClipIndex: safeIndex - 1)
-            transitions.append(transition)
         }
 
         clips.insert(clip, at: safeIndex)
@@ -185,8 +174,9 @@ final class Timeline: Identifiable, ObservableObject, Codable {
         let adjustedDestination = destinationIndex > sourceIndex ? destinationIndex - 1 : destinationIndex
         clips.insert(clip, at: adjustedDestination)
 
-        // Rebuild transitions (simpler than tracking all index changes)
-        rebuildTransitions()
+        // Update transition indices to match new clip positions
+        // This requires careful index tracking without rebuilding all transitions
+        updateTransitionIndicesAfterMove(from: sourceIndex, to: adjustedDestination)
     }
 
     /// Split a clip at a specific time within the clip
@@ -225,11 +215,36 @@ final class Timeline: Identifiable, ObservableObject, Codable {
     }
 
     /// Rebuild all transitions with default cut type
-    private func rebuildTransitions() {
-        transitions.removeAll()
-        for i in 0..<(clips.count - 1) {
-            transitions.append(ClipTransition(afterClipIndex: i))
+    private func updateTransitionIndicesAfterMove(from sourceIndex: Int, to destinationIndex: Int) {
+        // When a clip moves, transitions need to update their indices
+        // This is complex but avoids auto-creating transitions
+        
+        var updatedTransitions: [ClipTransition] = []
+        
+        for transition in transitions {
+            var newIndex = transition.afterClipIndex
+            
+            // If transition is attached to the moved clip
+            if transition.afterClipIndex == sourceIndex {
+                newIndex = destinationIndex
+            }
+            // If transition is between source and destination
+            else if sourceIndex < destinationIndex {
+                // Moving forward: indices in between shift down
+                if transition.afterClipIndex > sourceIndex && transition.afterClipIndex <= destinationIndex {
+                    newIndex = transition.afterClipIndex - 1
+                }
+            } else {
+                // Moving backward: indices in between shift up
+                if transition.afterClipIndex >= destinationIndex && transition.afterClipIndex < sourceIndex {
+                    newIndex = transition.afterClipIndex + 1
+                }
+            }
+            
+            updatedTransitions.append(transition.copy(withNewIndex: newIndex))
         }
+        
+        transitions = updatedTransitions
     }
 
     // MARK: - Time Calculations
@@ -241,17 +256,13 @@ final class Timeline: Identifiable, ObservableObject, Codable {
         for (index, clip) in clips.enumerated() {
             let clipDuration = clip.trimmedDuration
 
-            // Account for transition overlap with previous clip
+            // Account for transition overlap ONLY if transition exists
             if index > 0, let prevTransition = transition(afterClipIndex: index - 1) {
-                currentTime -= prevTransition.effectiveDuration / 2
+                let overlap = prevTransition.effectiveDuration / 2
+                currentTime -= overlap
             }
 
             let clipEndTime = currentTime + clipDuration
-
-            // Account for transition overlap with next clip
-            if index < clips.count - 1, let _ = transition(afterClipIndex: index) {
-                // Clip effectively ends earlier due to transition
-            }
 
             if timelineTime >= currentTime && timelineTime < clipEndTime {
                 let timeInClip = timelineTime - currentTime
@@ -259,6 +270,11 @@ final class Timeline: Identifiable, ObservableObject, Codable {
             }
 
             currentTime = clipEndTime
+            
+            // Add gap if no transition to next clip
+            if index < clips.count - 1, transition(afterClipIndex: index) == nil {
+                currentTime += 0.02 // 2pt gap in time units
+            }
         }
 
         // Return last clip if time is past the end
@@ -276,6 +292,9 @@ final class Timeline: Identifiable, ObservableObject, Codable {
             time += clips[i].trimmedDuration
             if let transition = transition(afterClipIndex: i) {
                 time -= transition.effectiveDuration
+            } else {
+                // Add gap if no transition exists
+                time += 0.02
             }
         }
         return time

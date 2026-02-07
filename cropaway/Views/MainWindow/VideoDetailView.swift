@@ -10,11 +10,11 @@ struct VideoDetailView: View {
     @ObservedObject var video: VideoItem
     @Binding var viewScale: CGFloat
 
-    @EnvironmentObject var playerVM: VideoPlayerViewModel
-    @EnvironmentObject var cropEditorVM: CropEditorViewModel
-    @EnvironmentObject var exportVM: ExportViewModel
-    @EnvironmentObject var keyframeVM: KeyframeViewModel
-    @EnvironmentObject var timelineVM: TimelineViewModel
+    @Environment(VideoPlayerViewModel.self) private var playerVM: VideoPlayerViewModel
+    @Environment(CropEditorViewModel.self) private var cropEditorVM: CropEditorViewModel
+    @Environment(ExportViewModel.self) private var exportVM: ExportViewModel
+    @Environment(KeyframeViewModel.self) private var keyframeVM: KeyframeViewModel
+    @Environment(TimelineViewModel.self) private var timelineVM: TimelineViewModel
 
     // If timeline has a selected clip, use that; otherwise use the passed video
     private var activeVideo: VideoItem {
@@ -87,8 +87,8 @@ struct LiveCropPreviewView: View {
     let enableAlpha: Bool
     @Binding var viewScale: CGFloat
 
-    @EnvironmentObject var playerVM: VideoPlayerViewModel
-    @EnvironmentObject var cropEditorVM: CropEditorViewModel
+    @Environment(VideoPlayerViewModel.self) private var playerVM: VideoPlayerViewModel
+    @Environment(CropEditorViewModel.self) private var cropEditorVM: CropEditorViewModel
 
     // For pinch-to-zoom gesture
     @GestureState private var magnifyBy: CGFloat = 1.0
@@ -598,39 +598,41 @@ struct AIDimmedMaskView: View {
 struct CropHandlesView: View {
     let videoDisplaySize: CGSize
 
-    @EnvironmentObject var cropEditorVM: CropEditorViewModel
+    @Environment(CropEditorViewModel.self) private var cropEditorVM: CropEditorViewModel
 
     var body: some View {
         if videoDisplaySize.isValid {
             ZStack {
-                switch cropEditorVM.mode {
+                @Bindable var cropEditor = cropEditorVM
+                
+                switch cropEditor.mode {
                 case .rectangle:
                     RectangleCropView(
-                        rect: $cropEditorVM.cropRect,
+                        rect: $cropEditor.cropRect,
                         videoSize: videoDisplaySize
                     )
                 case .circle:
                     CircleCropView(
-                        center: $cropEditorVM.circleCenter,
-                        radius: $cropEditorVM.circleRadius,
+                        center: $cropEditor.circleCenter,
+                        radius: $cropEditor.circleRadius,
                         videoSize: videoDisplaySize
                     )
                 case .freehand:
                     FreehandMaskView(
-                        points: $cropEditorVM.freehandPoints,
-                        isDrawing: $cropEditorVM.isDrawing,
-                        pathData: $cropEditorVM.freehandPathData,
+                        points: $cropEditor.freehandPoints,
+                        isDrawing: $cropEditor.isDrawing,
+                        pathData: $cropEditor.freehandPathData,
                         videoSize: videoDisplaySize,
-                        onEditEnded: cropEditorVM.notifyCropEditEnded
+                        onEditEnded: cropEditor.notifyCropEditEnded
                     )
                 case .ai:
                     AIEditorView(
-                        promptPoints: $cropEditorVM.aiPromptPoints,
-                        maskData: $cropEditorVM.aiMaskData,
-                        boundingBox: $cropEditorVM.aiBoundingBox,
-                        interactionMode: $cropEditorVM.aiInteractionMode,
+                        promptPoints: $cropEditor.aiPromptPoints,
+                        maskData: $cropEditor.aiMaskData,
+                        boundingBox: $cropEditor.aiBoundingBox,
+                        interactionMode: $cropEditor.aiInteractionMode,
                         videoSize: videoDisplaySize,
-                        onEditEnded: cropEditorVM.notifyCropEditEnded
+                        onEditEnded: cropEditor.notifyCropEditEnded
                     )
                 }
             }
@@ -695,10 +697,10 @@ struct CheckerboardView: View {
 
 #Preview {
     let video = VideoItem(sourceURL: URL(fileURLWithPath: "/test.mov"))
-    return VideoDetailView(video: video, viewScale: .constant(1.0))
-        .environmentObject(VideoPlayerViewModel())
-        .environmentObject(CropEditorViewModel())
-        .environmentObject(ExportViewModel())
-        .environmentObject(KeyframeViewModel())
+    VideoDetailView(video: video, viewScale: .constant(1.0))
+        .environment(VideoPlayerViewModel())
+        .environment(CropEditorViewModel())
+        .environment(ExportViewModel())
+        .environment(KeyframeViewModel())
         .frame(width: 800, height: 600)
 }

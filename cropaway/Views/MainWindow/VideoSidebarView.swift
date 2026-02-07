@@ -9,13 +9,16 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct VideoSidebarView: View {
-    @EnvironmentObject var projectVM: ProjectViewModel
-    @EnvironmentObject var timelineVM: TimelineViewModel
+    @Environment(ProjectViewModel.self) private var projectVM: ProjectViewModel
+    @Environment(TimelineViewModel.self) private var timelineVM: TimelineViewModel
 
     var body: some View {
         VStack(spacing: 0) {
             // Video list with multi-selection support
-            List(selection: $projectVM.selectedVideoIDs) {
+            List(selection: Binding(
+                get: { projectVM.selectedVideoIDs },
+                set: { projectVM.selectedVideoIDs = $0 }
+            )) {
                 ForEach(projectVM.videos) { video in
                     VideoRowView(video: video)
                         .tag(video.id)
@@ -252,6 +255,6 @@ struct VideoRowView: View {
 
 #Preview {
     VideoSidebarView()
-        .environmentObject(ProjectViewModel())
+        .environment(ProjectViewModel())
         .frame(width: 220, height: 400)
 }

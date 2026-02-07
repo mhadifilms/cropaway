@@ -7,41 +7,112 @@ import Combine
 import Foundation
 import SwiftUI
 import CoreGraphics
+import Observation
 
+@Observable
 @MainActor
-final class CropEditorViewModel: ObservableObject {
-    @Published var mode: CropMode = .rectangle
-    @Published var isEditing: Bool = true
+final class CropEditorViewModel {
+    var mode: CropMode = .rectangle {
+        didSet {
+            guard !isSyncing else { return }
+            currentVideo?.cropConfiguration.mode = mode
+        }
+    }
+
+    var isEditing: Bool = true
 
     // Rectangle crop (normalized 0-1)
-    @Published var cropRect: CGRect = CGRect(x: 0, y: 0, width: 1, height: 1)
+    var cropRect: CGRect = CGRect(x: 0, y: 0, width: 1, height: 1) {
+        didSet {
+            guard !isSyncing else { return }
+            currentVideo?.cropConfiguration.cropRect = cropRect
+        }
+    }
 
     // Edge crop
-    @Published var edgeInsets: EdgeInsets = EdgeInsets()
+    var edgeInsets: EdgeInsets = EdgeInsets() {
+        didSet {
+            guard !isSyncing else { return }
+            currentVideo?.cropConfiguration.edgeInsets = edgeInsets
+        }
+    }
 
     // Circle crop
-    @Published var circleCenter: CGPoint = CGPoint(x: 0.5, y: 0.5)
-    @Published var circleRadius: Double = 0.4
+    var circleCenter: CGPoint = CGPoint(x: 0.5, y: 0.5) {
+        didSet {
+            guard !isSyncing else { return }
+            currentVideo?.cropConfiguration.circleCenter = circleCenter
+        }
+    }
+
+    var circleRadius: Double = 0.4 {
+        didSet {
+            guard !isSyncing else { return }
+            currentVideo?.cropConfiguration.circleRadius = circleRadius
+        }
+    }
 
     // Freehand
-    @Published var freehandPoints: [CGPoint] = []
-    @Published var freehandPathData: Data? = nil  // Full bezier vertex data
-    @Published var isDrawing: Bool = false
+    var freehandPoints: [CGPoint] = [] {
+        didSet {
+            guard !isSyncing else { return }
+            currentVideo?.cropConfiguration.freehandPoints = freehandPoints
+        }
+    }
+
+    var freehandPathData: Data? = nil {
+        didSet {
+            guard !isSyncing else { return }
+            currentVideo?.cropConfiguration.freehandPathData = freehandPathData
+        }
+    }
+
+    var isDrawing: Bool = false
 
     // AI mask (fal.ai)
-    @Published var aiMaskData: Data?
-    @Published var aiPromptPoints: [AIPromptPoint] = []
-    @Published var aiTextPrompt: String?
-    @Published var aiBoundingBox: CGRect = .zero
-    @Published var aiInteractionMode: AIInteractionMode = .point
+    var aiMaskData: Data? {
+        didSet {
+            guard !isSyncing else { return }
+            currentVideo?.cropConfiguration.aiMaskData = aiMaskData
+        }
+    }
+
+    var aiPromptPoints: [AIPromptPoint] = [] {
+        didSet {
+            guard !isSyncing else { return }
+            currentVideo?.cropConfiguration.aiPromptPoints = aiPromptPoints
+        }
+    }
+
+    var aiTextPrompt: String? {
+        didSet {
+            guard !isSyncing else { return }
+            currentVideo?.cropConfiguration.aiTextPrompt = aiTextPrompt
+        }
+    }
+
+    var aiBoundingBox: CGRect = .zero {
+        didSet {
+            guard !isSyncing else { return }
+            currentVideo?.cropConfiguration.aiBoundingBox = aiBoundingBox
+        }
+    }
+
+    var aiInteractionMode: AIInteractionMode = .point {
+        didSet {
+            guard !isSyncing else { return }
+            currentVideo?.cropConfiguration.aiInteractionMode = aiInteractionMode
+        }
+    }
 
     // Callback for when crop editing ends (drag gesture completed)
     // Used for auto-keyframe creation
     var onCropEditEnded: (() -> Void)?
 
     // Active video
-    private var currentVideo: VideoItem?
-    private var cancellables = Set<AnyCancellable>()
+    @ObservationIgnored private var currentVideo: VideoItem?
+    @ObservationIgnored private var cancellables = Set<AnyCancellable>()
+    @ObservationIgnored private var isSyncing = false
 
     func bind(to video: VideoItem) {
         cancellables.removeAll()
@@ -49,7 +120,8 @@ final class CropEditorViewModel: ObservableObject {
 
         let config = video.cropConfiguration
 
-        // Sync from config
+        // Sync from config (disable didSet syncing during load)
+        isSyncing = true
         mode = config.mode
         cropRect = config.cropRect
         edgeInsets = config.edgeInsets
@@ -62,67 +134,7 @@ final class CropEditorViewModel: ObservableObject {
         aiTextPrompt = config.aiTextPrompt
         aiBoundingBox = config.aiBoundingBox
         aiInteractionMode = config.aiInteractionMode
-
-        // Sync changes back to config
-        $mode
-            .dropFirst()
-            .sink { config.mode = $0 }
-            .store(in: &cancellables)
-
-        $cropRect
-            .dropFirst()
-            .sink { config.cropRect = $0 }
-            .store(in: &cancellables)
-
-        $edgeInsets
-            .dropFirst()
-            .sink { config.edgeInsets = $0 }
-            .store(in: &cancellables)
-
-        $circleCenter
-            .dropFirst()
-            .sink { config.circleCenter = $0 }
-            .store(in: &cancellables)
-
-        $circleRadius
-            .dropFirst()
-            .sink { config.circleRadius = $0 }
-            .store(in: &cancellables)
-
-        $freehandPoints
-            .dropFirst()
-            .sink { config.freehandPoints = $0 }
-            .store(in: &cancellables)
-
-        $freehandPathData
-            .dropFirst()
-            .sink { config.freehandPathData = $0 }
-            .store(in: &cancellables)
-
-        $aiMaskData
-            .dropFirst()
-            .sink { config.aiMaskData = $0 }
-            .store(in: &cancellables)
-
-        $aiPromptPoints
-            .dropFirst()
-            .sink { config.aiPromptPoints = $0 }
-            .store(in: &cancellables)
-
-        $aiTextPrompt
-            .dropFirst()
-            .sink { config.aiTextPrompt = $0 }
-            .store(in: &cancellables)
-
-        $aiBoundingBox
-            .dropFirst()
-            .sink { config.aiBoundingBox = $0 }
-            .store(in: &cancellables)
-
-        $aiInteractionMode
-            .dropFirst()
-            .sink { config.aiInteractionMode = $0 }
-            .store(in: &cancellables)
+        isSyncing = false
     }
 
     // Get effective crop area for current mode

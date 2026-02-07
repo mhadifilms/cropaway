@@ -7,7 +7,7 @@ import SwiftUI
 import AVKit
 
 struct VideoPlayerView: NSViewRepresentable {
-    @EnvironmentObject var playerVM: VideoPlayerViewModel
+    @Environment(VideoPlayerViewModel.self) private var playerVM: VideoPlayerViewModel
 
     /// When true, video fills frame exactly (may distort if frame doesn't match video aspect ratio)
     /// When false (default), video maintains aspect ratio with letterboxing if needed
@@ -31,6 +31,6 @@ struct VideoPlayerView: NSViewRepresentable {
 
 #Preview {
     VideoPlayerView()
-        .environmentObject(VideoPlayerViewModel())
+        .environment(VideoPlayerViewModel())
         .frame(width: 640, height: 360)
 }

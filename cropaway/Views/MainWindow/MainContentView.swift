@@ -8,12 +8,12 @@ import UniformTypeIdentifiers
 import Combine
 
 struct MainContentView: View {
-    @EnvironmentObject var projectVM: ProjectViewModel
-    @StateObject private var playerVM = VideoPlayerViewModel()
-    @StateObject private var cropEditorVM = CropEditorViewModel()
-    @StateObject private var exportVM = ExportViewModel()
-    @StateObject private var keyframeVM = KeyframeViewModel()
-    @StateObject private var timelineVM = TimelineViewModel()
+    @Environment(ProjectViewModel.self) private var projectVM: ProjectViewModel
+    @State private var playerVM = VideoPlayerViewModel()
+    @State private var cropEditorVM = CropEditorViewModel()
+    @State private var exportVM = ExportViewModel()
+    @State private var keyframeVM = KeyframeViewModel()
+    @State private var timelineVM = TimelineViewModel()
     @StateObject private var undoManager = CropUndoManager()
 
     @State private var columnVisibility = NavigationSplitViewVisibility.all
@@ -24,15 +24,16 @@ struct MainContentView: View {
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             VideoSidebarView()
-                .environmentObject(timelineVM)
+                .environment(timelineVM)
                 .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 300)
         } detail: {
             detailContent
         }
         .navigationSplitViewStyle(.balanced)
         .onAppear {
-            // Bind player to timeline for synchronization
+            // Bind player and timeline for bi-directional synchronization
             timelineVM.videoPlayer = playerVM
+            playerVM.timelineViewModel = timelineVM
         }
         .onDrop(of: [.fileURL], isTargeted: nil) { handleDrop($0) }
         .onChange(of: projectVM.selectedVideo) { handleVideoChange($0, $1) }
@@ -54,11 +55,11 @@ struct MainContentView: View {
         // Show selected video from sidebar (timeline selection is independent)
         if let video = projectVM.selectedVideo {
             VideoDetailView(video: video, viewScale: $viewScale)
-                .environmentObject(playerVM)
-                .environmentObject(cropEditorVM)
-                .environmentObject(exportVM)
-                .environmentObject(keyframeVM)
-                .environmentObject(timelineVM)
+                .environment(playerVM)
+                .environment(cropEditorVM)
+                .environment(exportVM)
+                .environment(keyframeVM)
+                .environment(timelineVM)
                 .environmentObject(undoManager)
         } else {
             EmptyStateView()
@@ -70,7 +71,7 @@ struct MainContentView: View {
     @ViewBuilder
     private var exportSheet: some View {
         ExportProgressView()
-            .environmentObject(exportVM)
+            .environment(exportVM)
     }
 
     private var showExportSheet: Binding<Bool> {
@@ -706,7 +707,7 @@ struct VideoSelectionNotificationHandler: ViewModifier {
 // MARK: - Empty State
 
 struct EmptyStateView: View {
-    @EnvironmentObject var projectVM: ProjectViewModel
+    @Environment(ProjectViewModel.self) private var projectVM: ProjectViewModel
 
     var body: some View {
         ZStack {
@@ -766,7 +767,7 @@ struct SequenceNotificationHandler: ViewModifier {
         content
             .onReceive(NotificationCenter.default.publisher(for: .toggleSequenceMode)) { _ in
                 withAnimation(.easeInOut(duration: 0.2)) {
-                    timelineVM.toggleTimelinePanel()
+                    timelineVM.toggleTimelinePanel(startingWith: projectVM.selectedVideo)
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: .createSequence)) { _ in
@@ -821,27 +822,19 @@ struct SequenceNotificationHandler: ViewModifier {
         
         if panel.runModal() == .OK {
             Task { @MainActor in
-                // Add videos to project
+                // Add videos to project first
                 await projectVM.addVideos(from: panel.urls)
                 
-                // Enable timeline panel if not already
-                if !timelineVM.isTimelinePanelVisible {
-                    timelineVM.toggleTimelinePanel()
+                // Only add to timeline if timeline panel is already visible
+                guard timelineVM.isTimelinePanelVisible, timelineVM.activeTimeline != nil else {
+                    return
                 }
                 
-                // Track if this is the first clip
-                let isFirstClip = timelineVM.timeline?.isEmpty ?? true
-                
-                // Add all newly imported videos to timeline
+                // Add all newly imported videos to active timeline
                 for url in panel.urls {
                     if let video = projectVM.videos.first(where: { $0.sourceURL == url }) {
                         timelineVM.addClip(from: video)
                     }
-                }
-                
-                // Auto-select first clip if we just added the first one
-                if isFirstClip, let firstClip = timelineVM.timeline?.clips.first {
-                    timelineVM.selectClip(id: firstClip.id)
                 }
             }
         }
@@ -887,5 +880,5 @@ struct SequenceNotificationHandler: ViewModifier {
 
 #Preview {
     MainContentView()
-        .environmentObject(ProjectViewModel())
+        .environment(ProjectViewModel())
 }

@@ -7,15 +7,17 @@ import Combine
 import Foundation
 import SwiftUI
 import UniformTypeIdentifiers
+import Observation
 
+@Observable
 @MainActor
-final class ProjectViewModel: ObservableObject {
-    @Published var videos: [VideoItem] = []
-    @Published var selectedVideo: VideoItem?
-    @Published var selectedVideoIDs: Set<VideoItem.ID> = []
-    @Published var isImporting: Bool = false
+final class ProjectViewModel {
+    var videos: [VideoItem] = []
+    var selectedVideo: VideoItem?
+    var selectedVideoIDs: Set<VideoItem.ID> = []
+    var isImporting: Bool = false
 
-    private let metadataExtractor = VideoMetadataExtractor()
+    @ObservationIgnored private let metadataExtractor = VideoMetadataExtractor()
 
     /// Returns videos matching the current selection (for batch operations)
     var selectedVideos: [VideoItem] {

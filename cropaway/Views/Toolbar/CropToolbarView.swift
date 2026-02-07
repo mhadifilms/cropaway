@@ -11,9 +11,9 @@ struct CropToolbarView: View {
     @ObservedObject var video: VideoItem
     @ObservedObject var cropConfig: CropConfiguration
 
-    @EnvironmentObject var cropEditorVM: CropEditorViewModel
-    @EnvironmentObject var keyframeVM: KeyframeViewModel
-    @EnvironmentObject var timelineVM: TimelineViewModel
+    @Environment(CropEditorViewModel.self) private var cropEditorVM: CropEditorViewModel
+    @Environment(KeyframeViewModel.self) private var keyframeVM: KeyframeViewModel
+    @Environment(TimelineViewModel.self) private var timelineVM: TimelineViewModel
     @EnvironmentObject var undoManager: CropUndoManager
 
     init(video: VideoItem) {
@@ -137,7 +137,7 @@ struct CropToolbarView: View {
     private var timelineControls: some View {
         Button {
             withAnimation(.snappy(duration: 0.2)) {
-                timelineVM.toggleTimelinePanel()
+                timelineVM.toggleTimelinePanel(startingWith: video)
             }
         } label: {
             HStack(spacing: 5) {
@@ -359,8 +359,8 @@ extension View {
         var body: some View {
             VStack {
                 CropToolbarView(video: video)
-                    .environmentObject(CropEditorViewModel())
-                    .environmentObject(KeyframeViewModel())
+                    .environment(CropEditorViewModel())
+                    .environment(KeyframeViewModel())
                     .environmentObject(CropUndoManager())
                 Spacer()
             }

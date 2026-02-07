@@ -7,30 +7,58 @@ import Combine
 import Foundation
 import AVFoundation
 import SwiftUI
+import Observation
 
+@Observable
 @MainActor
-final class VideoPlayerViewModel: ObservableObject {
-    @Published var player: AVPlayer?
-    @Published var currentTime: Double = 0
-    @Published var duration: Double = 0
-    @Published var frameRate: Double = 0
-    @Published var isPlaying: Bool = false
-    @Published var videoSize: CGSize = .zero
-    @Published var isLooping: Bool = false
-    @Published var currentRate: Float = 1.0
-    @Published var showFrameCount: Bool = false  // Toggle between timecode and frame display
+final class VideoPlayerViewModel {
+    var player: AVPlayer?
+    var currentTime: Double = 0
+    var duration: Double = 0
+    var frameRate: Double = 0
+    var isPlaying: Bool = false
+    var videoSize: CGSize = .zero
+    var isLooping: Bool = false
+    var currentRate: Float = 1.0
+    var showFrameCount: Bool = false  // Toggle between timecode and frame display
     
     // Current video being played (for timeline sync)
     private(set) var currentVideo: VideoItem?
+    
+    // Timeline mode: when active, player represents entire sequence not just one clip
+    weak var timelineViewModel: TimelineViewModel?
+    var isTimelineMode: Bool {
+        timelineViewModel?.isTimelinePanelVisible ?? false && timelineViewModel?.activeTimeline != nil
+    }
+    
+    /// Effective duration accounts for timeline mode (entire sequence vs single clip)
+    var effectiveDuration: Double {
+        if isTimelineMode, let timeline = timelineViewModel?.activeTimeline {
+            return timeline.totalDuration
+        }
+        return duration
+    }
+    
+    /// Effective current time accounts for timeline mode (position in sequence vs clip)
+    var effectiveCurrentTime: Double {
+        if isTimelineMode,
+           let timeline = timelineViewModel?.activeTimeline,
+           let selectedClip = timelineViewModel?.selectedClip,
+           let clipIndex = timelineViewModel?.selectedClipIndex {
+            let clipStart = timeline.startTime(forClipAt: clipIndex)
+            return clipStart + currentTime
+        }
+        return currentTime
+    }
 
     // Shuttle control state for J/K/L speed ramping
     private var shuttleSpeed: Float = 0
     private static let shuttleSpeeds: [Float] = [0.5, 1.0, 2.0, 4.0, 8.0]
 
-    private var timeObserver: Any?
-    private var endObserver: NSObjectProtocol?
-    private var cancellables = Set<AnyCancellable>()
-    private var metadataCancellable: AnyCancellable?
+    @ObservationIgnored private var timeObserver: Any?
+    @ObservationIgnored private var endObserver: NSObjectProtocol?
+    @ObservationIgnored private var cancellables = Set<AnyCancellable>()
+    @ObservationIgnored private var metadataCancellable: AnyCancellable?
 
     // Store weak references for cleanup in deinit
     nonisolated(unsafe) private var playerForCleanup: AVPlayer?
@@ -159,6 +187,15 @@ final class VideoPlayerViewModel: ObservableObject {
         let cmTime = CMTime(seconds: time, preferredTimescale: 600)
         player?.seek(to: cmTime, toleranceBefore: .zero, toleranceAfter: .zero)
     }
+    
+    /// Seek to a global time, handling both single video and timeline modes
+    func seekGlobal(to time: Double) {
+        if isTimelineMode {
+            timelineViewModel?.seek(to: time)
+        } else {
+            seek(to: time)
+        }
+    }
 
     func seekRelative(_ delta: Double) {
         let newTime = max(0, min(duration, currentTime + delta))
@@ -275,7 +312,8 @@ final class VideoPlayerViewModel: ObservableObject {
             endObserver = nil
         }
 
-        if isLooping {
+        // Always observe end time for either looping or timeline auto-advance
+        if isLooping || isTimelineMode {
             endObserver = NotificationCenter.default.addObserver(
                 forName: .AVPlayerItemDidPlayToEndTime,
                 object: player?.currentItem,
@@ -283,8 +321,38 @@ final class VideoPlayerViewModel: ObservableObject {
             ) { [weak self] _ in
                 guard let self = self else { return }
                 Task { @MainActor [weak self] in
-                    self?.seek(to: 0)
-                    self?.play()
+                    guard let self = self else { return }
+                    
+                    // Handle timeline mode: advance to next clip
+                    if self.isTimelineMode {
+                        let wasPlaying = self.isPlaying
+                        
+                        // Try to go to next clip
+                        if let timelineVM = self.timelineViewModel,
+                           let currentIndex = timelineVM.selectedClipIndex,
+                           let timeline = timelineVM.activeTimeline,
+                           currentIndex < timeline.clips.count - 1 {
+                            // Load next clip
+                            timelineVM.goToNextClip()
+                            
+                            // Continue playing if was playing
+                            if wasPlaying {
+                                // Small delay to let the new video load
+                                try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+                                self.play()
+                            }
+                        } else if self.isLooping {
+                            // If at end of timeline and looping is on, restart from beginning
+                            self.timelineViewModel?.seek(to: 0)
+                            if wasPlaying {
+                                self.play()
+                            }
+                        }
+                    } else if self.isLooping {
+                        // Regular single-video looping
+                        self.seek(to: 0)
+                        self.play()
+                    }
                 }
             }
         }

@@ -6,7 +6,7 @@
 import SwiftUI
 
 struct VideoPlayerControlsView: View {
-    @EnvironmentObject var playerVM: VideoPlayerViewModel
+    @Environment(VideoPlayerViewModel.self) private var playerVM
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
@@ -125,7 +125,7 @@ struct VideoPlayerControlsView: View {
 
             // Timeline scrubber
             VideoTimelineView()
-                .environmentObject(playerVM)
+                .environment(playerVM)
                 .frame(minWidth: 120)
 
             // Rate display (when not normal speed)
@@ -155,7 +155,7 @@ struct VideoPlayerControlsView: View {
 
 #Preview {
     VideoPlayerControlsView()
-        .environmentObject(VideoPlayerViewModel())
+        .environment(VideoPlayerViewModel())
         .padding()
         .frame(width: 800)
 }

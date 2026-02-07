@@ -8,7 +8,7 @@ import SwiftUI
 struct CropOverlayView: View {
     let videoSize: CGSize
 
-    @EnvironmentObject var cropEditorVM: CropEditorViewModel
+    @Environment(CropEditorViewModel.self) private var cropEditorVM: CropEditorViewModel
 
     var body: some View {
         GeometryReader { geometry in
@@ -247,7 +247,7 @@ struct DimmedOverlayView: View {
 
 #Preview {
     CropOverlayView(videoSize: CGSize(width: 1920, height: 1080))
-        .environmentObject(CropEditorViewModel())
+        .environment(CropEditorViewModel())
         .frame(width: 640, height: 360)
         .background(Color.gray)
 }

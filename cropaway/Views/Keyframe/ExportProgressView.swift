@@ -7,7 +7,7 @@ import SwiftUI
 import AppKit
 
 struct ExportProgressView: View {
-    @EnvironmentObject var exportVM: ExportViewModel
+    @Environment(ExportViewModel.self) private var exportVM: ExportViewModel
     @Environment(\.dismiss) private var dismiss
 
     private var isBatchExport: Bool {
@@ -118,5 +118,5 @@ struct ExportProgressView: View {
 
 #Preview {
     ExportProgressView()
-        .environmentObject(ExportViewModel())
+        .environment(ExportViewModel())
 }

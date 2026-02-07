@@ -6,7 +6,7 @@
 import SwiftUI
 
 struct VideoTimelineView: View {
-    @EnvironmentObject var playerVM: VideoPlayerViewModel
+    @Environment(VideoPlayerViewModel.self) private var playerVM: VideoPlayerViewModel
     @State private var isDragging = false
     @State private var dragValue: Double = 0
     @State private var lastSeekTime: Double = 0
@@ -42,18 +42,18 @@ struct VideoTimelineView: View {
                         isDragging = true
                         let progress = value.location.x / geometry.size.width
                         let clampedProgress = max(0, min(1, progress))
-                        dragValue = clampedProgress * playerVM.duration
+                        dragValue = clampedProgress * playerVM.effectiveDuration
                         
                         // Throttle seeks to avoid overwhelming AVPlayer
                         let now = Date().timeIntervalSince1970
                         if now - lastSeekTime >= minSeekInterval {
-                            playerVM.seek(to: dragValue)
+                            playerVM.seekGlobal(to: dragValue)
                             lastSeekTime = now
                         }
                     }
                     .onEnded { _ in
                         // Final seek to exact position
-                        playerVM.seek(to: dragValue)
+                        playerVM.seekGlobal(to: dragValue)
                         isDragging = false
                     }
             )
@@ -62,23 +62,23 @@ struct VideoTimelineView: View {
     }
 
     private func progressWidth(in totalWidth: CGFloat) -> CGFloat {
-        guard playerVM.duration > 0 else { return 0 }
-        let currentTime = isDragging ? dragValue : playerVM.currentTime
-        let progress = currentTime / playerVM.duration
+        guard playerVM.effectiveDuration > 0 else { return 0 }
+        let currentTime = isDragging ? dragValue : playerVM.effectiveCurrentTime
+        let progress = currentTime / playerVM.effectiveDuration
         return CGFloat(progress) * totalWidth
     }
 
     private func playheadOffset(in totalWidth: CGFloat) -> CGFloat {
-        guard playerVM.duration > 0 else { return -6 }
-        let currentTime = isDragging ? dragValue : playerVM.currentTime
-        let progress = currentTime / playerVM.duration
+        guard playerVM.effectiveDuration > 0 else { return -6 }
+        let currentTime = isDragging ? dragValue : playerVM.effectiveCurrentTime
+        let progress = currentTime / playerVM.effectiveDuration
         return CGFloat(progress) * totalWidth - 6
     }
 }
 
 #Preview {
     VideoTimelineView()
-        .environmentObject(VideoPlayerViewModel())
+        .environment(VideoPlayerViewModel())
         .padding()
         .frame(width: 400, height: 40)
 }

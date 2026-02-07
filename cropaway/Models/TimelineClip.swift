@@ -6,6 +6,7 @@
 import Foundation
 import Combine
 import AppKit
+import AVFoundation
 
 /// Represents a single video clip in a timeline sequence
 /// References an existing VideoItem but adds trim points and timeline position
@@ -23,6 +24,7 @@ final class TimelineClip: Identifiable, ObservableObject, Codable {
     @Published var inPoint: Double {
         didSet {
             inPoint = max(0, min(outPoint - 0.01, inPoint))
+            debouncedGenerateThumbnailStrip()
         }
     }
 
@@ -30,13 +32,20 @@ final class TimelineClip: Identifiable, ObservableObject, Codable {
     @Published var outPoint: Double {
         didSet {
             outPoint = max(inPoint + 0.01, min(1.0, outPoint))
+            debouncedGenerateThumbnailStrip()
         }
     }
 
     /// Cached thumbnail for display in timeline track
     @Published var thumbnail: NSImage?
     
+    /// Strip of thumbnails for filmstrip display in timeline
+    @Published var thumbnailStrip: [NSImage] = []
+    
     private var cancellables = Set<AnyCancellable>()
+    
+    /// Debounce thumbnail regeneration to prevent overwhelming during trim
+    private var thumbnailGenerationTask: Task<Void, Never>?
 
     init(
         id: UUID = UUID(),
@@ -64,6 +73,11 @@ final class TimelineClip: Identifiable, ObservableObject, Codable {
                 self?.objectWillChange.send()
             }
             .store(in: &cancellables)
+        
+        // Generate thumbnail strip asynchronously
+        Task {
+            await generateThumbnailStrip()
+        }
     }
 
     // MARK: - Codable
@@ -196,6 +210,78 @@ final class TimelineClip: Identifiable, ObservableObject, Codable {
             inPoint: inPoint,
             outPoint: outPoint
         )
+    }
+    
+    /// Debounced thumbnail strip generation to prevent overwhelming during trim operations
+    private func debouncedGenerateThumbnailStrip() {
+        // Cancel any pending thumbnail generation
+        thumbnailGenerationTask?.cancel()
+        
+        // Schedule new generation with 500ms delay (increased from 300ms to reduce AVAsset load)
+        thumbnailGenerationTask = Task {
+            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+            
+            // Check if task was cancelled
+            guard !Task.isCancelled else { return }
+            
+            await generateThumbnailStrip()
+        }
+    }
+    
+    /// Generate a strip of thumbnails for filmstrip display
+    /// - Parameter count: Number of thumbnails to generate (default 5)
+    func generateThumbnailStrip(count: Int = 5) async {
+        guard let video = videoItem, sourceDuration > 0 else { return }
+        
+        // Check for cancellation before starting
+        guard !Task.isCancelled else { return }
+        
+        let asset = AVAsset(url: video.sourceURL)
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: 120, height: 80)
+        
+        // Use tolerance for faster generation and less resource usage
+        let tolerance = CMTime(seconds: 0.1, preferredTimescale: 600)
+        generator.requestedTimeToleranceBefore = tolerance
+        generator.requestedTimeToleranceAfter = tolerance
+        
+        var thumbs: [NSImage] = []
+        let step = count > 1 ? (outPoint - inPoint) / Double(count - 1) : 0
+        
+        for i in 0..<count {
+            // Check for cancellation on each iteration
+            guard !Task.isCancelled else {
+                generator.cancelAllCGImageGeneration()
+                return
+            }
+            
+            let normalized = inPoint + step * Double(i)
+            let time = CMTime(seconds: normalized * sourceDuration, preferredTimescale: 600)
+            
+            do {
+                let cgImage = try await generator.image(at: time).image
+                let nsImage = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+                thumbs.append(nsImage)
+            } catch {
+                // If thumbnail generation fails or task cancelled, skip this frame
+                if Task.isCancelled {
+                    generator.cancelAllCGImageGeneration()
+                    return
+                }
+                continue
+            }
+        }
+        
+        // Final cancellation check before updating UI
+        guard !Task.isCancelled else {
+            generator.cancelAllCGImageGeneration()
+            return
+        }
+        
+        await MainActor.run {
+            self.thumbnailStrip = thumbs
+        }
     }
 }
 

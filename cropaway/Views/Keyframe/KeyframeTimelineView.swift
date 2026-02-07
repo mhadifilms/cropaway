@@ -7,8 +7,8 @@ import SwiftUI
 import AppKit
 
 struct KeyframeTimelineView: View {
-    @EnvironmentObject var playerVM: VideoPlayerViewModel
-    @EnvironmentObject var keyframeVM: KeyframeViewModel
+    @Environment(VideoPlayerViewModel.self) private var playerVM: VideoPlayerViewModel
+    @Environment(KeyframeViewModel.self) private var keyframeVM: KeyframeViewModel
 
     @State private var draggedKeyframe: Keyframe? = nil
     @State private var dragOffset: CGFloat = 0
@@ -483,8 +483,8 @@ class KeyframeTrackNSView: NSView {
 
 #Preview {
     KeyframeTimelineView()
-        .environmentObject(VideoPlayerViewModel())
-        .environmentObject(KeyframeViewModel())
+        .environment(VideoPlayerViewModel())
+        .environment(KeyframeViewModel())
         .frame(width: 600, height: 80)
         .padding()
 }

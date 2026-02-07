@@ -8,11 +8,13 @@
 
 /* Begin PBXBuildFile section */
 		AFDBD6B92F252A6800B896FD /* cropaway.icon in Resources */ = {isa = PBXBuildFile; fileRef = AFDBD6B82F252A6800B896FD /* cropaway.icon */; };
+		BE260B6D2F37138200087E65 /* MODERNIZATION_SUMMARY.md in Resources */ = {isa = PBXBuildFile; fileRef = BE260B6C2F37138200087E65 /* MODERNIZATION_SUMMARY.md */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		AF3164AC2F224F0200D55C04 /* Cropaway.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Cropaway.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AFDBD6B82F252A6800B896FD /* cropaway.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = cropaway.icon; sourceTree = "<group>"; };
+		BE260B6C2F37138200087E65 /* MODERNIZATION_SUMMARY.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = MODERNIZATION_SUMMARY.md; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -40,6 +42,7 @@
 				AF3164AE2F224F0200D55C04 /* cropaway */,
 				AF3164AD2F224F0200D55C04 /* Products */,
 				AFDBD6B82F252A6800B896FD /* cropaway.icon */,
+				BE260B6C2F37138200087E65 /* MODERNIZATION_SUMMARY.md */,
 			);
 			sourceTree = "<group>";
 		};
@@ -116,6 +119,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				AFDBD6B92F252A6800B896FD /* cropaway.icon in Resources */,
+				BE260B6D2F37138200087E65 /* MODERNIZATION_SUMMARY.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -9,20 +9,22 @@ import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
 import UserNotifications
+import Observation
 
+@Observable
 @MainActor
-final class ExportViewModel: ObservableObject {
-    @Published var config = ExportConfiguration()
-    @Published var isExporting: Bool = false
-    @Published var progress: Double = 0
-    @Published var currentExportIndex: Int = 0
-    @Published var totalExportCount: Int = 0
-    @Published var error: String?
-    @Published var lastExportURL: URL?
-    @Published var exportedURLs: [URL] = []
+final class ExportViewModel {
+    var config = ExportConfiguration()
+    var isExporting: Bool = false
+    var progress: Double = 0
+    var currentExportIndex: Int = 0
+    var totalExportCount: Int = 0
+    var error: String?
+    var lastExportURL: URL?
+    var exportedURLs: [URL] = []
 
-    private var ffmpegService: FFmpegExportService?
-    private var processingService: VideoProcessingService?
+    @ObservationIgnored private var ffmpegService: FFmpegExportService?
+    @ObservationIgnored private var processingService: VideoProcessingService?
 
     init() {
         requestNotificationPermission()

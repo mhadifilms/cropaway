@@ -8,7 +8,7 @@ import SwiftUI
 @main
 struct CropawayApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-    @StateObject private var projectVM = ProjectViewModel()
+    @State private var projectVM = ProjectViewModel()
     @StateObject private var updateService = UpdateService.shared
 
     @State private var showUpdateDialog = false
@@ -17,7 +17,7 @@ struct CropawayApp: App {
     var body: some Scene {
         WindowGroup {
             MainContentView()
-                .environmentObject(projectVM)
+                .environment(projectVM)
                 .frame(minWidth: 900, minHeight: 600)
                 .sheet(isPresented: $showUpdateDialog) {
                     UpdateAvailableView(updateService: updateService)
@@ -80,6 +80,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 struct CropawayCommands: Commands {
+    @Environment(\.commandDispatcher) private var commands
+    
     var body: some Commands {
         // App menu - Check for Updates
         CommandGroup(after: .appInfo) {
@@ -91,31 +93,31 @@ struct CropawayCommands: Commands {
         // File menu
         CommandGroup(after: .newItem) {
             Button("Add Videos...") {
-                NotificationCenter.default.post(name: .openVideos, object: nil)
+                commands.send(.openVideos)
             }
             .keyboardShortcut("n", modifiers: .command)
 
             Button("Open Videos...") {
-                NotificationCenter.default.post(name: .openVideos, object: nil)
+                commands.send(.openVideos)
             }
             .keyboardShortcut("o", modifiers: .command)
 
             Divider()
 
             Button("Export...") {
-                NotificationCenter.default.post(name: .exportVideo, object: nil)
+                commands.send(.exportCurrentVideo)
             }
             .keyboardShortcut("e", modifiers: .command)
 
-            Button("Export All...") {
-                NotificationCenter.default.post(name: .exportAllVideos, object: nil)
+            Button("Export Crop JSON...") {
+                commands.send(.exportCropJSON)
             }
-            .keyboardShortcut("e", modifiers: [.command, .shift])
+            .keyboardShortcut("j", modifiers: [.command, .shift])
 
             Divider()
 
             Button("Remove Selected Video") {
-                NotificationCenter.default.post(name: .deleteSelectedVideo, object: nil)
+                commands.send(.delete)
             }
             .keyboardShortcut(.delete, modifiers: .command)
         }
@@ -123,12 +125,12 @@ struct CropawayCommands: Commands {
         // Edit menu - Undo/Redo
         CommandGroup(replacing: .undoRedo) {
             Button("Undo") {
-                NotificationCenter.default.post(name: .undoCrop, object: nil)
+                commands.send(.undo)
             }
             .keyboardShortcut("z", modifiers: .command)
 
             Button("Redo") {
-                NotificationCenter.default.post(name: .redoCrop, object: nil)
+                commands.send(.redo)
             }
             .keyboardShortcut("z", modifiers: [.command, .shift])
 
@@ -139,25 +141,13 @@ struct CropawayCommands: Commands {
         CommandGroup(after: .pasteboard) {
             Divider()
 
-            Button("Copy Crop Settings") {
-                NotificationCenter.default.post(name: .copyCropSettings, object: nil)
-            }
-            .keyboardShortcut("c", modifiers: [.command, .shift])
-
-            Button("Paste Crop Settings") {
-                NotificationCenter.default.post(name: .pasteCropSettings, object: nil)
-            }
-            .keyboardShortcut("v", modifiers: [.command, .shift])
-
-            Divider()
-
             Button("Reset Crop") {
-                NotificationCenter.default.post(name: .resetCrop, object: nil)
+                commands.send(.resetCrop)
             }
             .keyboardShortcut("r", modifiers: [.command, .shift])
 
             Button("Select All") {
-                NotificationCenter.default.post(name: .selectAll, object: nil)
+                commands.send(.selectAll)
             }
             .keyboardShortcut("a", modifiers: .command)
         }
@@ -165,217 +155,169 @@ struct CropawayCommands: Commands {
         // View menu - Zoom and Display
         CommandMenu("View") {
             Button("Zoom In") {
-                NotificationCenter.default.post(name: .zoomIn, object: nil)
+                commands.send(.zoomIn)
             }
             .keyboardShortcut("+", modifiers: .command)
 
             Button("Zoom Out") {
-                NotificationCenter.default.post(name: .zoomOut, object: nil)
+                commands.send(.zoomOut)
             }
             .keyboardShortcut("-", modifiers: .command)
 
             Button("Actual Size") {
-                NotificationCenter.default.post(name: .zoomReset, object: nil)
+                commands.send(.actualSize)
             }
             .keyboardShortcut("0", modifiers: .command)
 
             Button("Fit to Window") {
-                NotificationCenter.default.post(name: .zoomFit, object: nil)
+                commands.send(.zoomToFit)
             }
             .keyboardShortcut("9", modifiers: .command)
 
             Divider()
 
             Button("Toggle Sidebar") {
-                NotificationCenter.default.post(name: .toggleSidebar, object: nil)
+                commands.send(.toggleSidebar)
             }
             .keyboardShortcut("s", modifiers: [.command, .control])
 
-            Button("Toggle Keyframe Timeline") {
-                NotificationCenter.default.post(name: .toggleKeyframeTimeline, object: nil)
+            Button("Toggle Keyframes") {
+                commands.send(.toggleKeyframes)
             }
-            .keyboardShortcut("t", modifiers: [.command, .control])
+            .keyboardShortcut("4", modifiers: [.command, .control])
+            
+            Button("Toggle Timeline") {
+                commands.send(.toggleTimeline)
+            }
+            .keyboardShortcut("5", modifiers: .command)
 
             Divider()
 
-            Button("Toggle Preview Mode") {
-                NotificationCenter.default.post(name: .togglePreviewMode, object: nil)
+            Button("Toggle Full Screen") {
+                commands.send(.toggleFullScreen)
             }
-            .keyboardShortcut("p", modifiers: [.command, .shift])
+            .keyboardShortcut("f", modifiers: [.command, .control])
         }
 
         // Crop menu
         CommandMenu("Crop") {
             Button("Rectangle") {
-                NotificationCenter.default.post(name: .setCropMode, object: CropMode.rectangle)
+                commands.send(.setCropMode(.rectangle))
             }
             .keyboardShortcut("1", modifiers: .command)
 
             Button("Circle") {
-                NotificationCenter.default.post(name: .setCropMode, object: CropMode.circle)
+                commands.send(.setCropMode(.circle))
             }
             .keyboardShortcut("2", modifiers: .command)
 
             Button("Custom Mask") {
-                NotificationCenter.default.post(name: .setCropMode, object: CropMode.freehand)
+                commands.send(.setCropMode(.freehand))
             }
             .keyboardShortcut("3", modifiers: .command)
 
             Button("AI Track") {
-                NotificationCenter.default.post(name: .setCropMode, object: CropMode.ai)
+                commands.send(.setCropMode(.ai))
             }
             .keyboardShortcut("4", modifiers: .command)
 
             Divider()
 
             Button("Add Keyframe") {
-                NotificationCenter.default.post(name: .addKeyframe, object: nil)
+                commands.send(.addKeyframe)
             }
             .keyboardShortcut("k", modifiers: .command)
 
             Button("Remove Keyframe") {
-                NotificationCenter.default.post(name: .removeKeyframe, object: nil)
+                commands.send(.deleteKeyframe)
             }
             .keyboardShortcut("k", modifiers: [.command, .shift])
-
-            Divider()
-
-            Button("Previous Keyframe") {
-                NotificationCenter.default.post(name: .goToPreviousKeyframe, object: nil)
-            }
-            .keyboardShortcut("[", modifiers: .command)
-
-            Button("Next Keyframe") {
-                NotificationCenter.default.post(name: .goToNextKeyframe, object: nil)
-            }
-            .keyboardShortcut("]", modifiers: .command)
-
-            Divider()
-
-            Button("Nudge Left") {
-                NotificationCenter.default.post(name: .nudgeCropLeft, object: nil)
-            }
-            .keyboardShortcut(.leftArrow, modifiers: .option)
-
-            Button("Nudge Right") {
-                NotificationCenter.default.post(name: .nudgeCropRight, object: nil)
-            }
-            .keyboardShortcut(.rightArrow, modifiers: .option)
-
-            Button("Nudge Up") {
-                NotificationCenter.default.post(name: .nudgeCropUp, object: nil)
-            }
-            .keyboardShortcut(.upArrow, modifiers: .option)
-
-            Button("Nudge Down") {
-                NotificationCenter.default.post(name: .nudgeCropDown, object: nil)
-            }
-            .keyboardShortcut(.downArrow, modifiers: .option)
         }
 
         // Playback menu
         CommandMenu("Playback") {
             Button("Play/Pause") {
-                NotificationCenter.default.post(name: .togglePlayPause, object: nil)
+                commands.send(.playPause)
             }
             .keyboardShortcut(.space, modifiers: [])
 
             Divider()
 
             Button("Step Forward") {
-                NotificationCenter.default.post(name: .stepForward, object: nil)
+                commands.send(.stepForward)
             }
             .keyboardShortcut(.rightArrow, modifiers: [])
 
             Button("Step Backward") {
-                NotificationCenter.default.post(name: .stepBackward, object: nil)
+                commands.send(.stepBackward)
             }
             .keyboardShortcut(.leftArrow, modifiers: [])
 
-            Button("Jump Forward 1 Second") {
-                NotificationCenter.default.post(name: .jumpForward, object: 1.0)
-            }
-            .keyboardShortcut(.rightArrow, modifiers: .shift)
-
-            Button("Jump Backward 1 Second") {
-                NotificationCenter.default.post(name: .jumpBackward, object: 1.0)
-            }
-            .keyboardShortcut(.leftArrow, modifiers: .shift)
-
-            Button("Jump Forward 10 Seconds") {
-                NotificationCenter.default.post(name: .jumpForward, object: 10.0)
-            }
-            .keyboardShortcut(.rightArrow, modifiers: [.shift, .command])
-
-            Button("Jump Backward 10 Seconds") {
-                NotificationCenter.default.post(name: .jumpBackward, object: 10.0)
-            }
-            .keyboardShortcut(.leftArrow, modifiers: [.shift, .command])
-
             Divider()
 
-            Button("Go to Start") {
-                NotificationCenter.default.post(name: .goToStart, object: nil)
-            }
-            .keyboardShortcut(.home, modifiers: [])
-
-            Button("Go to End") {
-                NotificationCenter.default.post(name: .goToEnd, object: nil)
-            }
-            .keyboardShortcut(.end, modifiers: [])
-
-            Divider()
-
-            Button("Shuttle Reverse (J)") {
-                NotificationCenter.default.post(name: .shuttleReverse, object: nil)
+            Button("Shuttle Backward (J)") {
+                commands.send(.shuttleBackward)
             }
             .keyboardShortcut("j", modifiers: [])
 
             Button("Shuttle Stop (K)") {
-                NotificationCenter.default.post(name: .shuttleStop, object: nil)
+                commands.send(.shuttleStop)
             }
             .keyboardShortcut("k", modifiers: [])
 
             Button("Shuttle Forward (L)") {
-                NotificationCenter.default.post(name: .shuttleForward, object: nil)
+                commands.send(.shuttleForward)
             }
             .keyboardShortcut("l", modifiers: [])
 
             Divider()
 
             Button("Slow Motion (50%)") {
-                NotificationCenter.default.post(name: .setPlaybackRate, object: Float(0.5))
+                commands.send(.setPlaybackRate(0.5))
             }
             .keyboardShortcut("s", modifiers: [.command, .option])
 
             Button("Normal Speed") {
-                NotificationCenter.default.post(name: .setPlaybackRate, object: Float(1.0))
+                commands.send(.setPlaybackRate(1.0))
             }
             .keyboardShortcut("d", modifiers: [.command, .option])
 
             Button("Fast Forward (2x)") {
-                NotificationCenter.default.post(name: .setPlaybackRate, object: Float(2.0))
+                commands.send(.setPlaybackRate(2.0))
             }
             .keyboardShortcut("f", modifiers: [.command, .option])
 
             Divider()
 
             Button("Loop Playback") {
-                NotificationCenter.default.post(name: .toggleLoopPlayback, object: nil)
+                commands.send(.toggleLoop)
             }
             .keyboardShortcut("l", modifiers: .command)
+            
+            Button("Toggle Frame Display") {
+                commands.send(.toggleFrameDisplay)
+            }
+            .keyboardShortcut("t", modifiers: [.command, .option])
         }
 
         // Timeline menu
         CommandMenu("Timeline") {
-            Button("Toggle Timeline Panel") {
-                NotificationCenter.default.post(name: .toggleSequenceMode, object: nil)
+            Button("Split Clip at Playhead") {
+                commands.send(.splitClipAtPlayhead)
             }
-            .keyboardShortcut("5", modifiers: .command)
-
-            Button("Create Sequence from Selected") {
-                NotificationCenter.default.post(name: .createSequence, object: nil)
+            .keyboardShortcut("b", modifiers: .command)
+            
+            Divider()
+            
+            Button("Go to Next Clip") {
+                commands.send(.goToNextClip)
             }
+            .keyboardShortcut(.downArrow, modifiers: .command)
+            
+            Button("Go to Previous Clip") {
+                commands.send(.goToPreviousClip)
+            }
+            .keyboardShortcut(.upArrow, modifiers: .command)
             .keyboardShortcut("n", modifiers: [.command, .shift])
 
             Button("Add Selected to Sequence") {

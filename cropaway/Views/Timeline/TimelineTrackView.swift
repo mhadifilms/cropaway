@@ -10,10 +10,12 @@ import UniformTypeIdentifiers
 
 /// SwiftUI container for the timeline track with header and controls
 struct TimelineTrackView: View {
-    @EnvironmentObject var timelineVM: TimelineViewModel
-    @EnvironmentObject var projectVM: ProjectViewModel
+    @Environment(TimelineViewModel.self) private var timelineVM: TimelineViewModel
+    @Environment(ProjectViewModel.self) private var projectVM: ProjectViewModel
 
     @State private var showingAddVideoPanel = false
+    @State private var clipRefreshTrigger: Int = 0
+    @State private var clipObservers: [UUID: AnyCancellable] = [:]
 
     var body: some View {
         VStack(spacing: 6) {
@@ -66,6 +68,7 @@ struct TimelineTrackView: View {
                 selectedClipID: timelineVM.selectedClipID,
                 selectedTransitionID: timelineVM.selectedTransitionID,
                 playheadTime: timelineVM.playheadTime,
+                refreshTrigger: clipRefreshTrigger,
                 onSelectClip: { clipID in
                     timelineVM.selectClip(id: clipID)
                 },
@@ -83,7 +86,7 @@ struct TimelineTrackView: View {
                         if let clip = timelineVM.activeTimeline?.clips.first(where: { $0.id == clipID }) {
                             clip.inPoint = inPoint
                             clip.outPoint = outPoint
-                            timelineVM.objectWillChange.send()
+                            // Changes tracked automatically with @Observable
                         }
                     }
                 },
@@ -96,6 +99,12 @@ struct TimelineTrackView: View {
             )
             .frame(height: 48)
             .focusable()
+            .onAppear {
+                setupClipObservers()
+            }
+            .onChange(of: timelineVM.activeTimeline?.clips.map { $0.id }) { _, _ in
+                setupClipObservers()
+            }
 
             // Hints
             if timelineVM.timeline?.isEmpty ?? true {
@@ -131,6 +140,32 @@ struct TimelineTrackView: View {
             }
         }
     }
+    
+    // MARK: - Clip Observers
+    
+    /// Set up observers for clip thumbnail changes to trigger view updates
+    private func setupClipObservers() {
+        guard let clips = timelineVM.activeTimeline?.clips else { return }
+        
+        // Remove observers for clips that no longer exist
+        let currentClipIDs = Set(clips.map { $0.id })
+        clipObservers = clipObservers.filter { currentClipIDs.contains($0.key) }
+        
+        // Add observers for new clips
+        for clip in clips {
+            guard clipObservers[clip.id] == nil else { continue }
+            
+            let observer = clip.$thumbnailStrip
+                .sink { [weak clip] _ in
+                    guard clip != nil else { return }
+                    Task { @MainActor in
+                        clipRefreshTrigger += 1
+                    }
+                }
+            
+            clipObservers[clip.id] = observer
+        }
+    }
 }
 
 // MARK: - NSViewRepresentable Wrapper
@@ -142,6 +177,7 @@ struct TimelineTrackNSViewWrapper: NSViewRepresentable {
     let selectedClipID: UUID?
     let selectedTransitionID: UUID?
     let playheadTime: Double
+    let refreshTrigger: Int  // Forces view updates when clip properties change
 
     let onSelectClip: (UUID) -> Void
     let onSelectTransition: (UUID) -> Void
@@ -242,6 +278,8 @@ class TimelineTrackNSView: NSView {
     private var trimmingClipIndex: Int?
     private var trimmingEdge: TrimEdge = .none
     private var trimStartValue: Double = 0
+    private var lastTrimTime: TimeInterval = 0
+    private let minTrimInterval: TimeInterval = 0.033 // ~30fps
 
     private var isScrubbing = false
 
@@ -336,6 +374,7 @@ class TimelineTrackNSView: NSView {
     private func drawClip(_ clip: TimelineClip, at x: CGFloat, width: CGFloat, index: Int) {
         let clipRect = NSRect(x: x, y: 4, width: width, height: clipHeight)
         let isSelected = clip.id == selectedClipID
+        let isTrimmed = clip.isTrimmed
 
         // Clip background
         let bgColor: NSColor
@@ -358,55 +397,184 @@ class TimelineTrackNSView: NSView {
             clipPath.stroke()
         }
 
-        // Clip thumbnail (if available and space permits)
-        if width > 50, let thumbnail = clip.thumbnail {
-            let thumbRect = NSRect(x: x + 4, y: 8, width: 28, height: clipHeight - 8)
-            thumbnail.draw(in: thumbRect, from: .zero, operation: .sourceOver, fraction: 0.8)
+        // Clip thumbnail strip (if available and space permits)
+        if width > 50 {
+            if !clip.thumbnailStrip.isEmpty {
+                // Draw filmstrip-style thumbnails
+                let thumbHeight = clipHeight - 8
+                let thumbWidth = thumbHeight * 4.0 / 3.0 // 4:3 aspect ratio
+                let thumbnailsAvailable = clip.thumbnailStrip.count
+                let thumbnailsNeeded = Int(ceil((width - 8) / thumbWidth))
+                
+                var currentX = x + 4
+                for i in 0..<thumbnailsNeeded {
+                    guard currentX + thumbWidth <= x + width - 4 else { break }
+                    
+                    // Repeat thumbnails if we need more than we have
+                    let thumbIndex = i % thumbnailsAvailable
+                    let thumbnail = clip.thumbnailStrip[thumbIndex]
+                    
+                    let thumbRect = NSRect(x: currentX, y: 8, width: thumbWidth, height: thumbHeight)
+                    thumbnail.draw(in: thumbRect, from: .zero, operation: .sourceOver, fraction: 0.8)
+                    
+                    // Draw subtle border between thumbnails
+                    if i < thumbnailsNeeded - 1 {
+                        NSColor.separatorColor.withAlphaComponent(0.3).setStroke()
+                        let borderPath = NSBezierPath()
+                        borderPath.move(to: NSPoint(x: currentX + thumbWidth, y: 8))
+                        borderPath.line(to: NSPoint(x: currentX + thumbWidth, y: 8 + thumbHeight))
+                        borderPath.lineWidth = 0.5
+                        borderPath.stroke()
+                    }
+                    
+                    currentX += thumbWidth
+                }
+            } else if let thumbnail = clip.thumbnail {
+                // Fallback to single thumbnail if strip not ready yet
+                let thumbRect = NSRect(x: x + 4, y: 8, width: 28, height: clipHeight - 8)
+                thumbnail.draw(in: thumbRect, from: .zero, operation: .sourceOver, fraction: 0.8)
+            }
         }
 
-        // Clip name
-        let textX = width > 50 ? x + 36 : x + 4
-        let maxTextWidth = width - (width > 50 ? 44 : 8)
-        if maxTextWidth > 20 {
+        // Clip name (draw as overlay with background)
+        if width > 60 {
             let attrs: [NSAttributedString.Key: Any] = [
-                .font: NSFont.systemFont(ofSize: 10),
-                .foregroundColor: isSelected ? NSColor.labelColor : NSColor.secondaryLabelColor
+                .font: NSFont.systemFont(ofSize: 10, weight: .medium),
+                .foregroundColor: NSColor.white
             ]
             let name = clip.displayName
+            let nameSize = name.size(withAttributes: attrs)
+            let padding: CGFloat = 4
+            let nameBgRect = NSRect(
+                x: x + 4,
+                y: 8,
+                width: min(nameSize.width + padding * 2, width - 8),
+                height: nameSize.height + padding
+            )
+            
+            // Semi-transparent background
+            NSColor.black.withAlphaComponent(0.6).setFill()
+            let bgPath = NSBezierPath(roundedRect: nameBgRect, xRadius: 3, yRadius: 3)
+            bgPath.fill()
+            
+            // Draw text
+            let maxTextWidth = width - 16
             let truncated = truncateString(name, toWidth: maxTextWidth, attributes: attrs)
-            truncated.draw(at: NSPoint(x: textX, y: 10), withAttributes: attrs)
+            truncated.draw(at: NSPoint(x: x + 4 + padding, y: 10), withAttributes: attrs)
         }
 
-        // Duration label
-        if width > 60 {
+        // Duration label (draw as overlay)
+        if width > 80 {
             let durationText = formatDuration(clip.trimmedDuration)
             let durationAttrs: [NSAttributedString.Key: Any] = [
-                .font: NSFont.monospacedDigitSystemFont(ofSize: 9, weight: .regular),
-                .foregroundColor: NSColor.tertiaryLabelColor
+                .font: NSFont.monospacedDigitSystemFont(ofSize: 9, weight: .medium),
+                .foregroundColor: NSColor.white
             ]
             let durationSize = durationText.size(withAttributes: durationAttrs)
-            durationText.draw(at: NSPoint(x: x + width - durationSize.width - 4, y: clipHeight - 6), withAttributes: durationAttrs)
+            let padding: CGFloat = 3
+            let durationBgRect = NSRect(
+                x: x + width - durationSize.width - padding * 2 - 4,
+                y: clipHeight - durationSize.height - padding - 4,
+                width: durationSize.width + padding * 2,
+                height: durationSize.height + padding
+            )
+            
+            // Semi-transparent background
+            NSColor.black.withAlphaComponent(0.6).setFill()
+            let bgPath = NSBezierPath(roundedRect: durationBgRect, xRadius: 3, yRadius: 3)
+            bgPath.fill()
+            
+            // Draw text
+            durationText.draw(at: NSPoint(x: x + width - durationSize.width - padding - 4, y: clipHeight - durationSize.height - 4), withAttributes: durationAttrs)
         }
 
+        // Draw trimmed regions if clip is trimmed (like NLEs)
+        if isTrimmed {
+            drawTrimmedRegions(clip: clip, at: x, width: width)
+        }
+        
         // Trim handles (when selected)
         if isSelected {
-            drawTrimHandles(at: x, width: width)
+            drawTrimHandles(at: x, width: width, clip: clip)
         }
     }
 
-    private func drawTrimHandles(at x: CGFloat, width: CGFloat) {
-        let handleColor = NSColor.controlAccentColor.withAlphaComponent(0.8)
+    private func drawTrimmedRegions(clip: TimelineClip, at x: CGFloat, width: CGFloat) {
+        // Draw visual indicators at the edges to show trim state (like NLEs)
+        let indicatorWidth: CGFloat = 3
+        let indicatorColor = NSColor.systemYellow.withAlphaComponent(0.6)
+        
+        // Left trim indicator (if trimmed from start)
+        if clip.inPoint > 0.001 {
+            let leftIndicator = NSRect(x: x + 1, y: 4 + 1, width: indicatorWidth, height: clipHeight - 2)
+            indicatorColor.setFill()
+            NSBezierPath(rect: leftIndicator).fill()
+            
+            // Add small bracket
+            NSColor.systemYellow.setStroke()
+            let bracket = NSBezierPath()
+            bracket.move(to: NSPoint(x: x + indicatorWidth + 2, y: 4 + 4))
+            bracket.line(to: NSPoint(x: x + 2, y: 4 + 4))
+            bracket.line(to: NSPoint(x: x + 2, y: 4 + clipHeight - 4))
+            bracket.line(to: NSPoint(x: x + indicatorWidth + 2, y: 4 + clipHeight - 4))
+            bracket.lineWidth = 1
+            bracket.stroke()
+        }
+        
+        // Right trim indicator (if trimmed from end)
+        if clip.outPoint < 0.999 {
+            let rightIndicator = NSRect(x: x + width - indicatorWidth - 1, y: 4 + 1, width: indicatorWidth, height: clipHeight - 2)
+            indicatorColor.setFill()
+            NSBezierPath(rect: rightIndicator).fill()
+            
+            // Add small bracket
+            NSColor.systemYellow.setStroke()
+            let bracket = NSBezierPath()
+            bracket.move(to: NSPoint(x: x + width - indicatorWidth - 2, y: 4 + 4))
+            bracket.line(to: NSPoint(x: x + width - 2, y: 4 + 4))
+            bracket.line(to: NSPoint(x: x + width - 2, y: 4 + clipHeight - 4))
+            bracket.line(to: NSPoint(x: x + width - indicatorWidth - 2, y: 4 + clipHeight - 4))
+            bracket.lineWidth = 1
+            bracket.stroke()
+        }
+    }
+    
+    private func drawTrimHandles(at x: CGFloat, width: CGFloat, clip: TimelineClip) {
+        let handleColor = NSColor.controlAccentColor
+        let handleWidth: CGFloat = 6
+        let handleHeight = clipHeight
+        
+        // Draw left trim handle
         handleColor.setFill()
-
-        // Left handle
-        let leftHandle = NSRect(x: x, y: 4, width: trimHandleWidth, height: clipHeight)
-        let leftPath = NSBezierPath(roundedRect: leftHandle, xRadius: 3, yRadius: 3)
-        leftPath.fill()
-
-        // Right handle
-        let rightHandle = NSRect(x: x + width - trimHandleWidth, y: 4, width: trimHandleWidth, height: clipHeight)
-        let rightPath = NSBezierPath(roundedRect: rightHandle, xRadius: 3, yRadius: 3)
-        rightPath.fill()
+        let leftHandle = NSRect(x: x, y: 4, width: handleWidth, height: handleHeight)
+        NSBezierPath(roundedRect: leftHandle, xRadius: 2, yRadius: 2).fill()
+        
+        // Draw grip lines on left handle
+        NSColor.white.withAlphaComponent(0.8).setStroke()
+        for i in 0..<3 {
+            let lineX = x + 2 + CGFloat(i) * 1.5
+            let linePath = NSBezierPath()
+            linePath.move(to: NSPoint(x: lineX, y: 4 + 8))
+            linePath.line(to: NSPoint(x: lineX, y: 4 + handleHeight - 8))
+            linePath.lineWidth = 0.5
+            linePath.stroke()
+        }
+        
+        // Draw right trim handle
+        handleColor.setFill()
+        let rightHandle = NSRect(x: x + width - handleWidth, y: 4, width: handleWidth, height: handleHeight)
+        NSBezierPath(roundedRect: rightHandle, xRadius: 2, yRadius: 2).fill()
+        
+        // Draw grip lines on right handle
+        NSColor.white.withAlphaComponent(0.8).setStroke()
+        for i in 0..<3 {
+            let lineX = x + width - handleWidth + 2 + CGFloat(i) * 1.5
+            let linePath = NSBezierPath()
+            linePath.move(to: NSPoint(x: lineX, y: 4 + 8))
+            linePath.line(to: NSPoint(x: lineX, y: 4 + handleHeight - 8))
+            linePath.lineWidth = 0.5
+            linePath.stroke()
+        }
     }
 
     private func drawTransition(_ transition: ClipTransition, at x: CGFloat) {
@@ -680,6 +848,45 @@ class TimelineTrackNSView: NSView {
         isScrubbing = false
         needsDisplay = true
     }
+    
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        
+        // Remove existing tracking areas
+        for area in trackingAreas {
+            removeTrackingArea(area)
+        }
+        
+        // Add tracking area for cursor updates
+        let trackingArea = NSTrackingArea(
+            rect: bounds,
+            options: [.activeInKeyWindow, .mouseMoved, .mouseEnteredAndExited],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(trackingArea)
+    }
+    
+    override func mouseMoved(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        
+        // Check if hovering over trim handle
+        if let trimInfo = trimEdgeAt(point) {
+            NSCursor.resizeLeftRight.set()
+            
+            // Set tooltip showing trim percentage
+            let clip = clips[trimInfo.clipIndex]
+            let percentage = Int((trimInfo.edge == .left ? clip.inPoint : clip.outPoint) * 100)
+            toolTip = "Trim \(trimInfo.edge == .left ? "In" : "Out"): \(percentage)%"
+        } else {
+            NSCursor.arrow.set()
+            toolTip = nil
+        }
+    }
+    
+    override func mouseExited(with event: NSEvent) {
+        NSCursor.arrow.set()
+    }
 
     private func handleTrimDrag(point: NSPoint, clipIndex: Int) {
         guard clipIndex < clips.count else { return }
@@ -694,20 +901,30 @@ class TimelineTrackNSView: NSView {
         let clipWidth = CGFloat(clip.trimmedDuration / totalDuration) * availableWidth
         let clipSourceDuration = clip.sourceDuration
 
+        // Throttle trim updates to prevent overwhelming the system
+        let now = Date().timeIntervalSince1970
+        let shouldUpdate = now - lastTrimTime >= minTrimInterval
+        
         switch trimmingEdge {
         case .left:
             // Calculate new in point
             let deltaX = point.x - currentX
             let deltaNormalized = (deltaX / availableWidth) * totalDuration / clipSourceDuration
             let newInPoint = max(0, min(clip.outPoint - 0.05, trimStartValue + deltaNormalized))
-            delegate?.trackDidTrimClip(clip.id, inPoint: newInPoint, outPoint: clip.outPoint)
+            if shouldUpdate {
+                delegate?.trackDidTrimClip(clip.id, inPoint: newInPoint, outPoint: clip.outPoint)
+                lastTrimTime = now
+            }
 
         case .right:
             // Calculate new out point
             let deltaX = point.x - (currentX + clipWidth)
             let deltaNormalized = (deltaX / availableWidth) * totalDuration / clipSourceDuration
             let newOutPoint = max(clip.inPoint + 0.05, min(1.0, trimStartValue + deltaNormalized))
-            delegate?.trackDidTrimClip(clip.id, inPoint: clip.inPoint, outPoint: newOutPoint)
+            if shouldUpdate {
+                delegate?.trackDidTrimClip(clip.id, inPoint: clip.inPoint, outPoint: newOutPoint)
+                lastTrimTime = now
+            }
 
         case .none:
             break
@@ -746,8 +963,8 @@ class TimelineTrackNSView: NSView {
 
 #Preview {
     TimelineTrackView()
-        .environmentObject(TimelineViewModel())
-        .environmentObject(ProjectViewModel())
+        .environment(TimelineViewModel())
+        .environment(ProjectViewModel())
         .frame(width: 600, height: 80)
         .padding()
 }

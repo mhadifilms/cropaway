@@ -10,7 +10,7 @@ import AVKit
 /// Video player that shows only a clipped portion of the video
 /// Used when Preserve Size is OFF to zoom in on the cropped region
 struct ClippedVideoPlayerView: NSViewRepresentable {
-    @EnvironmentObject var playerVM: VideoPlayerViewModel
+    @Environment(VideoPlayerViewModel.self) private var playerVM: VideoPlayerViewModel
 
     /// The portion of the video to show (normalized 0-1 coordinates)
     let cropRect: CGRect

@@ -10,8 +10,8 @@ import SwiftUI
 struct AIToolbarView: View {
     let video: VideoItem
 
-    @EnvironmentObject var cropEditorVM: CropEditorViewModel
-    @EnvironmentObject var keyframeVM: KeyframeViewModel
+    @Environment(CropEditorViewModel.self) private var cropEditorVM: CropEditorViewModel
+    @Environment(KeyframeViewModel.self) private var keyframeVM: KeyframeViewModel
     @ObservedObject var falAIService = FalAIService.shared
 
     @State private var showingSetup = false
@@ -464,8 +464,8 @@ struct AIToolbarView: View {
                 AIToolbarView(video: video)
                 Spacer()
             }
-            .environmentObject(CropEditorViewModel())
-            .environmentObject(KeyframeViewModel())
+            .environment(CropEditorViewModel())
+            .environment(KeyframeViewModel())
             .frame(width: 800, height: 400)
             .background(Color.black)
         }
