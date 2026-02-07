@@ -10,6 +10,7 @@ import UniformTypeIdentifiers
 
 struct VideoSidebarView: View {
     @EnvironmentObject var projectVM: ProjectViewModel
+    @EnvironmentObject var timelineVM: TimelineViewModel
 
     var body: some View {
         VStack(spacing: 0) {
@@ -113,6 +114,22 @@ struct VideoSidebarView: View {
         if projectVM.selectedVideoIDs.count > 1 {
             Button("Export Selected (\(projectVM.selectedVideoIDs.count))...") {
                 NotificationCenter.default.post(name: .exportAllVideos, object: nil)
+            }
+        }
+
+        Divider()
+
+        // Sequence creation options
+        if projectVM.selectedVideoIDs.count >= 2 {
+            Button("Create Sequence from Selected") {
+                let selectedVideos = projectVM.videos.filter { projectVM.selectedVideoIDs.contains($0.id) }
+                timelineVM.createSequence(from: selectedVideos)
+            }
+        }
+
+        if timelineVM.isSequenceMode {
+            Button("Add to Sequence") {
+                timelineVM.addClip(from: video)
             }
         }
 

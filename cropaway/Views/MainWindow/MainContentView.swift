@@ -13,6 +13,7 @@ struct MainContentView: View {
     @StateObject private var cropEditorVM = CropEditorViewModel()
     @StateObject private var exportVM = ExportViewModel()
     @StateObject private var keyframeVM = KeyframeViewModel()
+    @StateObject private var timelineVM = TimelineViewModel()
     @StateObject private var undoManager = CropUndoManager()
 
     @State private var columnVisibility = NavigationSplitViewVisibility.all
@@ -23,6 +24,7 @@ struct MainContentView: View {
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             VideoSidebarView()
+                .environmentObject(timelineVM)
                 .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 300)
         } detail: {
             detailContent
@@ -39,6 +41,7 @@ struct MainContentView: View {
         .modifier(CropNotificationHandler(undoManager: undoManager, cropEditorVM: cropEditorVM, keyframeVM: keyframeVM, playerVM: playerVM))
         .modifier(PlaybackNotificationHandler(playerVM: playerVM))
         .modifier(VideoSelectionNotificationHandler(projectVM: projectVM))
+        .modifier(SequenceNotificationHandler(timelineVM: timelineVM, projectVM: projectVM, playerVM: playerVM))
     }
 
     @ViewBuilder
@@ -49,6 +52,7 @@ struct MainContentView: View {
                 .environmentObject(cropEditorVM)
                 .environmentObject(exportVM)
                 .environmentObject(keyframeVM)
+                .environmentObject(timelineVM)
                 .environmentObject(undoManager)
         } else {
             EmptyStateView()
@@ -702,6 +706,97 @@ struct EmptyStateView: View {
         panel.allowedContentTypes = [.movie, .video, .quickTimeMovie, .mpeg4Movie]
         if panel.runModal() == .OK {
             Task { await projectVM.addVideos(from: panel.urls) }
+        }
+    }
+}
+
+// MARK: - Sequence Notification Handler
+
+struct SequenceNotificationHandler: ViewModifier {
+    let timelineVM: TimelineViewModel
+    let projectVM: ProjectViewModel
+    let playerVM: VideoPlayerViewModel
+
+    func body(content: Content) -> some View {
+        content
+            .onReceive(NotificationCenter.default.publisher(for: .toggleSequenceMode)) { _ in
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    timelineVM.toggleSequenceMode()
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .createSequence)) { _ in
+                createSequenceFromSelection()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .addToSequence)) { _ in
+                addSelectedToSequence()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .splitClip)) { _ in
+                _ = timelineVM.splitSelectedClipAtPlayhead()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .setInPoint)) { _ in
+                timelineVM.setInPointAtPlayhead()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .setOutPoint)) { _ in
+                timelineVM.setOutPointAtPlayhead()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .nextClip)) { _ in
+                timelineVM.goToNextClip()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .previousClip)) { _ in
+                timelineVM.goToPreviousClip()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .exportSequence)) { _ in
+                exportSequence()
+            }
+    }
+
+    private func createSequenceFromSelection() {
+        // Get selected videos (requires at least 2)
+        guard projectVM.selectedVideoIDs.count >= 2 else { return }
+        let selectedVideos = projectVM.videos.filter { projectVM.selectedVideoIDs.contains($0.id) }
+        timelineVM.createSequence(from: selectedVideos)
+    }
+
+    private func addSelectedToSequence() {
+        guard timelineVM.isSequenceMode,
+              let video = projectVM.selectedVideo else { return }
+        timelineVM.addClip(from: video)
+    }
+
+    private func exportSequence() {
+        guard let timeline = timelineVM.timeline, !timeline.isEmpty else { return }
+
+        // Pause playback before export
+        playerVM.pause()
+
+        // Show save panel
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.quickTimeMovie]
+        panel.nameFieldStringValue = "\(timeline.name).mov"
+        panel.canCreateDirectories = true
+
+        if panel.runModal() == .OK, let url = panel.url {
+            Task {
+                let exportService = TimelineExportService()
+                do {
+                    _ = try await exportService.exportTimeline(timeline, to: url) { progress in
+                        // Update progress UI
+                        print("Export progress: \(Int(progress * 100))%")
+                    }
+                    // Show in Finder
+                    NSWorkspace.shared.activateFileViewerSelecting([url])
+                } catch {
+                    // Show error alert
+                    await MainActor.run {
+                        let alert = NSAlert()
+                        alert.messageText = "Export Failed"
+                        alert.informativeText = error.localizedDescription
+                        alert.alertStyle = .warning
+                        alert.addButton(withTitle: "OK")
+                        alert.runModal()
+                    }
+                }
+            }
         }
     }
 }

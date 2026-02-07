@@ -133,37 +133,41 @@ struct CropToolbarView: View {
     // MARK: - Options Section
 
     private var optionsSection: some View {
-        HStack(spacing: 10) {
-            Toggle(isOn: Binding(
-                get: { cropConfig.preserveWidth },
-                set: { newValue in
-                    cropConfig.preserveWidth = newValue
-                    if !newValue {
-                        keyframeVM.keyframesEnabled = false
-                        cropConfig.enableAlphaChannel = false
-                    }
+        HStack(spacing: 2) {
+            Button {
+                cropConfig.preserveWidth.toggle()
+                if !cropConfig.preserveWidth {
+                    keyframeVM.keyframesEnabled = false
+                    cropConfig.enableAlphaChannel = false
                 }
-            )) {
-                Text("Preserve Size")
-                    .font(.system(size: 11))
+            } label: {
+                Image(systemName: cropConfig.preserveWidth ? "lock.fill" : "lock.open")
+                    .font(.system(size: 12))
+                    .foregroundStyle(cropConfig.preserveWidth ? Color.white : Color.primary)
+                    .frame(width: 32, height: 32)
+                    .contentShape(RoundedRectangle(cornerRadius: 8))
             }
-            .toggleStyle(.checkbox)
+            .buttonStyle(.borderless)
+            .liquidGlassButton(isSelected: cropConfig.preserveWidth)
             .disabled(keyframeVM.keyframesEnabled || cropConfig.enableAlphaChannel)
-            .help("Keep original dimensions")
+            .opacity((keyframeVM.keyframesEnabled || cropConfig.enableAlphaChannel) ? 0.4 : 1.0)
+            .help("Preserve Size - Keep original dimensions")
 
-            Toggle(isOn: Binding(
-                get: { cropConfig.enableAlphaChannel },
-                set: { newValue in
-                    if newValue { cropConfig.preserveWidth = true }
-                    cropConfig.enableAlphaChannel = newValue
-                }
-            )) {
-                Text("Alpha")
-                    .font(.system(size: 11))
+            Button {
+                if !cropConfig.preserveWidth { cropConfig.preserveWidth = true }
+                cropConfig.enableAlphaChannel.toggle()
+            } label: {
+                Image(systemName: cropConfig.enableAlphaChannel ? "checkerboard.rectangle" : "rectangle")
+                    .font(.system(size: 12))
+                    .foregroundStyle(cropConfig.enableAlphaChannel ? Color.white : Color.primary)
+                    .frame(width: 32, height: 32)
+                    .contentShape(RoundedRectangle(cornerRadius: 8))
             }
-            .toggleStyle(.checkbox)
+            .buttonStyle(.borderless)
+            .liquidGlassButton(isSelected: cropConfig.enableAlphaChannel)
             .disabled(!cropConfig.preserveWidth)
-            .help("Export with transparency")
+            .opacity(cropConfig.preserveWidth ? 1.0 : 0.4)
+            .help("Alpha - Export with transparency")
         }
     }
 

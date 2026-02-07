@@ -14,6 +14,7 @@ struct VideoDetailView: View {
     @EnvironmentObject var cropEditorVM: CropEditorViewModel
     @EnvironmentObject var exportVM: ExportViewModel
     @EnvironmentObject var keyframeVM: KeyframeViewModel
+    @EnvironmentObject var timelineVM: TimelineViewModel
 
     // Read from video's crop config (same source as toolbar toggles)
     private var preserveSize: Bool { video.cropConfiguration.preserveWidth }
@@ -48,8 +49,17 @@ struct VideoDetailView: View {
                         .padding(.vertical, 10)
                         .toolbarGlassBackground()
 
-                    // Keyframe timeline
-                    if keyframeVM.keyframesEnabled {
+                    // Sequence timeline (when in sequence mode)
+                    if timelineVM.isSequenceMode {
+                        Divider()
+                        TimelineTrackView()
+                            .frame(height: 80)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .toolbarGlassBackground()
+                    }
+                    // Keyframe timeline (when not in sequence mode)
+                    else if keyframeVM.keyframesEnabled {
                         Divider()
                         KeyframeTimelineView()
                             .frame(height: 56)

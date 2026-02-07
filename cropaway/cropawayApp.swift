@@ -366,6 +366,60 @@ struct CropawayCommands: Commands {
             .keyboardShortcut("l", modifiers: .command)
         }
 
+        // Sequence menu
+        CommandMenu("Sequence") {
+            Button("Toggle Sequence Mode") {
+                NotificationCenter.default.post(name: .toggleSequenceMode, object: nil)
+            }
+            .keyboardShortcut("5", modifiers: .command)
+
+            Button("Create Sequence from Selected") {
+                NotificationCenter.default.post(name: .createSequence, object: nil)
+            }
+            .keyboardShortcut("n", modifiers: [.command, .shift])
+
+            Button("Add Selected to Sequence") {
+                NotificationCenter.default.post(name: .addToSequence, object: nil)
+            }
+            .keyboardShortcut("=", modifiers: .command)
+
+            Divider()
+
+            Button("Set In Point") {
+                NotificationCenter.default.post(name: .setInPoint, object: nil)
+            }
+            .keyboardShortcut("i", modifiers: [])
+
+            Button("Set Out Point") {
+                NotificationCenter.default.post(name: .setOutPoint, object: nil)
+            }
+            .keyboardShortcut("o", modifiers: [])
+
+            Button("Split Clip") {
+                NotificationCenter.default.post(name: .splitClip, object: nil)
+            }
+            .keyboardShortcut("b", modifiers: .command)
+
+            Divider()
+
+            Button("Next Clip") {
+                NotificationCenter.default.post(name: .nextClip, object: nil)
+            }
+            .keyboardShortcut("]", modifiers: [.command, .shift])
+
+            Button("Previous Clip") {
+                NotificationCenter.default.post(name: .previousClip, object: nil)
+            }
+            .keyboardShortcut("[", modifiers: [.command, .shift])
+
+            Divider()
+
+            Button("Export Sequence...") {
+                NotificationCenter.default.post(name: .exportSequence, object: nil)
+            }
+            .keyboardShortcut("e", modifiers: [.command, .option])
+        }
+
         // Window menu additions
         CommandGroup(after: .windowSize) {
             Button("Next Video") {
@@ -440,4 +494,15 @@ extension Notification.Name {
     // Video selection
     static let selectNextVideo = Notification.Name("selectNextVideo")
     static let selectPreviousVideo = Notification.Name("selectPreviousVideo")
+
+    // Sequence operations
+    static let createSequence = Notification.Name("createSequence")
+    static let toggleSequenceMode = Notification.Name("toggleSequenceMode")
+    static let addToSequence = Notification.Name("addToSequence")
+    static let splitClip = Notification.Name("splitClip")
+    static let setInPoint = Notification.Name("setInPoint")
+    static let setOutPoint = Notification.Name("setOutPoint")
+    static let exportSequence = Notification.Name("exportSequence")
+    static let nextClip = Notification.Name("nextClip")
+    static let previousClip = Notification.Name("previousClip")
 }

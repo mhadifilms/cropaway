@@ -93,6 +93,25 @@ final class VideoPlayerViewModel: ObservableObject {
                 self?.isPlaying = status == .playing
             }
             .store(in: &cancellables)
+        
+        // Preroll and seek to first frame to ensure it loads immediately
+        // This fixes the "black first frame" issue
+        Task {
+            // Wait for player item to be ready
+            guard let playerItem = player?.currentItem else { return }
+            
+            // Seek to a tiny bit forward (0.01 seconds) then back to 0
+            // This forces AVPlayer to load and display the first frame
+            let firstFrameTime = CMTime(seconds: 0.01, preferredTimescale: 600)
+            await playerItem.seek(to: firstFrameTime, toleranceBefore: .zero, toleranceAfter: .zero)
+            
+            // Now seek back to actual start
+            let zeroTime = CMTime.zero
+            await playerItem.seek(to: zeroTime, toleranceBefore: .zero, toleranceAfter: .zero)
+            
+            // Preroll at rate 0 to load the frame without playing
+            await player?.preroll(atRate: 0)
+        }
     }
 
     func play() {
