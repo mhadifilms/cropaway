@@ -13,10 +13,15 @@ final class VideoPlayerViewModel: ObservableObject {
     @Published var player: AVPlayer?
     @Published var currentTime: Double = 0
     @Published var duration: Double = 0
+    @Published var frameRate: Double = 0
     @Published var isPlaying: Bool = false
     @Published var videoSize: CGSize = .zero
     @Published var isLooping: Bool = false
     @Published var currentRate: Float = 1.0
+    @Published var showFrameCount: Bool = false  // Toggle between timecode and frame display
+    
+    // Current video being played (for timeline sync)
+    private(set) var currentVideo: VideoItem?
 
     // Shuttle control state for J/K/L speed ramping
     private var shuttleSpeed: Float = 0
@@ -25,17 +30,30 @@ final class VideoPlayerViewModel: ObservableObject {
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
     private var cancellables = Set<AnyCancellable>()
+    private var metadataCancellable: AnyCancellable?
 
     // Store weak references for cleanup in deinit
     nonisolated(unsafe) private var playerForCleanup: AVPlayer?
     nonisolated(unsafe) private var observerForCleanup: Any?
 
     func loadVideo(_ video: VideoItem) {
+        // Store current video
+        currentVideo = video
+        
         // Remove previous observer
         if let observer = timeObserver {
             player?.removeTimeObserver(observer)
             timeObserver = nil
         }
+
+        // Subscribe to frame rate from metadata
+        metadataCancellable?.cancel()
+        frameRate = video.metadata.frameRate
+        metadataCancellable = video.metadata.$frameRate
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] value in
+                self?.frameRate = value
+            }
 
         let asset = video.getAsset()
         let playerItem = AVPlayerItem(asset: asset)
@@ -99,6 +117,13 @@ final class VideoPlayerViewModel: ObservableObject {
         Task {
             // Wait for player item to be ready
             guard let playerItem = player?.currentItem else { return }
+            guard let player = player else { return }
+            
+            // Wait for player status to be ready
+            while player.status != .readyToPlay {
+                try? await Task.sleep(nanoseconds: 10_000_000) // 0.01 seconds
+                if player.currentItem != playerItem { return } // Item changed, abort
+            }
             
             // Seek to a tiny bit forward (0.01 seconds) then back to 0
             // This forces AVPlayer to load and display the first frame
@@ -110,7 +135,7 @@ final class VideoPlayerViewModel: ObservableObject {
             await playerItem.seek(to: zeroTime, toleranceBefore: .zero, toleranceAfter: .zero)
             
             // Preroll at rate 0 to load the frame without playing
-            await player?.preroll(atRate: 0)
+            await player.preroll(atRate: 0)
         }
     }
 
@@ -279,6 +304,36 @@ final class VideoPlayerViewModel: ObservableObject {
         } else {
             return String(format: "%.1fx", currentRate)
         }
+    }
+    
+    // MARK: - Frame Count Display
+    
+    var totalFrameCount: Int {
+        guard duration > 0, frameRate > 0 else { return 0 }
+        let frames = Int((duration * frameRate).rounded(.down))
+        return max(frames, 1)
+    }
+    
+    var currentFrameIndex: Int {
+        guard frameRate > 0 else { return 0 }
+        let frame = Int((currentTime * frameRate).rounded(.down))
+        let lastIndex = max(totalFrameCount - 1, 0)
+        return min(max(frame, 0), lastIndex)
+    }
+    
+    var frameDisplayString: String {
+        let lastIndex = max(totalFrameCount - 1, 0)
+        return "\(currentFrameIndex) / \(lastIndex)"
+    }
+    
+    // MARK: - Timecode Display
+    
+    var timecodeDisplayString: String {
+        return "\(currentTime.smpteTimecode(fps: frameRate)) / \(duration.smpteTimecode(fps: frameRate))"
+    }
+    
+    func toggleTimeDisplay() {
+        showFrameCount.toggle()
     }
 
     // MARK: - Frame Capture

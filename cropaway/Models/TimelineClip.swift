@@ -35,6 +35,8 @@ final class TimelineClip: Identifiable, ObservableObject, Codable {
 
     /// Cached thumbnail for display in timeline track
     @Published var thumbnail: NSImage?
+    
+    private var cancellables = Set<AnyCancellable>()
 
     init(
         id: UUID = UUID(),
@@ -48,6 +50,20 @@ final class TimelineClip: Identifiable, ObservableObject, Codable {
         self.inPoint = max(0, min(1.0, inPoint))
         self.outPoint = max(0, min(1.0, outPoint))
         self.thumbnail = videoItem.thumbnail
+        
+        // Observe thumbnail changes from the video item
+        videoItem.$thumbnail
+            .sink { [weak self] newThumbnail in
+                self?.thumbnail = newThumbnail
+            }
+            .store(in: &cancellables)
+        
+        // Observe metadata changes to trigger duration recalculation
+        videoItem.$metadata
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+            .store(in: &cancellables)
     }
 
     // MARK: - Codable
@@ -116,6 +132,22 @@ final class TimelineClip: Identifiable, ObservableObject, Codable {
     func resolveVideoItem(from videos: [VideoItem]) {
         videoItem = videos.first { $0.id == sourceVideoID }
         thumbnail = videoItem?.thumbnail
+        
+        // Re-subscribe to thumbnail and metadata changes
+        if let videoItem = videoItem {
+            cancellables.removeAll()
+            videoItem.$thumbnail
+                .sink { [weak self] newThumbnail in
+                    self?.thumbnail = newThumbnail
+                }
+                .store(in: &cancellables)
+            
+            videoItem.$metadata
+                .sink { [weak self] _ in
+                    self?.objectWillChange.send()
+                }
+                .store(in: &cancellables)
+        }
     }
 
     /// Set in point from a time in seconds

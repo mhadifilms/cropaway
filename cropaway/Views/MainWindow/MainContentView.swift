@@ -30,9 +30,14 @@ struct MainContentView: View {
             detailContent
         }
         .navigationSplitViewStyle(.balanced)
+        .onAppear {
+            // Bind player to timeline for synchronization
+            timelineVM.videoPlayer = playerVM
+        }
         .onDrop(of: [.fileURL], isTargeted: nil) { handleDrop($0) }
         .onChange(of: projectVM.selectedVideo) { handleVideoChange($0, $1) }
         .onChange(of: playerVM.currentTime) { handleTimeChange($0, $1) }
+        .onChange(of: timelineVM.selectedClip) { handleTimelineClipChange($0, $1) }
         .sheet(isPresented: showExportSheet) { exportSheet }
         .alert("Export Error", isPresented: errorBinding) { errorAlert }
         .modifier(FileNotificationHandler(projectVM: projectVM, exportVM: exportVM, playerVM: playerVM))
@@ -46,6 +51,7 @@ struct MainContentView: View {
 
     @ViewBuilder
     private var detailContent: some View {
+        // Show selected video from sidebar (timeline selection is independent)
         if let video = projectVM.selectedVideo {
             VideoDetailView(video: video, viewScale: $viewScale)
                 .environmentObject(playerVM)
@@ -116,6 +122,45 @@ struct MainContentView: View {
     private func handleTimeChange(_ oldValue: Double, _ newTime: Double) {
         if keyframeVM.keyframesEnabled && keyframeVM.keyframes.count >= 2 {
             keyframeVM.applyKeyframeState(at: newTime)
+        }
+        
+        // Sync timeline playhead with player when timeline is active
+        if timelineVM.isTimelinePanelVisible && timelineVM.activeTimeline != nil {
+            // Calculate timeline position based on current clip and time within it
+            if let clip = timelineVM.selectedClip,
+               let clipIndex = timelineVM.selectedClipIndex,
+               let timeline = timelineVM.activeTimeline {
+                let clipStartTime = timeline.startTime(forClipAt: clipIndex)
+                timelineVM.playheadTime = clipStartTime + newTime
+            }
+        }
+    }
+    
+    private func handleTimelineClipChange(_ oldClip: TimelineClip?, _ newClip: TimelineClip?) {
+        // When timeline is active, switching clips should load that clip's video
+        guard timelineVM.isTimelinePanelVisible,
+              let clip = newClip,
+              let video = clip.videoItem else { return }
+        
+        // Load the clip's video into player and crop editor
+        playerVM.loadVideo(video)
+        cropEditorVM.bind(to: video)
+        keyframeVM.bind(to: video, cropEditor: cropEditorVM)
+        undoManager.bind(to: cropEditorVM)
+        undoManager.clearHistory()
+        
+        // Set up auto-keyframe for this clip
+        let kfVM = keyframeVM
+        let pVM = playerVM
+        let um = undoManager
+        cropEditorVM.onCropEditEnded = {
+            if kfVM.keyframesEnabled {
+                let hadKeyframeAtTime = kfVM.hasKeyframe(at: pVM.currentTime)
+                kfVM.autoCreateKeyframe(at: pVM.currentTime)
+                if !hadKeyframeAtTime {
+                    um.recordAction(type: .keyframeAdd)
+                }
+            }
         }
     }
 }
@@ -721,7 +766,7 @@ struct SequenceNotificationHandler: ViewModifier {
         content
             .onReceive(NotificationCenter.default.publisher(for: .toggleSequenceMode)) { _ in
                 withAnimation(.easeInOut(duration: 0.2)) {
-                    timelineVM.toggleSequenceMode()
+                    timelineVM.toggleTimelinePanel()
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: .createSequence)) { _ in
@@ -729,6 +774,9 @@ struct SequenceNotificationHandler: ViewModifier {
             }
             .onReceive(NotificationCenter.default.publisher(for: .addToSequence)) { _ in
                 addSelectedToSequence()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .addVideoToTimeline)) { _ in
+                addVideoToTimeline()
             }
             .onReceive(NotificationCenter.default.publisher(for: .splitClip)) { _ in
                 _ = timelineVM.splitSelectedClipAtPlayhead()
@@ -761,6 +809,42 @@ struct SequenceNotificationHandler: ViewModifier {
         guard timelineVM.isSequenceMode,
               let video = projectVM.selectedVideo else { return }
         timelineVM.addClip(from: video)
+    }
+    
+    private func addVideoToTimeline() {
+        // Open file picker to select video files
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.allowedContentTypes = [.movie, .video, .quickTimeMovie, .mpeg4Movie]
+        
+        if panel.runModal() == .OK {
+            Task { @MainActor in
+                // Add videos to project
+                await projectVM.addVideos(from: panel.urls)
+                
+                // Enable timeline panel if not already
+                if !timelineVM.isTimelinePanelVisible {
+                    timelineVM.toggleTimelinePanel()
+                }
+                
+                // Track if this is the first clip
+                let isFirstClip = timelineVM.timeline?.isEmpty ?? true
+                
+                // Add all newly imported videos to timeline
+                for url in panel.urls {
+                    if let video = projectVM.videos.first(where: { $0.sourceURL == url }) {
+                        timelineVM.addClip(from: video)
+                    }
+                }
+                
+                // Auto-select first clip if we just added the first one
+                if isFirstClip, let firstClip = timelineVM.timeline?.clips.first {
+                    timelineVM.selectClip(id: firstClip.id)
+                }
+            }
+        }
     }
 
     private func exportSequence() {

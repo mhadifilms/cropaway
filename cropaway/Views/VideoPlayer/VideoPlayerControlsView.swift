@@ -108,6 +108,20 @@ struct VideoPlayerControlsView: View {
             }
             .buttonStyle(.borderless)
             .help("Loop playback (\u{2318}L)")
+            
+            Divider()
+                .frame(height: 20)
+            
+            // Add to timeline button
+            Button {
+                NotificationCenter.default.post(name: .addVideoToTimeline, object: nil)
+            } label: {
+                Image(systemName: "plus.rectangle.on.rectangle")
+                    .font(.system(size: 12))
+                    .frame(width: 24, height: 24)
+            }
+            .buttonStyle(.borderless)
+            .help("Add video to timeline (\u{2318}\u{21E7}T)")
 
             // Timeline scrubber
             VideoTimelineView()
@@ -125,11 +139,15 @@ struct VideoPlayerControlsView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 4))
             }
 
-            // Time display
-            Text("\(playerVM.currentTime.timeDisplayString) / \(playerVM.duration.timeDisplayString)")
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .frame(minWidth: 110, alignment: .trailing)
+            // Time display (clickable to toggle between timecode and frame count)
+            Button(action: playerVM.toggleTimeDisplay) {
+                Text(playerVM.showFrameCount ? playerVM.frameDisplayString : playerVM.timecodeDisplayString)
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .frame(minWidth: 130, alignment: .trailing)
+            }
+            .buttonStyle(.plain)
+            .help("Click to toggle between timecode and frame count")
         }
         .frame(height: 32)
     }

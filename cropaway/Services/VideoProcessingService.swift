@@ -90,7 +90,7 @@ final class VideoProcessingService {
         let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mov)
 
         // Copy global/container metadata from source (creation time, copyright, etc.)
-        writer.metadata = asset.metadata
+        writer.metadata = try await asset.load(.metadata)
 
         // Build video output settings
         let videoSettings = try await buildVideoOutputSettings(

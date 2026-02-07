@@ -16,13 +16,21 @@ struct VideoDetailView: View {
     @EnvironmentObject var keyframeVM: KeyframeViewModel
     @EnvironmentObject var timelineVM: TimelineViewModel
 
-    // Read from video's crop config (same source as toolbar toggles)
-    private var preserveSize: Bool { video.cropConfiguration.preserveWidth }
-    private var enableAlpha: Bool { video.cropConfiguration.enableAlphaChannel }
+    // If timeline has a selected clip, use that; otherwise use the passed video
+    private var activeVideo: VideoItem {
+        if let clip = timelineVM.selectedClip, let clipVideo = clip.videoItem {
+            return clipVideo
+        }
+        return video
+    }
+    
+    // Read from active video's crop config
+    private var preserveSize: Bool { activeVideo.cropConfiguration.preserveWidth }
+    private var enableAlpha: Bool { activeVideo.cropConfiguration.enableAlphaChannel }
 
     var body: some View {
         VStack(spacing: 0) {
-            CropToolbarView(video: video)
+            CropToolbarView(video: activeVideo)
 
             GeometryReader { geometry in
                 VStack(spacing: 0) {
@@ -49,20 +57,21 @@ struct VideoDetailView: View {
                         .padding(.vertical, 10)
                         .toolbarGlassBackground()
 
-                    // Sequence timeline (when in sequence mode)
-                    if timelineVM.isSequenceMode {
+                    // Keyframe timeline (when enabled)
+                    if keyframeVM.keyframesEnabled {
                         Divider()
-                        TimelineTrackView()
-                            .frame(height: 80)
+                        KeyframeTimelineView()
+                            .frame(height: 56)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
                             .toolbarGlassBackground()
                     }
-                    // Keyframe timeline (when not in sequence mode)
-                    else if keyframeVM.keyframesEnabled {
+                    
+                    // Sequence timeline (when panel is visible)
+                    if timelineVM.isTimelinePanelVisible && timelineVM.activeTimeline != nil {
                         Divider()
-                        KeyframeTimelineView()
-                            .frame(height: 56)
+                        TimelineTrackView()
+                            .frame(height: 80)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
                             .toolbarGlassBackground()

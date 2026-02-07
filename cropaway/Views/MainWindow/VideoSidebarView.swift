@@ -242,8 +242,8 @@ struct VideoRowView: View {
             parts.append("\(meta.width)x\(meta.height)")
         }
 
-        if meta.duration > 0 {
-            parts.append(meta.duration.timeDisplayString)
+        if meta.totalFrameCount > 0 {
+            parts.append("\(meta.totalFrameCount) frames")
         }
 
         return parts.joined(separator: " | ")

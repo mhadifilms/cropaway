@@ -13,20 +13,27 @@ final class TimelineViewModel: ObservableObject {
 
     // MARK: - Published Properties
 
-    /// The current timeline being edited (nil when not in sequence mode)
-    @Published var timeline: Timeline?
+    /// All open timelines (can have multiple)
+    @Published var timelines: [Timeline] = []
+    
+    /// The currently active timeline being edited
+    @Published var activeTimeline: Timeline?
+    
+    /// Whether timeline panel is visible
+    @Published var isTimelinePanelVisible: Bool = false
 
-    /// Whether sequence mode is active
-    @Published var isSequenceMode: Bool = false
-
-    /// Currently selected clip ID
+    /// Currently selected clip ID in active timeline
     @Published var selectedClipID: UUID?
 
     /// Currently selected transition ID (for editing)
     @Published var selectedTransitionID: UUID?
 
     /// Current playhead position in the timeline (seconds)
+    /// This is computed from the player when active, not stored independently
     @Published var playheadTime: Double = 0
+    
+    /// Reference to the video player for synchronization
+    weak var videoPlayer: VideoPlayerViewModel?
 
     /// Whether dragging is in progress
     @Published var isDragging: Bool = false
@@ -35,40 +42,52 @@ final class TimelineViewModel: ObservableObject {
     @Published var draggingClipIndex: Int?
 
     private var cancellables = Set<AnyCancellable>()
+    
+    /// Legacy support - maps to activeTimeline for backward compatibility
+    var timeline: Timeline? {
+        get { activeTimeline }
+        set { activeTimeline = newValue }
+    }
+    
+    /// Legacy support - maps to panel visibility
+    var isSequenceMode: Bool {
+        get { isTimelinePanelVisible && activeTimeline != nil }
+        set { isTimelinePanelVisible = newValue }
+    }
 
     // MARK: - Computed Properties
 
     /// The currently selected clip
     var selectedClip: TimelineClip? {
         guard let id = selectedClipID else { return nil }
-        return timeline?.clips.first { $0.id == id }
+        return activeTimeline?.clips.first { $0.id == id }
     }
 
     /// The currently selected transition
     var selectedTransition: ClipTransition? {
         guard let id = selectedTransitionID else { return nil }
-        return timeline?.transitions.first { $0.id == id }
+        return activeTimeline?.transitions.first { $0.id == id }
     }
 
     /// Index of the currently selected clip
     var selectedClipIndex: Int? {
         guard let id = selectedClipID else { return nil }
-        return timeline?.clips.firstIndex { $0.id == id }
+        return activeTimeline?.clips.firstIndex { $0.id == id }
     }
 
     /// Total duration of the timeline
     var totalDuration: Double {
-        timeline?.totalDuration ?? 0
+        activeTimeline?.totalDuration ?? 0
     }
 
     /// Number of clips in the timeline
     var clipCount: Int {
-        timeline?.clipCount ?? 0
+        activeTimeline?.clipCount ?? 0
     }
 
     /// Whether there are multiple clips (transitions possible)
     var hasMultipleClips: Bool {
-        timeline?.hasMultipleClips ?? false
+        activeTimeline?.hasMultipleClips ?? false
     }
 
     // MARK: - Initialization
@@ -78,40 +97,58 @@ final class TimelineViewModel: ObservableObject {
     }
 
     private func setupObservers() {
-        // When sequence mode is disabled, clear the timeline
-        $isSequenceMode
-            .dropFirst()
-            .filter { !$0 }
-            .sink { [weak self] _ in
-                self?.timeline = nil
-                self?.selectedClipID = nil
-                self?.selectedTransitionID = nil
-                self?.playheadTime = 0
+        // Observe active timeline changes to refresh when clips are modified
+        $activeTimeline
+            .compactMap { $0 }
+            .sink { [weak self] timeline in
+                // Subscribe to all clip changes
+                for clip in timeline.clips {
+                    // Observe clip property changes
+                    clip.objectWillChange
+                        .sink { [weak self] _ in
+                            self?.objectWillChange.send()
+                        }
+                        .store(in: &self!.cancellables)
+                }
             }
             .store(in: &cancellables)
     }
 
-    // MARK: - Sequence Mode
+    // MARK: - Timeline Panel Management
 
-    /// Enter sequence mode with a new empty timeline
-    func enterSequenceMode() {
-        isSequenceMode = true
-        if timeline == nil {
-            timeline = Timeline()
+    /// Toggle timeline panel visibility
+    func toggleTimelinePanel() {
+        isTimelinePanelVisible.toggle()
+        
+        // If showing panel and no active timeline, create one
+        if isTimelinePanelVisible && activeTimeline == nil {
+            createNewTimeline()
         }
     }
-
-    /// Exit sequence mode
-    func exitSequenceMode() {
-        isSequenceMode = false
+    
+    /// Create a new timeline
+    @discardableResult
+    func createNewTimeline() -> Timeline {
+        let timeline = Timeline()
+        timelines.append(timeline)
+        activeTimeline = timeline
+        return timeline
     }
-
-    /// Toggle sequence mode
-    func toggleSequenceMode() {
-        if isSequenceMode {
-            exitSequenceMode()
-        } else {
-            enterSequenceMode()
+    
+    /// Set the active timeline
+    func setActiveTimeline(_ timeline: Timeline) {
+        activeTimeline = timeline
+        isTimelinePanelVisible = true
+    }
+    
+    /// Close a timeline
+    func closeTimeline(_ timeline: Timeline) {
+        timelines.removeAll { $0.id == timeline.id }
+        if activeTimeline?.id == timeline.id {
+            activeTimeline = timelines.first
+        }
+        if timelines.isEmpty {
+            isTimelinePanelVisible = false
         }
     }
 
@@ -125,8 +162,9 @@ final class TimelineViewModel: ObservableObject {
             newTimeline.addClip(from: video)
         }
 
-        timeline = newTimeline
-        isSequenceMode = true
+        timelines.append(newTimeline)
+        activeTimeline = newTimeline
+        isTimelinePanelVisible = true
 
         // Select first clip
         if let firstClip = newTimeline.clips.first {
@@ -143,24 +181,28 @@ final class TimelineViewModel: ObservableObject {
 
     /// Add a video to the current sequence
     func addClip(from video: VideoItem) {
-        guard let timeline = timeline else {
+        guard let timeline = activeTimeline else {
             // Create new timeline if none exists
             createSequence(from: [video])
             return
         }
 
         timeline.addClip(from: video)
-        objectWillChange.send()
-
-        // Select the new clip
-        if let newClip = timeline.clips.last {
-            selectedClipID = newClip.id
+        
+        // Force a refresh to ensure UI updates
+        Task { @MainActor in
+            objectWillChange.send()
+            
+            // Select the new clip
+            if let newClip = timeline.clips.last {
+                selectedClipID = newClip.id
+            }
         }
     }
 
     /// Add a clip at a specific index
     func insertClip(from video: VideoItem, at index: Int) {
-        guard let timeline = timeline else { return }
+        guard let timeline = activeTimeline else { return }
 
         let clip = TimelineClip(videoItem: video)
         timeline.insertClip(clip, at: index)
@@ -171,7 +213,7 @@ final class TimelineViewModel: ObservableObject {
 
     /// Remove a clip by ID
     func removeClip(id: UUID) {
-        guard let timeline = timeline else { return }
+        guard let timeline = activeTimeline else { return }
 
         if let index = timeline.clips.firstIndex(where: { $0.id == id }) {
             timeline.removeClip(at: index)
@@ -198,7 +240,7 @@ final class TimelineViewModel: ObservableObject {
 
     /// Reorder a clip from one position to another
     func reorderClip(from sourceIndex: Int, to destinationIndex: Int) {
-        guard let timeline = timeline else { return }
+        guard let timeline = activeTimeline else { return }
 
         timeline.moveClip(from: sourceIndex, to: destinationIndex)
         objectWillChange.send()
@@ -206,7 +248,7 @@ final class TimelineViewModel: ObservableObject {
 
     /// Split the currently selected clip at the playhead position
     func splitSelectedClipAtPlayhead() -> Bool {
-        guard let timeline = timeline,
+        guard let timeline = activeTimeline,
               let clipIndex = selectedClipIndex,
               let clip = selectedClip else { return false }
 
@@ -234,7 +276,7 @@ final class TimelineViewModel: ObservableObject {
         selectedTransitionID = nil
 
         // Seek to clip start
-        if let timeline = timeline,
+        if let timeline = activeTimeline,
            let index = timeline.clips.firstIndex(where: { $0.id == id }) {
             playheadTime = timeline.startTime(forClipAt: index)
         }
@@ -242,7 +284,7 @@ final class TimelineViewModel: ObservableObject {
 
     /// Select a clip by index
     func selectClip(at index: Int) {
-        guard let timeline = timeline,
+        guard let timeline = activeTimeline,
               index >= 0 && index < timeline.clips.count else { return }
         selectClip(id: timeline.clips[index].id)
     }
@@ -255,7 +297,7 @@ final class TimelineViewModel: ObservableObject {
 
     /// Select a transition by the clip index it follows
     func selectTransition(afterClipIndex index: Int) {
-        if let transition = timeline?.transition(afterClipIndex: index) {
+        if let transition = activeTimeline?.transition(afterClipIndex: index) {
             selectTransition(id: transition.id)
         }
     }
@@ -284,7 +326,7 @@ final class TimelineViewModel: ObservableObject {
 
     /// Set in point at current playhead position
     func setInPointAtPlayhead() {
-        guard let timeline = timeline,
+        guard let timeline = activeTimeline,
               let clipIndex = selectedClipIndex else { return }
 
         let clipStartTime = timeline.startTime(forClipAt: clipIndex)
@@ -294,7 +336,7 @@ final class TimelineViewModel: ObservableObject {
 
     /// Set out point at current playhead position
     func setOutPointAtPlayhead() {
-        guard let timeline = timeline,
+        guard let timeline = activeTimeline,
               let clipIndex = selectedClipIndex else { return }
 
         let clipStartTime = timeline.startTime(forClipAt: clipIndex)
@@ -306,31 +348,44 @@ final class TimelineViewModel: ObservableObject {
 
     /// Set the transition type after a clip
     func setTransitionType(afterClipIndex index: Int, type: TransitionType) {
-        timeline?.setTransitionType(afterClipIndex: index, type: type)
+        activeTimeline?.setTransitionType(afterClipIndex: index, type: type)
         objectWillChange.send()
     }
 
     /// Set the transition duration after a clip
     func setTransitionDuration(afterClipIndex index: Int, duration: Double) {
-        timeline?.setTransitionDuration(afterClipIndex: index, duration: duration)
+        activeTimeline?.setTransitionDuration(afterClipIndex: index, duration: duration)
         objectWillChange.send()
     }
 
     /// Get the transition after a clip index
     func transition(afterClipIndex index: Int) -> ClipTransition? {
-        timeline?.transition(afterClipIndex: index)
+        activeTimeline?.transition(afterClipIndex: index)
     }
 
     // MARK: - Playhead / Seeking
 
     /// Seek to a specific time in the timeline
     func seek(to time: Double) {
-        playheadTime = max(0, min(totalDuration, time))
+        let clampedTime = max(0, min(totalDuration, time))
+        playheadTime = clampedTime
+        
+        // If we have an active timeline and player, seek the player to the corresponding clip
+        if let timeline = activeTimeline, let player = videoPlayer {
+            if let (clip, _, timeInClip) = timeline.clip(at: clampedTime), let video = clip.videoItem {
+                // If the clip's video isn't loaded in the player, load it
+                if player.currentVideo?.id != video.id {
+                    player.loadVideo(video)
+                }
+                // Seek to the time within this clip
+                player.seek(to: timeInClip)
+            }
+        }
     }
 
     /// Get the clip and time within it for the current playhead position
     func currentClipInfo() -> (clip: TimelineClip, clipIndex: Int, timeInClip: Double)? {
-        timeline?.clip(at: playheadTime)
+        activeTimeline?.clip(at: playheadTime)
     }
 
     /// Navigate to the next clip

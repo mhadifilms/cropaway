@@ -9,10 +9,10 @@ struct VideoTimelineView: View {
     @EnvironmentObject var playerVM: VideoPlayerViewModel
     @State private var isDragging = false
     @State private var dragValue: Double = 0
-    @State private var seekDebounceTask: Task<Void, Never>?
-
-    /// Debounce interval for seek operations during scrubbing (in nanoseconds)
-    private let seekDebounceNs: UInt64 = 50_000_000  // 50ms
+    @State private var lastSeekTime: Double = 0
+    
+    // Throttle seeks to every 16ms (~60fps) to avoid overwhelming AVPlayer
+    private let minSeekInterval: TimeInterval = 0.016
 
     var body: some View {
         GeometryReader { geometry in
@@ -43,19 +43,16 @@ struct VideoTimelineView: View {
                         let progress = value.location.x / geometry.size.width
                         let clampedProgress = max(0, min(1, progress))
                         dragValue = clampedProgress * playerVM.duration
-
-                        // Debounce seek to reduce expensive operations during rapid scrubbing
-                        seekDebounceTask?.cancel()
-                        seekDebounceTask = Task {
-                            try? await Task.sleep(nanoseconds: seekDebounceNs)
-                            if !Task.isCancelled {
-                                playerVM.seek(to: dragValue)
-                            }
+                        
+                        // Throttle seeks to avoid overwhelming AVPlayer
+                        let now = Date().timeIntervalSince1970
+                        if now - lastSeekTime >= minSeekInterval {
+                            playerVM.seek(to: dragValue)
+                            lastSeekTime = now
                         }
                     }
                     .onEnded { _ in
-                        // Cancel pending debounce and seek immediately on release
-                        seekDebounceTask?.cancel()
+                        // Final seek to exact position
                         playerVM.seek(to: dragValue)
                         isDragging = false
                     }

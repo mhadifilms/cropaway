@@ -366,9 +366,9 @@ struct CropawayCommands: Commands {
             .keyboardShortcut("l", modifiers: .command)
         }
 
-        // Sequence menu
-        CommandMenu("Sequence") {
-            Button("Toggle Sequence Mode") {
+        // Timeline menu
+        CommandMenu("Timeline") {
+            Button("Toggle Timeline Panel") {
                 NotificationCenter.default.post(name: .toggleSequenceMode, object: nil)
             }
             .keyboardShortcut("5", modifiers: .command)
@@ -382,6 +382,11 @@ struct CropawayCommands: Commands {
                 NotificationCenter.default.post(name: .addToSequence, object: nil)
             }
             .keyboardShortcut("=", modifiers: .command)
+            
+            Button("Add Video to Timeline...") {
+                NotificationCenter.default.post(name: .addVideoToTimeline, object: nil)
+            }
+            .keyboardShortcut("t", modifiers: [.command, .shift])
 
             Divider()
 
@@ -499,6 +504,7 @@ extension Notification.Name {
     static let createSequence = Notification.Name("createSequence")
     static let toggleSequenceMode = Notification.Name("toggleSequenceMode")
     static let addToSequence = Notification.Name("addToSequence")
+    static let addVideoToTimeline = Notification.Name("addVideoToTimeline")
     static let splitClip = Notification.Name("splitClip")
     static let setInPoint = Notification.Name("setInPoint")
     static let setOutPoint = Notification.Name("setOutPoint")

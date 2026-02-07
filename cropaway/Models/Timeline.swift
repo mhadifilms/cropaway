@@ -90,7 +90,11 @@ final class Timeline: Identifiable, ObservableObject, Codable {
         let transitionsDuration = transitions.reduce(0) { $0 + $1.effectiveDuration }
         // Transitions overlap clips, so subtract half the transition duration from each side
         let overlapAdjustment = transitionsDuration  // Each transition overlaps by its full duration
-        return max(0, clipsDuration - overlapAdjustment)
+        let duration = max(0, clipsDuration - overlapAdjustment)
+        
+        // If duration is 0 or very small, return a minimum to ensure clips are visible
+        // This can happen if metadata hasn't loaded yet
+        return duration > 0.01 ? duration : Double(clips.count) * 1.0
     }
 
     /// Number of clips in the timeline
@@ -245,7 +249,7 @@ final class Timeline: Identifiable, ObservableObject, Codable {
             let clipEndTime = currentTime + clipDuration
 
             // Account for transition overlap with next clip
-            if index < clips.count - 1, let nextTransition = transition(afterClipIndex: index) {
+            if index < clips.count - 1, let _ = transition(afterClipIndex: index) {
                 // Clip effectively ends earlier due to transition
             }
 

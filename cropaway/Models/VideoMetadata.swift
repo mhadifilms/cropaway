@@ -72,4 +72,10 @@ final class VideoMetadata: ObservableObject {
         }
         return "HDR"
     }
+    
+    var totalFrameCount: Int {
+        guard duration > 0, frameRate > 0 else { return 0 }
+        let frames = Int((duration * frameRate).rounded(.down))
+        return max(frames, 1)
+    }
 }

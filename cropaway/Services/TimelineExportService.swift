@@ -36,7 +36,7 @@ final class TimelineExportService {
         var exportedClipURLs: [URL] = []
         let totalClips = timeline.clips.count
         let clipProgressWeight = 0.8 / Double(totalClips)  // 80% for clip exports
-        let concatProgressWeight = 0.2  // 20% for concatenation
+        let _ = 0.2  // 20% for concatenation (reserved for future use)
 
         // Export each clip with its crop settings
         for (index, clip) in timeline.clips.enumerated() {

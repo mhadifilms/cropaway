@@ -19,14 +19,14 @@ struct TimelineTrackView: View {
         VStack(spacing: 6) {
             // Header
             HStack(alignment: .center, spacing: 8) {
-                Text("Sequence")
+                Text(timelineVM.activeTimeline?.name ?? "Sequence")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
 
                 Spacer()
 
                 // Clip count badge
-                if let timeline = timelineVM.timeline, !timeline.isEmpty {
+                if let timeline = timelineVM.activeTimeline, !timeline.isEmpty {
                     Text("\(timeline.clipCount) clips")
                         .font(.system(size: 10, weight: .medium).monospacedDigit())
                         .foregroundStyle(.secondary)
@@ -60,8 +60,8 @@ struct TimelineTrackView: View {
 
             // Timeline track
             TimelineTrackNSViewWrapper(
-                clips: timelineVM.timeline?.clips ?? [],
-                transitions: timelineVM.timeline?.transitions ?? [],
+                clips: timelineVM.activeTimeline?.clips ?? [],
+                transitions: timelineVM.activeTimeline?.transitions ?? [],
                 totalDuration: timelineVM.totalDuration,
                 selectedClipID: timelineVM.selectedClipID,
                 selectedTransitionID: timelineVM.selectedTransitionID,
@@ -79,10 +79,12 @@ struct TimelineTrackView: View {
                     timelineVM.reorderClip(from: from, to: to)
                 },
                 onTrimClip: { clipID, inPoint, outPoint in
-                    if let clip = timelineVM.timeline?.clips.first(where: { $0.id == clipID }) {
-                        clip.inPoint = inPoint
-                        clip.outPoint = outPoint
-                        timelineVM.objectWillChange.send()
+                    Task { @MainActor in
+                        if let clip = timelineVM.activeTimeline?.clips.first(where: { $0.id == clipID }) {
+                            clip.inPoint = inPoint
+                            clip.outPoint = outPoint
+                            timelineVM.objectWillChange.send()
+                        }
                     }
                 },
                 onAddClipAtEnd: {
@@ -113,7 +115,7 @@ struct TimelineTrackView: View {
         ) { result in
             switch result {
             case .success(let urls):
-                for url in urls {
+                for _ in urls {
                     // Create VideoItem and add to timeline
                     // The projectVM will handle this
                     Task {
@@ -661,7 +663,7 @@ class TimelineTrackNSView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
-        if isTrimming, let clipIndex = trimmingClipIndex {
+        if isTrimming, let _ = trimmingClipIndex {
             isTrimming = false
             trimmingClipIndex = nil
             trimmingEdge = .none

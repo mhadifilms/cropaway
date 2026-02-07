@@ -81,6 +81,7 @@ struct AIToolbarView: View {
             }
             .buttonStyle(.borderless)
             .liquidGlassCapsule(isSelected: true)
+            .help("Set up fal.ai API key for AI tracking")
         }
     }
 
@@ -118,6 +119,7 @@ struct AIToolbarView: View {
             }
             .buttonStyle(.borderless)
             .liquidGlassCapsule(isSelected: true, tint: .red)
+            .help("Cancel AI tracking operation")
         }
     }
 
@@ -186,6 +188,7 @@ struct AIToolbarView: View {
                 }
                 .buttonStyle(.borderless)
                 .liquidGlassCapsule(isSelected: isSelected)
+                .help(mode == .text ? "Track by text description" : "Track by clicking on object")
             }
         }
     }
@@ -216,6 +219,7 @@ struct AIToolbarView: View {
                             .foregroundStyle(.tertiary)
                     }
                     .buttonStyle(.plain)
+                    .help("Clear text prompt")
                 }
             }
             .padding(.horizontal, 10)

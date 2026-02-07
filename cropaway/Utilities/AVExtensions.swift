@@ -39,6 +39,19 @@ extension Double {
             return String(format: "%d:%02d", minutes, secs)
         }
     }
+    
+    /// Formats time as SMPTE timecode (HH:MM:SS:FF)
+    func smpteTimecode(fps: Double) -> String {
+        guard fps > 0 else { return "00:00:00:00" }
+        
+        let totalSeconds = Int(self)
+        let hours = totalSeconds / 3600
+        let minutes = (totalSeconds % 3600) / 60
+        let secs = totalSeconds % 60
+        let frames = Int((self.truncatingRemainder(dividingBy: 1.0) * fps).rounded(.down))
+        
+        return String(format: "%02d:%02d:%02d:%02d", hours, minutes, secs, frames)
+    }
 }
 
 extension AVAsset {

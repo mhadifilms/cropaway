@@ -13,6 +13,7 @@ struct CropToolbarView: View {
 
     @EnvironmentObject var cropEditorVM: CropEditorViewModel
     @EnvironmentObject var keyframeVM: KeyframeViewModel
+    @EnvironmentObject var timelineVM: TimelineViewModel
     @EnvironmentObject var undoManager: CropUndoManager
 
     init(video: VideoItem) {
@@ -43,6 +44,7 @@ struct CropToolbarView: View {
         HStack(spacing: 12) {
             cropModeButtons
             keyframeControls
+            timelineControls
 
             Spacer()
 
@@ -129,44 +131,73 @@ struct CropToolbarView: View {
             }
         }
     }
+    
+    // MARK: - Timeline Controls
+    
+    private var timelineControls: some View {
+        Button {
+            withAnimation(.snappy(duration: 0.2)) {
+                timelineVM.toggleTimelinePanel()
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: timelineVM.isTimelinePanelVisible ? "film.fill" : "film")
+                    .font(.system(size: 11))
+                    .contentTransition(.symbolEffect(.replace))
+                Text("Timeline")
+                    .font(.system(size: 11, weight: timelineVM.isTimelinePanelVisible ? .medium : .regular))
+            }
+            .foregroundStyle(timelineVM.isTimelinePanelVisible ? Color.white : Color.primary)
+            .padding(.horizontal, 10)
+            .frame(height: 32)
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.borderless)
+        .liquidGlassCapsule(isSelected: timelineVM.isTimelinePanelVisible)
+        .help("Toggle timeline panel (⌘5)")
+    }
 
     // MARK: - Options Section
 
     private var optionsSection: some View {
         HStack(spacing: 2) {
-            Button {
-                cropConfig.preserveWidth.toggle()
-                if !cropConfig.preserveWidth {
-                    keyframeVM.keyframesEnabled = false
-                    cropConfig.enableAlphaChannel = false
+            Group {
+                Button {
+                    cropConfig.preserveWidth.toggle()
+                    if !cropConfig.preserveWidth {
+                        keyframeVM.keyframesEnabled = false
+                        cropConfig.enableAlphaChannel = false
+                    }
+                } label: {
+                    Image(systemName: cropConfig.preserveWidth ? "lock.fill" : "lock.open")
+                        .font(.system(size: 12))
+                        .foregroundStyle(cropConfig.preserveWidth ? Color.white : Color.primary)
+                        .frame(width: 32, height: 32)
+                        .contentShape(RoundedRectangle(cornerRadius: 8))
                 }
-            } label: {
-                Image(systemName: cropConfig.preserveWidth ? "lock.fill" : "lock.open")
-                    .font(.system(size: 12))
-                    .foregroundStyle(cropConfig.preserveWidth ? Color.white : Color.primary)
-                    .frame(width: 32, height: 32)
-                    .contentShape(RoundedRectangle(cornerRadius: 8))
+                .buttonStyle(.borderless)
+                .liquidGlassButton(isSelected: cropConfig.preserveWidth)
+                .disabled(keyframeVM.keyframesEnabled || cropConfig.enableAlphaChannel)
+                .opacity((keyframeVM.keyframesEnabled || cropConfig.enableAlphaChannel) ? 0.4 : 1.0)
             }
-            .buttonStyle(.borderless)
-            .liquidGlassButton(isSelected: cropConfig.preserveWidth)
-            .disabled(keyframeVM.keyframesEnabled || cropConfig.enableAlphaChannel)
-            .opacity((keyframeVM.keyframesEnabled || cropConfig.enableAlphaChannel) ? 0.4 : 1.0)
             .help("Preserve Size - Keep original dimensions")
 
-            Button {
-                if !cropConfig.preserveWidth { cropConfig.preserveWidth = true }
-                cropConfig.enableAlphaChannel.toggle()
-            } label: {
-                Image(systemName: cropConfig.enableAlphaChannel ? "checkerboard.rectangle" : "rectangle")
-                    .font(.system(size: 12))
-                    .foregroundStyle(cropConfig.enableAlphaChannel ? Color.white : Color.primary)
-                    .frame(width: 32, height: 32)
-                    .contentShape(RoundedRectangle(cornerRadius: 8))
+            Group {
+                Button {
+                    if !cropConfig.preserveWidth { cropConfig.preserveWidth = true }
+                    cropConfig.enableAlphaChannel.toggle()
+                } label: {
+                    Image(systemName: cropConfig.enableAlphaChannel ? "checkerboard.rectangle" : "rectangle")
+                        .font(.system(size: 12))
+                        .foregroundStyle(cropConfig.enableAlphaChannel ? Color.white : Color.primary)
+                        .frame(width: 32, height: 32)
+                        .contentShape(RoundedRectangle(cornerRadius: 8))
+                }
+                .buttonStyle(.borderless)
+                .liquidGlassButton(isSelected: cropConfig.enableAlphaChannel)
+                .disabled(!cropConfig.preserveWidth)
+                .opacity(cropConfig.preserveWidth ? 1.0 : 0.4)
             }
-            .buttonStyle(.borderless)
-            .liquidGlassButton(isSelected: cropConfig.enableAlphaChannel)
-            .disabled(!cropConfig.preserveWidth)
-            .opacity(cropConfig.preserveWidth ? 1.0 : 0.4)
             .help("Alpha - Export with transparency")
         }
     }

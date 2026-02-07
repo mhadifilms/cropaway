@@ -39,10 +39,8 @@ final class ProjectViewModel: ObservableObject {
             let video = VideoItem(sourceURL: url)
             videos.append(video)
 
-            // Load metadata and thumbnail in background
-            Task {
-                await loadVideoData(video)
-            }
+            // Load metadata and thumbnail - AWAIT so metadata is ready before returning
+            await loadVideoData(video)
 
             // Select first added video
             if selectedVideo == nil {
