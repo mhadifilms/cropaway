@@ -25,6 +25,7 @@ final class ExportViewModel {
 
     @ObservationIgnored private var ffmpegService: FFmpegExportService?
     @ObservationIgnored private var processingService: VideoProcessingService?
+    @ObservationIgnored private var timelineService: TimelineExportService?
 
     init() {
         requestNotificationPermission()
@@ -227,5 +228,50 @@ final class ExportViewModel {
 
         let response = await panel.begin()
         return response == .OK ? panel.url : nil
+    }
+
+    /// Export a timeline (multiple trimmed clips) as a single video
+    func exportTimeline(_ timeline: Timeline, suggestedName: String = "timeline") async {
+        guard !isExporting else { return }
+        guard !timeline.clips.isEmpty else {
+            self.error = "Timeline is empty"
+            return
+        }
+
+        // Show save panel
+        guard let outputURL = await showSavePanel(suggestedName: suggestedName) else {
+            return
+        }
+
+        isExporting = true
+        progress = 0
+        error = nil
+
+        do {
+            timelineService = TimelineExportService()
+            
+            let videoURL = try await timelineService!.exportTimeline(
+                timeline,
+                to: outputURL
+            ) { [weak self] progressValue in
+                Task { @MainActor in
+                    self?.progress = progressValue
+                }
+            }
+
+            lastExportURL = videoURL
+            exportedURLs.append(videoURL)
+
+            // Show notification
+            showExportCompleteNotification(fileName: videoURL.lastPathComponent)
+            playCompletionSound()
+
+        } catch {
+            print("Timeline export failed: \(error)")
+            self.error = error.localizedDescription
+        }
+
+        isExporting = false
+        timelineService = nil
     }
 }

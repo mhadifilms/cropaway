@@ -23,16 +23,32 @@ final class TimelineClip: Identifiable, ObservableObject, Codable {
     /// In point as normalized value (0-1) relative to source duration
     @Published var inPoint: Double {
         didSet {
-            inPoint = max(0, min(outPoint - 0.01, inPoint))
-            debouncedGenerateThumbnailStrip()
+            // Clamp to valid range, avoiding recursion
+            let clamped = max(0, min(outPoint - 0.01, inPoint))
+            if abs(clamped - inPoint) > 0.0001 {
+                inPoint = clamped
+                return // Exit early, didSet will be called again with clamped value
+            }
+            // Only generate thumbnails if value actually changed
+            if abs(oldValue - inPoint) > 0.0001 {
+                debouncedGenerateThumbnailStrip()
+            }
         }
     }
 
     /// Out point as normalized value (0-1) relative to source duration
     @Published var outPoint: Double {
         didSet {
-            outPoint = max(inPoint + 0.01, min(1.0, outPoint))
-            debouncedGenerateThumbnailStrip()
+            // Clamp to valid range, avoiding recursion
+            let clamped = max(inPoint + 0.01, min(1.0, outPoint))
+            if abs(clamped - outPoint) > 0.0001 {
+                outPoint = clamped
+                return // Exit early, didSet will be called again with clamped value
+            }
+            // Only generate thumbnails if value actually changed
+            if abs(oldValue - outPoint) > 0.0001 {
+                debouncedGenerateThumbnailStrip()
+            }
         }
     }
 
@@ -217,10 +233,10 @@ final class TimelineClip: Identifiable, ObservableObject, Codable {
         // Cancel any pending thumbnail generation
         thumbnailGenerationTask?.cancel()
         
-        // Schedule new generation with 300ms delay
-        // Safe now because we use cached asset (no file conflicts)
+        // Schedule new generation with 150ms delay for snappy response
+        // Safe now: using cached asset + fixed recursion bug
         thumbnailGenerationTask = Task {
-            try? await Task.sleep(nanoseconds: 300_000_000) // 0.3 seconds
+            try? await Task.sleep(nanoseconds: 150_000_000) // 0.15 seconds
             
             // Check if task was cancelled
             guard !Task.isCancelled else { return }

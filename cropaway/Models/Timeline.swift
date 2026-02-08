@@ -86,15 +86,17 @@ final class Timeline: Identifiable, ObservableObject, Codable {
 
     /// Total duration of the timeline in seconds
     var totalDuration: Double {
-        let clipsDuration = clips.reduce(0) { $0 + $1.trimmedDuration }
-        let transitionsDuration = transitions.reduce(0) { $0 + $1.effectiveDuration }
-        // Transitions overlap clips, so subtract half the transition duration from each side
-        let overlapAdjustment = transitionsDuration  // Each transition overlaps by its full duration
-        let duration = max(0, clipsDuration - overlapAdjustment)
-        
-        // If duration is 0 or very small, return a minimum to ensure clips are visible
-        // This can happen if metadata hasn't loaded yet
-        return duration > 0.01 ? duration : Double(clips.count) * 1.0
+        // For a simple concatenated timeline without transition overlap,
+        // duration is simply the sum of all clip durations
+        let clipsDuration = clips.reduce(0.0) { $0 + $1.trimmedDuration }
+
+        // If we have transitions in the future that actually overlap,
+        // we'll need to account for them. For now, transitions are
+        // just markers and don't affect playback duration.
+        // let overlapDuration = transitions.reduce(0.0) { $0 + $1.effectiveDuration }
+
+        // Return clips duration, or minimum of 0.01 if no clips
+        return max(0.01, clipsDuration)
     }
 
     /// Number of clips in the timeline

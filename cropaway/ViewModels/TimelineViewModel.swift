@@ -44,10 +44,15 @@ final class TimelineViewModel {
     var draggingClipIndex: Int?
 
     @ObservationIgnored private var cancellables = Set<AnyCancellable>()
+    @ObservationIgnored private let storageService = TimelineStorageService.shared
     
     /// Track last video load to prevent rapid switching during scrubbing
     private var lastVideoLoadTime: TimeInterval = 0
     private let minVideoLoadInterval: TimeInterval = 0.2 // 200ms between video switches
+    
+    /// Track last save time to debounce auto-saves
+    private var lastSaveTime: TimeInterval = 0
+    private let minSaveInterval: TimeInterval = 2.0 // 2 seconds between auto-saves
     
     /// Legacy support - maps to activeTimeline for backward compatibility
     var timeline: Timeline? {
@@ -100,11 +105,89 @@ final class TimelineViewModel {
 
     init() {
         setupObservers()
+        loadAllTimelines()
     }
 
     private func setupObservers() {
-        // Note: With @Observable, changes are automatically tracked
-        // No manual observation setup needed
+        // Observe changes to active timeline
+        // When timeline changes, set up observers for its clips
+        // Note: This will be called whenever activeTimeline is set
+    }
+
+    /// Set up observers for the active timeline's clips
+    private func observeActiveTimeline() {
+        cancellables.removeAll()
+
+        guard let timeline = activeTimeline else { return }
+
+        // Observe each clip's trim point changes
+        for clip in timeline.clips {
+            clip.$inPoint
+                .dropFirst()  // Skip initial value
+                .sink { [weak self] _ in
+                    Task { @MainActor in
+                        self?.rebuildComposition()
+                    }
+                }
+                .store(in: &cancellables)
+
+            clip.$outPoint
+                .dropFirst()
+                .sink { [weak self] _ in
+                    Task { @MainActor in
+                        self?.rebuildComposition()
+                    }
+                }
+                .store(in: &cancellables)
+        }
+
+        // Observe timeline's clips array changes
+        timeline.$clips
+            .dropFirst()
+            .sink { [weak self] _ in
+                Task { @MainActor in
+                    self?.observeActiveTimeline()  // Re-observe new clips
+                    self?.rebuildComposition()
+                }
+            }
+            .store(in: &cancellables)
+    }
+    
+    // MARK: - Persistence
+    
+    /// Load all saved timelines on startup
+    private func loadAllTimelines() {
+        let loadedTimelines = storageService.loadAll()
+        timelines = loadedTimelines
+        
+        // Set most recent as active if available
+        if let mostRecent = loadedTimelines.first {
+            activeTimeline = mostRecent
+            isTimelinePanelVisible = true
+        }
+    }
+    
+    /// Save the active timeline (debounced)
+    func saveActiveTimeline() {
+        guard let timeline = activeTimeline else { return }
+        
+        // Debounce saves to avoid overwhelming disk I/O
+        let now = Date().timeIntervalSince1970
+        guard now - lastSaveTime >= minSaveInterval else { return }
+        lastSaveTime = now
+        
+        Task.detached { [weak self] in
+            do {
+                try self?.storageService.save(timeline)
+            } catch {
+                print("⚠️ Failed to save timeline: \(error)")
+            }
+        }
+    }
+    
+    /// Resolve video items after loading timeline
+    func resolveVideoItems(from videos: [VideoItem]) {
+        activeTimeline?.resolveVideoItems(from: videos)
     }
 
     // MARK: - Timeline Panel Management
@@ -129,6 +212,7 @@ final class TimelineViewModel {
         let timeline = Timeline()
         timelines.append(timeline)
         activeTimeline = timeline
+        observeActiveTimeline()  // NEW: Set up observers
         return timeline
     }
     
@@ -136,6 +220,7 @@ final class TimelineViewModel {
     func setActiveTimeline(_ timeline: Timeline) {
         activeTimeline = timeline
         isTimelinePanelVisible = true
+        observeActiveTimeline()  // NEW: Set up observers
     }
     
     /// Close a timeline
@@ -162,16 +247,37 @@ final class TimelineViewModel {
         timelines.append(newTimeline)
         activeTimeline = newTimeline
         isTimelinePanelVisible = true
+        observeActiveTimeline()  // NEW: Set up observers
 
         // Select first clip
         if let firstClip = newTimeline.clips.first {
             selectedClipID = firstClip.id
         }
+
+        // Build composition for seamless playback
+        rebuildComposition()
+        
+        // Save new timeline
+        saveActiveTimeline()
     }
 
     /// Create a sequence from two videos (drag one onto another)
     func createSequence(from firstVideo: VideoItem, and secondVideo: VideoItem) {
         createSequence(from: [firstVideo, secondVideo])
+    }
+
+    // MARK: - Composition Management
+
+    /// Rebuild the player composition from the active timeline
+    /// Call this whenever clips are added, removed, reordered, or trimmed
+    func rebuildComposition() {
+        guard let timeline = activeTimeline else { return }
+        
+        // Only rebuild if we have clips
+        guard !timeline.clips.isEmpty else { return }
+        
+        // Load the composition into the player
+        videoPlayer?.loadComposition(from: timeline)
     }
 
     // MARK: - Clip Management
@@ -181,10 +287,14 @@ final class TimelineViewModel {
         guard let timeline = activeTimeline else {
             // Create new timeline if none exists
             createSequence(from: [video])
+            rebuildComposition()
             return
         }
 
         timeline.addClip(from: video)
+        
+        // Rebuild composition with new clip
+        rebuildComposition()
         
         // Force a refresh to ensure UI updates
         Task { @MainActor in
@@ -194,6 +304,9 @@ final class TimelineViewModel {
             if let newClip = timeline.clips.last {
                 selectedClipID = newClip.id
             }
+            
+            // Auto-save
+            saveActiveTimeline()
         }
     }
 
@@ -203,7 +316,9 @@ final class TimelineViewModel {
 
         let clip = TimelineClip(videoItem: video)
         timeline.insertClip(clip, at: index)
-        // Changes tracked automatically
+        
+        // Rebuild composition
+        rebuildComposition()
 
         selectedClipID = clip.id
     }
@@ -214,7 +329,9 @@ final class TimelineViewModel {
 
         if let index = timeline.clips.firstIndex(where: { $0.id == id }) {
             timeline.removeClip(at: index)
-            // Changes tracked automatically
+            
+            // Rebuild composition
+            rebuildComposition()
 
             // Select adjacent clip if possible
             if selectedClipID == id {
@@ -226,6 +343,9 @@ final class TimelineViewModel {
                     selectedClipID = nil
                 }
             }
+            
+            // Auto-save
+            saveActiveTimeline()
         }
     }
 
@@ -240,7 +360,12 @@ final class TimelineViewModel {
         guard let timeline = activeTimeline else { return }
 
         timeline.moveClip(from: sourceIndex, to: destinationIndex)
-        // Changes tracked automatically
+        
+        // Rebuild composition
+        rebuildComposition()
+        
+        // Auto-save
+        saveActiveTimeline()
     }
 
     /// Split the currently selected clip at the playhead position
@@ -355,14 +480,20 @@ final class TimelineViewModel {
     func setInPoint(at time: Double) {
         guard let clip = selectedClip else { return }
         clip.setInPointFromTime(time)
-        // Changes tracked automatically
+
+        // CRITICAL FIX: Rebuild composition when trim point changes
+        rebuildComposition()
+        saveActiveTimeline()
     }
 
     /// Set the out point for the selected clip
     func setOutPoint(at time: Double) {
         guard let clip = selectedClip else { return }
         clip.setOutPointFromTime(time)
-        // Changes tracked automatically
+
+        // CRITICAL FIX: Rebuild composition when trim point changes
+        rebuildComposition()
+        saveActiveTimeline()
     }
 
     /// Set in point at current playhead position

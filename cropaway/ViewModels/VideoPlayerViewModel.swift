@@ -167,6 +167,91 @@ final class VideoPlayerViewModel {
         }
     }
 
+    /// Load a timeline composition for seamless multi-clip playback
+    /// - Parameter timeline: The timeline to load as a composition
+    func loadComposition(from timeline: Timeline) {
+        guard let composition = TimelineCompositionBuilder.buildComposition(from: timeline) else {
+            print("⚠️ Failed to build composition from timeline")
+            return
+        }
+
+        currentVideo = nil // Clear single video mode
+
+        // Remove previous observer
+        if let observer = timeObserver {
+            player?.removeTimeObserver(observer)
+            timeObserver = nil
+        }
+
+        let playerItem = AVPlayerItem(asset: composition)
+
+        if player == nil {
+            player = AVPlayer(playerItem: playerItem)
+        } else {
+            player?.replaceCurrentItem(with: playerItem)
+        }
+
+        // Get composition duration
+        self.duration = composition.duration.seconds
+
+        // Get video size from first track
+        if let videoTrack = composition.tracks(withMediaType: .video).first {
+            Task {
+                do {
+                    let size = try await videoTrack.load(.naturalSize)
+                    let transform = try await videoTrack.load(.preferredTransform)
+                    let transformedSize = size.applying(transform)
+                    self.videoSize = CGSize(
+                        width: abs(transformedSize.width),
+                        height: abs(transformedSize.height)
+                    )
+                } catch {
+                    self.videoSize = .zero
+                }
+            }
+        }
+
+        // Add time observer for playback scrubbing
+        let interval = CMTime(seconds: 1.0 / 30.0, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
+        timeObserver = player?.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
+            guard let self else { return }
+            Task { @MainActor [weak self] in
+                self?.currentTime = time.seconds
+                
+                // Update timeline playhead
+                if let timeline = self?.timelineViewModel {
+                    timeline.playheadTime = time.seconds
+                }
+            }
+        }
+
+        // Store for cleanup
+        playerForCleanup = player
+        observerForCleanup = timeObserver
+
+        // Observe playback status
+        player?.publisher(for: \.timeControlStatus)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] status in
+                self?.isPlaying = status == .playing
+            }
+            .store(in: &cancellables)
+
+        // Preroll to first frame
+        Task {
+            guard let playerItem = player?.currentItem else { return }
+            guard let player = player else { return }
+
+            let firstFrameTime = CMTime(seconds: 0.01, preferredTimescale: 600)
+            await playerItem.seek(to: firstFrameTime, toleranceBefore: .zero, toleranceAfter: .zero)
+
+            let zeroTime = CMTime.zero
+            await playerItem.seek(to: zeroTime, toleranceBefore: .zero, toleranceAfter: .zero)
+
+            await player.preroll(atRate: 0)
+        }
+    }
+
     func play() {
         player?.play()
     }

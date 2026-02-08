@@ -12,6 +12,7 @@ import UniformTypeIdentifiers
 struct TimelineTrackView: View {
     @Environment(TimelineViewModel.self) private var timelineVM: TimelineViewModel
     @Environment(ProjectViewModel.self) private var projectVM: ProjectViewModel
+    @Environment(ExportViewModel.self) private var exportVM: ExportViewModel
 
     @State private var showingAddVideoPanel = false
     @State private var clipRefreshTrigger: Int = 0
@@ -57,6 +58,22 @@ struct TimelineTrackView: View {
                     .buttonStyle(.borderless)
                     .help("Remove selected clip")
                 }
+
+                // Export timeline button
+                if let timeline = timelineVM.activeTimeline, !timeline.isEmpty {
+                    Button(action: {
+                        Task {
+                            await exportVM.exportTimeline(timeline, suggestedName: timeline.name)
+                        }
+                    }) {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 11))
+                            .frame(width: 22, height: 22)
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Export timeline as video")
+                    .disabled(exportVM.isExporting)
+                }
             }
             .frame(height: 22)
 
@@ -86,7 +103,10 @@ struct TimelineTrackView: View {
                         if let clip = timelineVM.activeTimeline?.clips.first(where: { $0.id == clipID }) {
                             clip.inPoint = inPoint
                             clip.outPoint = outPoint
-                            // Changes tracked automatically with @Observable
+                            // Rebuild composition with new trim points
+                            timelineVM.rebuildComposition()
+                            // Auto-save timeline
+                            timelineVM.saveActiveTimeline()
                         }
                     }
                 },
@@ -889,38 +909,74 @@ class TimelineTrackNSView: NSView {
     }
 
     private func handleTrimDrag(point: NSPoint, clipIndex: Int) {
-        guard clipIndex < clips.count else { return }
+        guard clipIndex >= 0 && clipIndex < clips.count else { return }
         let clip = clips[clipIndex]
 
+        guard trimmingEdge != .none else { return }
+
         let availableWidth = bounds.width - addButtonWidth
+
+        // Calculate clip's current position and width
         var currentX: CGFloat = 0
         for i in 0..<clipIndex {
             currentX += CGFloat(clips[i].trimmedDuration / totalDuration) * availableWidth
         }
 
+        // CRITICAL FIX: Use clip's current (potentially changed) trimmed duration
         let clipWidth = CGFloat(clip.trimmedDuration / totalDuration) * availableWidth
-        let clipSourceDuration = clip.sourceDuration
 
-        // Throttle trim updates to prevent overwhelming the system
+        // Get clip's source duration
+        let clipSourceDuration = clip.videoItem?.metadata.duration ?? 1.0
+        guard clipSourceDuration > 0 else { return }
+
+        // Throttle updates
         let now = Date().timeIntervalSince1970
         let shouldUpdate = now - lastTrimTime >= minTrimInterval
-        
+
         switch trimmingEdge {
         case .left:
-            // Calculate new in point
+            // FIXED: Calculate delta relative to THIS clip's width, not entire timeline
             let deltaX = point.x - currentX
-            let deltaNormalized = (deltaX / availableWidth) * totalDuration / clipSourceDuration
-            let newInPoint = max(0, min(clip.outPoint - 0.05, trimStartValue + deltaNormalized))
+            let deltaAsClipFraction = deltaX / clipWidth  // Fraction of THIS clip
+            let deltaInSourceTime = deltaAsClipFraction * clip.trimmedDuration  // Delta in seconds
+            let deltaNormalized = deltaInSourceTime / clipSourceDuration  // Normalize to 0-1
+
+            let newInPoint = max(0, min(clip.outPoint - 0.01, trimStartValue + deltaNormalized))
+
+            #if DEBUG
+            print("🔧 Trim Left - Clip \(clipIndex):")
+            print("  Point.x: \(point.x), CurrentX: \(currentX)")
+            print("  ClipWidth: \(clipWidth), DeltaX: \(deltaX)")
+            print("  DeltaAsClipFraction: \(deltaAsClipFraction)")
+            print("  DeltaInSourceTime: \(deltaInSourceTime)s")
+            print("  DeltaNormalized: \(deltaNormalized)")
+            print("  New InPoint: \(newInPoint)")
+            #endif
+
             if shouldUpdate {
                 delegate?.trackDidTrimClip(clip.id, inPoint: newInPoint, outPoint: clip.outPoint)
                 lastTrimTime = now
             }
 
         case .right:
-            // Calculate new out point
+            // FIXED: Calculate delta relative to THIS clip's width
             let deltaX = point.x - (currentX + clipWidth)
-            let deltaNormalized = (deltaX / availableWidth) * totalDuration / clipSourceDuration
-            let newOutPoint = max(clip.inPoint + 0.05, min(1.0, trimStartValue + deltaNormalized))
+            let deltaAsClipFraction = deltaX / clipWidth
+            let deltaInSourceTime = deltaAsClipFraction * clip.trimmedDuration
+            let deltaNormalized = deltaInSourceTime / clipSourceDuration
+
+            let newOutPoint = max(clip.inPoint + 0.01, min(1.0, trimStartValue + deltaNormalized))
+
+            #if DEBUG
+            print("🔧 Trim Right - Clip \(clipIndex):")
+            print("  Point.x: \(point.x), CurrentX: \(currentX)")
+            print("  ClipWidth: \(clipWidth), DeltaX: \(deltaX)")
+            print("  DeltaAsClipFraction: \(deltaAsClipFraction)")
+            print("  DeltaInSourceTime: \(deltaInSourceTime)s")
+            print("  DeltaNormalized: \(deltaNormalized)")
+            print("  New OutPoint: \(newOutPoint)")
+            #endif
+
             if shouldUpdate {
                 delegate?.trackDidTrimClip(clip.id, inPoint: clip.inPoint, outPoint: newOutPoint)
                 lastTrimTime = now
