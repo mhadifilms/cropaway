@@ -3,6 +3,7 @@
 
 using System.Diagnostics;
 using System.Drawing;
+using System.IO;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Text.Json;
