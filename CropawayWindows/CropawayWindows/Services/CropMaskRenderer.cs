@@ -9,9 +9,9 @@ using System.Text.Json;
 using System.Windows;
 using CropawayWindows.Models;
 
-// Local overrides: this file uses System.Drawing for GDI+ bitmap operations
-using Brush = System.Drawing.Brush;
-using Rectangle = System.Drawing.Rectangle;
+// Note: This file uses System.Drawing for GDI+ bitmap operations.
+// Brush and Rectangle are fully qualified below to avoid conflict
+// with global using aliases (which point to WPF types).
 
 namespace CropawayWindows.Services;
 
@@ -109,7 +109,7 @@ public static class CropMaskRenderer
     #region Rectangle Mask
 
     private static void RenderRectangleMask(
-        Graphics graphics, Brush brush, Rect cropRect, int width, int height)
+        Graphics graphics, System.Drawing.Brush brush, Rect cropRect, int width, int height)
     {
         float x = (float)(cropRect.X * width);
         float y = (float)(cropRect.Y * height);
@@ -124,7 +124,7 @@ public static class CropMaskRenderer
     #region Circle Mask
 
     private static void RenderCircleMask(
-        Graphics graphics, Brush brush,
+        Graphics graphics, System.Drawing.Brush brush,
         Point center, double radius, int width, int height)
     {
         float cx = (float)(center.X * width);
@@ -141,7 +141,7 @@ public static class CropMaskRenderer
     #region Freehand Mask
 
     private static void RenderFreehandMask(
-        Graphics graphics, Brush brush,
+        Graphics graphics, System.Drawing.Brush brush,
         List<Point>? points, byte[]? pathData,
         int width, int height)
     {
@@ -182,7 +182,7 @@ public static class CropMaskRenderer
     /// Supports cubic bezier curves with control handles.
     /// </summary>
     private static void RenderBezierPath(
-        Graphics graphics, Brush brush,
+        Graphics graphics, System.Drawing.Brush brush,
         List<SerializedMaskVertex> vertices,
         int width, int height)
     {
@@ -465,7 +465,7 @@ public static class CropMaskRenderer
     {
         // Lock the bitmap for fast pixel manipulation
         var bmpData = bitmap.LockBits(
-            new Rectangle(0, 0, targetW, targetH),
+            new System.Drawing.Rectangle(0, 0, targetW, targetH),
             ImageLockMode.WriteOnly,
             PixelFormat.Format32bppArgb);
 
