@@ -183,7 +183,19 @@ final class VideoPlayerViewModel {
             timeObserver = nil
         }
 
+        // Build video composition with transitions
+        let videoComposition = TransitionCompositionBuilder.buildVideoComposition(
+            for: composition,
+            timeline: timeline
+        )
+
         let playerItem = AVPlayerItem(asset: composition)
+
+        // Apply video composition if transitions exist
+        if let videoComposition = videoComposition {
+            playerItem.videoComposition = videoComposition
+            print("✅ Applied video composition with \(timeline.transitions.count) transition(s)")
+        }
 
         if player == nil {
             player = AVPlayer(playerItem: playerItem)

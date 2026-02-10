@@ -615,8 +615,12 @@ class TimelineTrackNSView: NSView {
         switch transition.type {
         case .cut:
             fillColor = isSelected ? NSColor.systemOrange : NSColor.labelColor.withAlphaComponent(0.4)
-        case .opticalFlow:
+        case .fade:
             fillColor = isSelected ? NSColor.systemPurple : NSColor.systemPurple.withAlphaComponent(0.6)
+        case .fadeToBlack:
+            fillColor = isSelected ? NSColor.systemIndigo : NSColor.systemIndigo.withAlphaComponent(0.6)
+        case .opticalFlow:
+            fillColor = isSelected ? NSColor.systemPink : NSColor.systemPink.withAlphaComponent(0.6)
         }
 
         fillColor.setFill()

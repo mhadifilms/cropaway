@@ -43,12 +43,12 @@ struct TransitionConfigPopover: View {
                         .tag(type)
                     }
                 }
-                .pickerStyle(.segmented)
+                .pickerStyle(.menu)
                 .labelsHidden()
             }
 
-            // Duration slider (only for optical flow)
-            if transition.type == .opticalFlow {
+            // Duration slider (for all transitions except cut)
+            if transition.type.requiresDuration {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
                         Text("Duration")
@@ -81,6 +81,14 @@ struct TransitionConfigPopover: View {
                 switch transition.type {
                 case .cut:
                     Label("Instant cut between clips", systemImage: "scissors")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                case .fade:
+                    Label("Smooth cross-dissolve between clips", systemImage: "circle.lefthalf.filled")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                case .fadeToBlack:
+                    Label("Fade to black, then fade in next clip", systemImage: "circle.bottomhalf.filled")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 case .opticalFlow:
@@ -135,8 +143,12 @@ struct TransitionIndicatorView: View {
         switch transition.type {
         case .cut:
             return .orange
-        case .opticalFlow:
+        case .fade:
             return .purple
+        case .fadeToBlack:
+            return .indigo
+        case .opticalFlow:
+            return .pink
         }
     }
 }
