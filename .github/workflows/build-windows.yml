@@ -1,0 +1,115 @@
+name: Build Windows Installer
+
+on:
+  push:
+    branches: [windows]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version number (e.g. 1.0.0)'
+        required: false
+        default: '1.0.0'
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Install Inno Setup
+        run: choco install innosetup --yes --no-progress
+        shell: pwsh
+
+      - name: Download FFmpeg
+        working-directory: CropawayWindows
+        shell: pwsh
+        run: |
+          $FFmpegDir = "ffmpeg-bin"
+          New-Item -ItemType Directory -Path $FFmpegDir -Force | Out-Null
+
+          $url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+          $zip = "ffmpeg-download.zip"
+
+          Write-Host "Downloading FFmpeg..."
+          Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
+
+          Write-Host "Extracting..."
+          $extractDir = "ffmpeg-extract"
+          Expand-Archive -Path $zip -DestinationPath $extractDir
+
+          $binDir = Get-ChildItem -Path $extractDir -Recurse -Directory -Filter "bin" | Select-Object -First 1
+          if ($binDir) {
+              Copy-Item (Join-Path $binDir.FullName "ffmpeg.exe") (Join-Path $FFmpegDir "ffmpeg.exe")
+              Copy-Item (Join-Path $binDir.FullName "ffprobe.exe") (Join-Path $FFmpegDir "ffprobe.exe")
+              Write-Host "FFmpeg ready."
+          } else {
+              Write-Error "Could not find FFmpeg binaries."
+              exit 1
+          }
+
+          Remove-Item -Force $zip -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force $extractDir -ErrorAction SilentlyContinue
+
+      - name: Build application
+        working-directory: CropawayWindows
+        shell: pwsh
+        run: |
+          dotnet publish CropawayWindows/CropawayWindows.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=false `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -o publish
+
+      - name: Bundle FFmpeg
+        working-directory: CropawayWindows
+        shell: pwsh
+        run: |
+          $dest = "publish/ffmpeg"
+          New-Item -ItemType Directory -Path $dest -Force | Out-Null
+          Copy-Item "ffmpeg-bin/ffmpeg.exe" "$dest/ffmpeg.exe" -Force
+          Copy-Item "ffmpeg-bin/ffprobe.exe" "$dest/ffprobe.exe" -Force
+          Write-Host "FFmpeg bundled into publish/ffmpeg/"
+
+      - name: Create installer
+        working-directory: CropawayWindows
+        shell: pwsh
+        run: |
+          $inno = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $inno)) {
+              # Fallback path after choco install
+              $inno = (Get-Command ISCC.exe -ErrorAction SilentlyContinue).Source
+          }
+          if (-not $inno) {
+              Write-Error "Inno Setup not found"
+              exit 1
+          }
+
+          New-Item -ItemType Directory -Path output -Force | Out-Null
+          & $inno installer.iss
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+          Write-Host "Installer created:"
+          Get-ChildItem output/
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: CropawaySetup
+          path: CropawayWindows/output/CropawaySetup-*.exe
+          if-no-files-found: error
+
+      - name: Upload portable build
+        uses: actions/upload-artifact@v4
+        with:
+          name: Cropaway-Portable
+          path: CropawayWindows/publish/
+          if-no-files-found: error
