@@ -1,5 +1,9 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:converters="clr-namespace:CropawayWindows.Converters;assembly=Cropaway">
+
+    <!-- Converters needed within this dictionary (must be defined here, not in parent) -->
+    <converters:SliderFillWidthConverter x:Key="SliderFillConverter" />
 
     <!-- Dark theme colors matching macOS Cropaway -->
     <Color x:Key="BackgroundColor">#1E1E1E</Color>
