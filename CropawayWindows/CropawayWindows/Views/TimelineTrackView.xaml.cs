@@ -233,7 +233,7 @@ public partial class TimelineTrackView : UserControl
                 Margin = new Thickness(6, 0, 6, 4),
                 IsHitTestVisible = false,
                 VerticalAlignment = VerticalAlignment.Bottom,
-                HorizontalAlignment = HorizontalAlignment.Left
+                HorizontalAlignment = System.Windows.HorizontalAlignment.Left
             };
             clipContent.Children.Add(durationLabel);
 
@@ -474,9 +474,10 @@ public partial class TimelineTrackView : UserControl
         };
         splitItem.Click += (s, e) =>
         {
-            ViewModel?.SelectedClipIndex = index;
-            ViewModel?.SelectedClip = clip;
-            ViewModel?.SplitClipAtPlayhead();
+            if (ViewModel == null) return;
+            ViewModel.SelectedClipIndex = index;
+            ViewModel.SelectedClip = clip;
+            ViewModel.SplitClipAtPlayhead();
         };
         menu.Items.Add(splitItem);
 
@@ -492,9 +493,10 @@ public partial class TimelineTrackView : UserControl
         };
         removeItem.Click += (s, e) =>
         {
-            ViewModel?.SelectedClipIndex = index;
-            ViewModel?.SelectedClip = clip;
-            ViewModel?.RemoveSelectedClip();
+            if (ViewModel == null) return;
+            ViewModel.SelectedClipIndex = index;
+            ViewModel.SelectedClip = clip;
+            ViewModel.RemoveSelectedClip();
         };
         menu.Items.Add(removeItem);
 
@@ -512,8 +514,9 @@ public partial class TimelineTrackView : UserControl
         };
         inPointItem.Click += (s, e) =>
         {
-            ViewModel?.SelectedClip = clip;
-            ViewModel?.SetInPoint();
+            if (ViewModel == null) return;
+            ViewModel.SelectedClip = clip;
+            ViewModel.SetInPoint();
         };
         menu.Items.Add(inPointItem);
 
@@ -529,8 +532,9 @@ public partial class TimelineTrackView : UserControl
         };
         outPointItem.Click += (s, e) =>
         {
-            ViewModel?.SelectedClip = clip;
-            ViewModel?.SetOutPoint();
+            if (ViewModel == null) return;
+            ViewModel.SelectedClip = clip;
+            ViewModel.SetOutPoint();
         };
         menu.Items.Add(outPointItem);
 

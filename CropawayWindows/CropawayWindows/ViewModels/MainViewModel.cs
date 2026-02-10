@@ -503,15 +503,15 @@ public partial class MainViewModel : ObservableObject
 
             // Navigation
             case Key.Down when ctrl:
-                Project.SelectNextVideo();
+                Project.SelectNextVideoCommand.Execute(null);
                 e.Handled = true;
                 break;
             case Key.Up when ctrl:
-                Project.SelectPreviousVideo();
+                Project.SelectPreviousVideoCommand.Execute(null);
                 e.Handled = true;
                 break;
             case Key.Delete when ctrl:
-                Project.RemoveSelectedVideo();
+                Project.RemoveSelectedVideoCommand.Execute(null);
                 e.Handled = true;
                 break;
 

@@ -23,6 +23,13 @@
     <PackageReference Include="System.Drawing.Common" Version="8.0.8" />
   </ItemGroup>
 
+  <!-- Remove WinForms/Drawing implicit usings to avoid massive type ambiguities with WPF.
+       UseWindowsForms is only needed for FolderBrowserDialog (used fully qualified). -->
+  <ItemGroup>
+    <Using Remove="System.Drawing" />
+    <Using Remove="System.Windows.Forms" />
+  </ItemGroup>
+
   <ItemGroup>
     <Resource Include="Resources\**" />
   </ItemGroup>

@@ -164,7 +164,7 @@ public partial class AIEditorView : UserControl
                 ViewModel.AiPromptPoints.Count > 0)
             {
                 var firstPoint = ViewModel.AiPromptPoints[0];
-                pointPrompt = new Point(firstPoint.X, firstPoint.Y);
+                pointPrompt = new Point(firstPoint.Position.X, firstPoint.Position.Y);
             }
 
             SetStatus("\uE895", "Uploading video to fal.ai...", isError: false);

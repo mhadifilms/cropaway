@@ -313,7 +313,7 @@ public class CropOverlayControl : Canvas
         // Draw "AI" label
         var label = new FormattedText("AI Tracked",
             System.Globalization.CultureInfo.CurrentCulture,
-            FlowDirection.LeftToRight,
+            System.Windows.FlowDirection.LeftToRight,
             new Typeface("Segoe UI"),
             11, AIBrush,
             VisualTreeHelper.GetDpi(this).PixelsPerDip);
@@ -436,7 +436,7 @@ public class CropOverlayControl : Canvas
         return new FormattedText(
             text,
             System.Globalization.CultureInfo.CurrentCulture,
-            FlowDirection.LeftToRight,
+            System.Windows.FlowDirection.LeftToRight,
             new Typeface("Segoe UI"),
             LabelFontSize,
             foreground,
