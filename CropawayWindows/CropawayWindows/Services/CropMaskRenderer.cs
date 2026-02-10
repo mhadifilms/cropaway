@@ -8,8 +8,10 @@ using System.Drawing.Imaging;
 using System.Text.Json;
 using System.Windows;
 using CropawayWindows.Models;
-using Point = System.Windows.Point;
-using Size = System.Drawing.Size;
+
+// Local overrides: this file uses System.Drawing for GDI+ bitmap operations
+using Brush = System.Drawing.Brush;
+using Rectangle = System.Drawing.Rectangle;
 
 namespace CropawayWindows.Services;
 
