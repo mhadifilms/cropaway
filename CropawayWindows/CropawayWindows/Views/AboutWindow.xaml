@@ -1,0 +1,128 @@
+<Window x:Class="CropawayWindows.Views.AboutWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:CropawayWindows.ViewModels"
+        mc:Ignorable="d"
+        Title="About Cropaway"
+        Width="450" Height="400"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource BackgroundBrush}"
+        Foreground="{StaticResource TextPrimaryBrush}"
+        ShowInTaskbar="False"
+        WindowStyle="ToolWindow">
+
+    <Border Padding="24,20">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- App Icon and Title -->
+            <StackPanel Grid.Row="0" HorizontalAlignment="Center" Margin="0,8,0,20">
+                <!-- App icon area -->
+                <Border Width="64" Height="64"
+                        CornerRadius="12"
+                        Background="{StaticResource SurfaceBrush}"
+                        BorderBrush="{StaticResource BorderBrush}"
+                        BorderThickness="1"
+                        HorizontalAlignment="Center"
+                        Margin="0,0,0,12">
+                    <TextBlock FontFamily="Segoe Fluent Icons"
+                               Text="{StaticResource IconVideo}"
+                               FontSize="32"
+                               Foreground="{StaticResource AccentBrush}"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center" />
+                </Border>
+
+                <!-- App name -->
+                <TextBlock Text="Cropaway for Windows"
+                           FontSize="20" FontWeight="Bold"
+                           Foreground="{StaticResource TextPrimaryBrush}"
+                           HorizontalAlignment="Center" />
+
+                <!-- Version -->
+                <TextBlock Text="Version 1.0.0"
+                           FontSize="12"
+                           Foreground="{StaticResource TextSecondaryBrush}"
+                           HorizontalAlignment="Center"
+                           Margin="0,4,0,0" />
+
+                <!-- Description -->
+                <TextBlock Text="Professional video cropping tool with keyframe animation, AI tracking, and GPU-accelerated export."
+                           FontSize="12"
+                           Foreground="{StaticResource TextSecondaryBrush}"
+                           HorizontalAlignment="Center"
+                           TextAlignment="Center"
+                           TextWrapping="Wrap"
+                           Margin="16,10,16,0" />
+            </StackPanel>
+
+            <!-- System Info -->
+            <Border Grid.Row="1"
+                    Background="{StaticResource SurfaceBrush}"
+                    CornerRadius="6"
+                    BorderBrush="{StaticResource BorderBrush}"
+                    BorderThickness="1"
+                    Padding="16,12">
+                <StackPanel>
+                    <!-- FFmpeg status -->
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                        <TextBlock FontFamily="Segoe Fluent Icons"
+                                   x:Name="FFmpegStatusIcon"
+                                   FontSize="12"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,8,0" />
+                        <TextBlock Text="FFmpeg: "
+                                   FontSize="12"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   VerticalAlignment="Center" />
+                        <TextBlock x:Name="FFmpegStatusText"
+                                   FontSize="12"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <Separator Background="{StaticResource BorderBrush}" Height="1" Margin="0,4,0,8" />
+
+                    <!-- GPU Encoder status -->
+                    <TextBlock Text="GPU Encoders"
+                               FontSize="11" FontWeight="SemiBold"
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               Margin="0,0,0,6" />
+
+                    <StackPanel x:Name="EncoderListPanel" Margin="8,0,0,0">
+                        <TextBlock x:Name="EncoderStatusText"
+                                   FontSize="11"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   Text="Detecting encoders..."
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Footer: Copyright and Close -->
+            <StackPanel Grid.Row="2" Margin="0,16,0,0">
+                <!-- Copyright -->
+                <TextBlock x:Name="CopyrightText"
+                           FontSize="11"
+                           Foreground="{StaticResource TextTertiaryBrush}"
+                           HorizontalAlignment="Center"
+                           Margin="0,0,0,12" />
+
+                <!-- Close button -->
+                <Button Style="{StaticResource AccentButton}"
+                        Click="OnCloseClick"
+                        HorizontalAlignment="Center"
+                        Padding="32,6"
+                        Cursor="Hand">
+                    <TextBlock Text="Close" />
+                </Button>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

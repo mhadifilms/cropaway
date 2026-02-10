@@ -1,0 +1,273 @@
+<UserControl x:Class="CropawayWindows.Views.ExportProgressView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:CropawayWindows.ViewModels"
+             mc:Ignorable="d"
+             d:DataContext="{d:DesignInstance vm:ExportViewModel}">
+
+    <!-- Semi-transparent overlay background -->
+    <Grid Visibility="{Binding IsExporting, Converter={StaticResource BoolToVisConverter}}">
+        <!-- Backdrop -->
+        <Border Background="#B0000000"
+                IsHitTestVisible="True" />
+
+        <!-- Dialog card -->
+        <Border Background="{StaticResource SurfaceBrush}"
+                BorderBrush="{StaticResource BorderBrush}"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="24,20"
+                Width="420"
+                VerticalAlignment="Center"
+                HorizontalAlignment="Center"
+                >
+            <Border.Effect>
+                <DropShadowEffect ShadowDepth="8" BlurRadius="20" Opacity="0.5" Color="Black" />
+            </Border.Effect>
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <!-- Title -->
+                <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,16">
+                    <TextBlock FontFamily="Segoe Fluent Icons"
+                               Text="{StaticResource IconExport}"
+                               FontSize="18"
+                               Foreground="{StaticResource AccentBrush}"
+                               VerticalAlignment="Center"
+                               Margin="0,0,10,0" />
+                    <TextBlock FontSize="16" FontWeight="SemiBold"
+                               Foreground="{StaticResource TextPrimaryBrush}"
+                               VerticalAlignment="Center">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Text" Value="Exporting Video" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsBatchExport}" Value="True">
+                                        <Setter Property="Text">
+                                            <Setter.Value>
+                                                <Binding StringFormat="Batch Export ({0}/{1})"
+                                                         Path="CompletedCount" />
+                                            </Setter.Value>
+                                        </Setter>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                    <!-- Batch counter -->
+                    <TextBlock FontSize="13"
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               VerticalAlignment="Center" Margin="8,0,0,0"
+                               Visibility="{Binding IsBatchExport, Converter={StaticResource BoolToVisConverter}}">
+                        <TextBlock.Text>
+                            <MultiBinding StringFormat="{}{0} of {1}">
+                                <Binding Path="CompletedCount" />
+                                <Binding Path="TotalBatchCount" />
+                            </MultiBinding>
+                        </TextBlock.Text>
+                    </TextBlock>
+                </StackPanel>
+
+                <!-- Current file name -->
+                <StackPanel Grid.Row="1" Margin="0,0,0,12">
+                    <TextBlock Text="Current file:" FontSize="11"
+                               Foreground="{StaticResource TextSecondaryBrush}" />
+                    <TextBlock Text="{Binding CurrentExport.Video.FileName}"
+                               FontSize="13" FontWeight="SemiBold"
+                               Foreground="{StaticResource TextPrimaryBrush}"
+                               TextTrimming="CharacterEllipsis"
+                               Margin="0,2,0,0" />
+                </StackPanel>
+
+                <!-- Progress bar -->
+                <Grid Grid.Row="2" Margin="0,0,0,8">
+                    <ProgressBar Height="6"
+                                 Minimum="0" Maximum="1"
+                                 Value="{Binding OverallProgress, Mode=OneWay}"
+                                 Background="{StaticResource PanelBrush}"
+                                 Foreground="{StaticResource ExportProgressBrush}"
+                                 BorderThickness="0">
+                        <ProgressBar.Template>
+                            <ControlTemplate TargetType="ProgressBar">
+                                <Grid>
+                                    <Border CornerRadius="3"
+                                            Background="{TemplateBinding Background}" />
+                                    <Border x:Name="PART_Indicator"
+                                            CornerRadius="3"
+                                            Background="{TemplateBinding Foreground}"
+                                            HorizontalAlignment="Left" />
+                                    <Border x:Name="PART_Track" />
+                                </Grid>
+                            </ControlTemplate>
+                        </ProgressBar.Template>
+                    </ProgressBar>
+                </Grid>
+
+                <!-- Percentage -->
+                <TextBlock Grid.Row="3"
+                           HorizontalAlignment="Center"
+                           Margin="0,0,0,12"
+                           FontSize="22" FontWeight="Bold"
+                           Foreground="{StaticResource TextPrimaryBrush}">
+                    <TextBlock.Text>
+                        <Binding Path="OverallProgress" StringFormat="{}{0:P0}" />
+                    </TextBlock.Text>
+                </TextBlock>
+
+                <!-- Status message -->
+                <TextBlock Grid.Row="4"
+                           Text="{Binding StatusMessage}"
+                           FontSize="11"
+                           Foreground="{StaticResource TextSecondaryBrush}"
+                           HorizontalAlignment="Center"
+                           TextTrimming="CharacterEllipsis"
+                           Margin="0,0,0,8" />
+
+                <!-- Batch export queue list (visible only during batch export) -->
+                <Border Grid.Row="5"
+                        Visibility="{Binding IsBatchExport, Converter={StaticResource BoolToVisConverter}}"
+                        Background="{StaticResource PanelBrush}"
+                        CornerRadius="4" Padding="4"
+                        MaxHeight="140" Margin="0,0,0,12">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding ExportQueue}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="2,1">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="16" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <!-- Status icon -->
+                                        <TextBlock Grid.Column="0" FontFamily="Segoe Fluent Icons"
+                                                   FontSize="10" VerticalAlignment="Center"
+                                                   HorizontalAlignment="Center">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Text" Value="&#xE916;" />
+                                                    <Setter Property="Foreground" Value="{StaticResource TextTertiaryBrush}" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Status}" Value="Processing">
+                                                            <Setter Property="Text" Value="&#xE768;" />
+                                                            <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Status}" Value="Completed">
+                                                            <Setter Property="Text" Value="&#xE73E;" />
+                                                            <Setter Property="Foreground" Value="#4CAF50" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Status}" Value="Failed">
+                                                            <Setter Property="Text" Value="&#xE783;" />
+                                                            <Setter Property="Foreground" Value="#F44336" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Status}" Value="Cancelled">
+                                                            <Setter Property="Text" Value="&#xE711;" />
+                                                            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+
+                                        <!-- File name -->
+                                        <TextBlock Grid.Column="1" Text="{Binding Video.FileName}"
+                                                   FontSize="11" Foreground="{StaticResource TextPrimaryBrush}"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   VerticalAlignment="Center" Margin="4,0" />
+
+                                        <!-- Progress/status -->
+                                        <TextBlock Grid.Column="2" FontSize="10"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{StaticResource TextSecondaryBrush}">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Text" Value="Queued" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Status}" Value="Processing">
+                                                            <Setter Property="Text" Value="{Binding Progress, StringFormat={}{0:P0}}" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Status}" Value="Completed">
+                                                            <Setter Property="Text" Value="Done" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Status}" Value="Failed">
+                                                            <Setter Property="Text" Value="Failed" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Status}" Value="Cancelled">
+                                                            <Setter Property="Text" Value="Cancelled" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Border>
+
+                <!-- Cancel button -->
+                <Button Grid.Row="6"
+                        Command="{Binding CancelExportCommand}"
+                        HorizontalAlignment="Center"
+                        Padding="24,6"
+                        Cursor="Hand">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Background" Value="{StaticResource PanelBrush}" />
+                            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+                            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+                            <Setter Property="BorderThickness" Value="1" />
+                            <Setter Property="FontSize" Value="13" />
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border x:Name="border"
+                                                Background="{TemplateBinding Background}"
+                                                BorderBrush="{TemplateBinding BorderBrush}"
+                                                BorderThickness="{TemplateBinding BorderThickness}"
+                                                CornerRadius="4"
+                                                Padding="{TemplateBinding Padding}">
+                                            <ContentPresenter HorizontalAlignment="Center"
+                                                              VerticalAlignment="Center" />
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="border" Property="Background"
+                                                        Value="{StaticResource HoverBrush}" />
+                                                <Setter TargetName="border" Property="BorderBrush"
+                                                        Value="{StaticResource BorderLightBrush}" />
+                                            </Trigger>
+                                            <Trigger Property="IsPressed" Value="True">
+                                                <Setter TargetName="border" Property="Background"
+                                                        Value="{StaticResource SelectedBrush}" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </Button.Style>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock FontFamily="Segoe Fluent Icons"
+                                   Text="{StaticResource IconStop}"
+                                   FontSize="12" Margin="0,0,6,0"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Text="Cancel Export" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

@@ -1,0 +1,337 @@
+<UserControl x:Class="CropawayWindows.Views.VideoSidebarView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:CropawayWindows.ViewModels"
+             xmlns:models="clr-namespace:CropawayWindows.Models"
+             mc:Ignorable="d"
+             d:DataContext="{d:DesignInstance vm:ProjectViewModel}"
+             Background="{StaticResource SidebarBrush}">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <!-- Header -->
+            <RowDefinition Height="Auto" />
+            <!-- Video list -->
+            <RowDefinition Height="*" />
+            <!-- Video metadata inspector -->
+            <RowDefinition Height="Auto" />
+            <!-- Add Videos button -->
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Border Grid.Row="0" Padding="12,8"
+                BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
+            <DockPanel>
+                <TextBlock Text="Videos" FontWeight="SemiBold" FontSize="13"
+                           Foreground="{StaticResource TextPrimaryBrush}"
+                           VerticalAlignment="Center" />
+                <TextBlock x:Name="ItemCountText"
+                           DockPanel.Dock="Right" HorizontalAlignment="Right"
+                           VerticalAlignment="Center"
+                           Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"
+                           Text="{Binding Videos.Count, StringFormat='{}{0} items'}" />
+            </DockPanel>
+        </Border>
+
+        <!-- Video List -->
+        <ListBox Grid.Row="1"
+                 Style="{StaticResource DarkListBox}"
+                 ItemsSource="{Binding Videos}"
+                 SelectedItem="{Binding SelectedVideo, Mode=TwoWay}"
+                 HorizontalContentAlignment="Stretch"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                 AllowDrop="True"
+                 PreviewMouseLeftButtonDown="OnListPreviewMouseDown"
+                 PreviewMouseMove="OnListPreviewMouseMove"
+                 Drop="OnListDrop"
+                 DragOver="OnListDragOver">
+
+            <ListBox.ItemContainerStyle>
+                <Style TargetType="ListBoxItem">
+                    <Setter Property="Background" Value="Transparent" />
+                    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+                    <Setter Property="Padding" Value="0" />
+                    <Setter Property="Margin" Value="0" />
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="ListBoxItem">
+                                <Border x:Name="ItemBorder"
+                                        Background="{TemplateBinding Background}"
+                                        BorderThickness="2" BorderBrush="Transparent"
+                                        Padding="6,4" Margin="2,1">
+                                    <ContentPresenter />
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="ItemBorder" Property="Background"
+                                                Value="{StaticResource HoverBrush}" />
+                                    </Trigger>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter TargetName="ItemBorder" Property="Background"
+                                                Value="{StaticResource SelectedBrush}" />
+                                        <Setter TargetName="ItemBorder" Property="BorderBrush"
+                                                Value="{StaticResource AccentBrush}" />
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+            </ListBox.ItemContainerStyle>
+
+            <ListBox.ItemTemplate>
+                <DataTemplate DataType="{x:Type models:VideoItem}">
+                    <Grid Margin="2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="50" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Thumbnail -->
+                        <Border Grid.Column="0" Width="50" Height="50"
+                                CornerRadius="3" ClipToBounds="True"
+                                Background="{StaticResource PanelBrush}">
+                            <Grid>
+                                <!-- Thumbnail image -->
+                                <Image Source="{Binding Thumbnail}"
+                                       Stretch="UniformToFill"
+                                       RenderOptions.BitmapScalingMode="HighQuality" />
+
+                                <!-- Placeholder when no thumbnail -->
+                                <TextBlock FontFamily="Segoe Fluent Icons"
+                                           Text="{StaticResource IconVideo}"
+                                           FontSize="20" HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           Foreground="{StaticResource TextTertiaryBrush}">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Thumbnail}" Value="{x:Null}">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+
+                                <!-- Loading spinner -->
+                                <Border Background="#80000000"
+                                        Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisConverter}}">
+                                    <TextBlock Text="..." Foreground="White"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               FontSize="12" />
+                                </Border>
+                            </Grid>
+                        </Border>
+
+                        <!-- File info -->
+                        <StackPanel Grid.Column="1" Margin="8,0,0,0"
+                                    VerticalAlignment="Center">
+                            <!-- Filename (bold) -->
+                            <TextBlock Text="{Binding FileName}"
+                                       FontWeight="SemiBold" FontSize="12"
+                                       Foreground="{StaticResource TextPrimaryBrush}"
+                                       TextTrimming="CharacterEllipsis"
+                                       MaxWidth="140" />
+
+                            <!-- Dimensions + Codec -->
+                            <TextBlock FontSize="10" Margin="0,2,0,0"
+                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       TextTrimming="CharacterEllipsis">
+                                <TextBlock.Text>
+                                    <MultiBinding StringFormat="{}{0}  {1}">
+                                        <Binding Path="Metadata.DimensionsDisplay" />
+                                        <Binding Path="Metadata.CodecType" />
+                                    </MultiBinding>
+                                </TextBlock.Text>
+                            </TextBlock>
+
+                            <!-- Duration -->
+                            <TextBlock Text="{Binding Metadata.DurationDisplay}"
+                                       FontSize="10" Margin="0,1,0,0"
+                                       Foreground="{StaticResource TextTertiaryBrush}" />
+                        </StackPanel>
+
+                        <!-- Context menu -->
+                        <Grid.ContextMenu>
+                            <ContextMenu Background="{StaticResource SurfaceBrush}"
+                                         Foreground="{StaticResource TextPrimaryBrush}"
+                                         BorderBrush="{StaticResource BorderBrush}">
+                                <MenuItem Header="Export..."
+                                          Click="OnExportVideoClick">
+                                    <MenuItem.Icon>
+                                        <TextBlock FontFamily="Segoe Fluent Icons"
+                                                   Text="{StaticResource IconExport}"
+                                                   FontSize="12" />
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="Export Crop JSON..."
+                                          Click="OnExportJsonClick">
+                                    <MenuItem.Icon>
+                                        <TextBlock FontFamily="Segoe Fluent Icons"
+                                                   Text="{StaticResource IconSave}"
+                                                   FontSize="12" />
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <Separator Background="{StaticResource BorderBrush}" />
+                                <MenuItem Header="Copy Crop Settings"
+                                          Click="OnCopyCropSettingsClick">
+                                    <MenuItem.Icon>
+                                        <TextBlock FontFamily="Segoe Fluent Icons"
+                                                   Text="{StaticResource IconCopy}"
+                                                   FontSize="12" />
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="Paste Crop Settings"
+                                          Click="OnPasteCropSettingsClick">
+                                    <MenuItem.Icon>
+                                        <TextBlock FontFamily="Segoe Fluent Icons"
+                                                   Text="{StaticResource IconPaste}"
+                                                   FontSize="12" />
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <Separator Background="{StaticResource BorderBrush}" />
+                                <MenuItem Header="Reset Crop"
+                                          Click="OnResetCropClick">
+                                    <MenuItem.Icon>
+                                        <TextBlock FontFamily="Segoe Fluent Icons"
+                                                   Text="{StaticResource IconReset}"
+                                                   FontSize="12" />
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="Remove"
+                                          Click="OnRemoveVideoClick">
+                                    <MenuItem.Icon>
+                                        <TextBlock FontFamily="Segoe Fluent Icons"
+                                                   Text="{StaticResource IconDelete}"
+                                                   FontSize="12" />
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="Open Source Folder"
+                                          Click="OnOpenSourceFolderClick">
+                                    <MenuItem.Icon>
+                                        <TextBlock FontFamily="Segoe Fluent Icons"
+                                                   Text="{StaticResource IconFolder}"
+                                                   FontSize="12" />
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                            </ContextMenu>
+                        </Grid.ContextMenu>
+                    </Grid>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+
+        <!-- Empty state (visible when no videos) -->
+        <StackPanel Grid.Row="1" VerticalAlignment="Center" HorizontalAlignment="Center"
+                    x:Name="EmptyStatePanel" Visibility="Collapsed">
+            <TextBlock FontFamily="Segoe Fluent Icons" Text="{StaticResource IconVideo}"
+                       FontSize="32" Foreground="{StaticResource TextTertiaryBrush}"
+                       HorizontalAlignment="Center" />
+            <TextBlock Text="No videos" FontSize="12"
+                       Foreground="{StaticResource TextTertiaryBrush}"
+                       HorizontalAlignment="Center" Margin="0,6,0,0" />
+            <TextBlock Text="Drop files here" FontSize="11"
+                       Foreground="{StaticResource TextTertiaryBrush}"
+                       HorizontalAlignment="Center" Margin="0,2,0,0" />
+        </StackPanel>
+
+        <!-- Video Metadata Inspector -->
+        <Border Grid.Row="2"
+                BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0"
+                Padding="10,8"
+                Visibility="{Binding SelectedVideo, Converter={StaticResource NotNullToVisConverter}}">
+            <StackPanel>
+                <TextBlock Text="Video Info" FontWeight="SemiBold" FontSize="11"
+                           Foreground="{StaticResource TextSecondaryBrush}"
+                           Margin="0,0,0,6" />
+
+                <!-- Resolution -->
+                <DockPanel Margin="0,0,0,2">
+                    <TextBlock Text="Resolution:" FontSize="10"
+                               Foreground="{StaticResource TextTertiaryBrush}" Width="65" />
+                    <TextBlock Text="{Binding SelectedVideo.Metadata.DimensionsDisplay}"
+                               FontSize="10"
+                               Foreground="{StaticResource TextPrimaryBrush}" />
+                </DockPanel>
+
+                <!-- Frame Rate -->
+                <DockPanel Margin="0,0,0,2">
+                    <TextBlock Text="Frame Rate:" FontSize="10"
+                               Foreground="{StaticResource TextTertiaryBrush}" Width="65" />
+                    <TextBlock FontSize="10"
+                               Foreground="{StaticResource TextPrimaryBrush}"
+                               Text="{Binding SelectedVideo.Metadata.FrameRate, StringFormat={}{0:F2} fps}" />
+                </DockPanel>
+
+                <!-- Duration -->
+                <DockPanel Margin="0,0,0,2">
+                    <TextBlock Text="Duration:" FontSize="10"
+                               Foreground="{StaticResource TextTertiaryBrush}" Width="65" />
+                    <TextBlock Text="{Binding SelectedVideo.Metadata.DurationDisplay}"
+                               FontSize="10"
+                               Foreground="{StaticResource TextPrimaryBrush}" />
+                </DockPanel>
+
+                <!-- Codec -->
+                <DockPanel Margin="0,0,0,2">
+                    <TextBlock Text="Codec:" FontSize="10"
+                               Foreground="{StaticResource TextTertiaryBrush}" Width="65" />
+                    <TextBlock Text="{Binding SelectedVideo.Metadata.CodecType}"
+                               FontSize="10"
+                               Foreground="{StaticResource TextPrimaryBrush}" />
+                </DockPanel>
+
+                <!-- Bit Rate -->
+                <DockPanel Margin="0,0,0,2">
+                    <TextBlock Text="Bit Rate:" FontSize="10"
+                               Foreground="{StaticResource TextTertiaryBrush}" Width="65" />
+                    <TextBlock Text="{Binding SelectedVideo.Metadata.BitRateDisplay}"
+                               FontSize="10"
+                               Foreground="{StaticResource TextPrimaryBrush}" />
+                </DockPanel>
+
+                <!-- Color Space -->
+                <DockPanel Margin="0,0,0,2"
+                           Visibility="{Binding SelectedVideo.Metadata.ColorSpaceDescription, Converter={StaticResource StringToVisConverter}}">
+                    <TextBlock Text="Color:" FontSize="10"
+                               Foreground="{StaticResource TextTertiaryBrush}" Width="65" />
+                    <TextBlock Text="{Binding SelectedVideo.Metadata.ColorSpaceDescription}"
+                               FontSize="10"
+                               Foreground="{StaticResource TextPrimaryBrush}" />
+                </DockPanel>
+
+                <!-- HDR -->
+                <DockPanel Margin="0,0,0,0"
+                           Visibility="{Binding SelectedVideo.Metadata.IsHDR, Converter={StaticResource BoolToVisConverter}}">
+                    <TextBlock Text="HDR:" FontSize="10"
+                               Foreground="{StaticResource TextTertiaryBrush}" Width="65" />
+                    <TextBlock Text="{Binding SelectedVideo.Metadata.HdrDescription}"
+                               FontSize="10"
+                               Foreground="{StaticResource AccentBrush}" />
+                </DockPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- Add Videos Button -->
+        <Border Grid.Row="3" Padding="8"
+                BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
+            <Button Style="{StaticResource AccentButton}"
+                    Command="{Binding OpenVideosCommand}"
+                    HorizontalAlignment="Stretch">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                    <TextBlock FontFamily="Segoe Fluent Icons"
+                               Text="{StaticResource IconAdd}"
+                               FontSize="12" Margin="0,0,6,0" VerticalAlignment="Center" />
+                    <TextBlock Text="Add Videos" VerticalAlignment="Center" />
+                </StackPanel>
+            </Button>
+        </Border>
+    </Grid>
+</UserControl>

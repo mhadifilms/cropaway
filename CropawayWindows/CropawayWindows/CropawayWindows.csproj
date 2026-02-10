@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationIcon>Resources\cropaway.ico</ApplicationIcon>
+    <AssemblyName>Cropaway</AssemblyName>
+    <RootNamespace>CropawayWindows</RootNamespace>
+    <Version>1.0.0</Version>
+    <Company>Cropaway</Company>
+    <Product>Cropaway</Product>
+    <Description>Professional video cropping tool for Windows with rectangle, circle, freehand mask, and AI tracking crop modes.</Description>
+    <Copyright>Copyright 2024-2026</Copyright>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2" />
+    <PackageReference Include="System.Drawing.Common" Version="8.0.8" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Resources\**" />
+  </ItemGroup>
+
+</Project>
