@@ -9,9 +9,10 @@ using System.Text.Json;
 using System.Windows;
 using CropawayWindows.Models;
 
-// Note: This file uses System.Drawing for GDI+ bitmap operations.
-// Brush and Rectangle are fully qualified below to avoid conflict
-// with global using aliases (which point to WPF types).
+// This file uses System.Drawing for GDI+ bitmap operations.
+// Brush and Rectangle are fully qualified below.
+// Point alias ensures WPF Point is used for the public API parameters.
+using Point = System.Windows.Point;
 
 namespace CropawayWindows.Services;
 
