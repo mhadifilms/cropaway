@@ -60,4 +60,4 @@ Root: HKA; Subkey: "Software\Classes\Cropaway.Video\shell\open\command"; ValueTy
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
-Type: filesandirs; Name: "{localappdata}\Cropaway"
+Type: filesandordirs; Name: "{localappdata}\Cropaway"
