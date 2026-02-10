@@ -6,11 +6,14 @@
 import Foundation
 import AppKit
 import CoreGraphics
+import CoreImage
 
 final class FFmpegExportService {
     private var process: Process?
     private var isCancelled = false
     private var tempMaskURLs: [URL] = []  // Track temp files for cleanup
+    private let maskRenderer = CropMaskRenderer()
+    private let ciContext = CIContext(options: [.cacheIntermediates: false])
 
     func cancel() {
         isCancelled = true
@@ -265,7 +268,16 @@ final class FFmpegExportService {
     }
 
     private func getMaskBoundingBox(cropConfig: CropConfiguration, size: CGSize) -> CGRect {
-        Self.getCropPixelRect(cropConfig: cropConfig, size: size)
+        let base = Self.getCropPixelRect(cropConfig: cropConfig, size: size)
+        let params = cropConfig.maskRefinement
+        let morphExpansion = Double(params.radius * max(1, params.iterations))
+        let featherExpansion = params.smoothing + params.blurRadius + params.postFilter
+        let inOutExpansion = max(0, params.inOutRatio) * max(2.0, params.blurRadius + 4.0)
+        let totalExpansion = CGFloat(morphExpansion + featherExpansion + inOutExpansion)
+
+        let expanded = base.insetBy(dx: -totalExpansion, dy: -totalExpansion)
+        let clamped = expanded.intersection(CGRect(origin: .zero, size: size))
+        return clamped.isNull ? base : clamped
     }
 
     /// Returns output (width, height) for export. When preserveDimensions is false, uses the crop’s natural pixel size.
@@ -317,148 +329,37 @@ final class FFmpegExportService {
         let maskURL = FileManager.default.temporaryDirectory.appendingPathComponent("mask_\(UUID().uuidString).png")
         tempMaskURLs.append(maskURL)  // Track for cleanup
 
-        let width = Int(size.width)
-        let height = Int(size.height)
+        let state = InterpolatedCropState(
+            cropRect: cropConfig.cropRect,
+            edgeInsets: cropConfig.edgeInsets,
+            circleCenter: cropConfig.circleCenter,
+            circleRadius: cropConfig.circleRadius,
+            freehandPoints: cropConfig.freehandPoints,
+            freehandPathData: cropConfig.freehandPathData,
+            aiMaskData: cropConfig.aiMaskData,
+            aiBoundingBox: cropConfig.aiBoundingBox,
+            maskRefinement: cropConfig.maskRefinement
+        )
 
-        guard let bitmap = NSBitmapImageRep(
-            bitmapDataPlanes: nil,
-            pixelsWide: width,
-            pixelsHigh: height,
-            bitsPerSample: 8,
-            samplesPerPixel: 4,
-            hasAlpha: true,
-            isPlanar: false,
-            colorSpaceName: .deviceRGB,
-            bytesPerRow: width * 4,
-            bitsPerPixel: 32
-        ) else {
+        let maskImage = maskRenderer.generateMask(
+            mode: cropConfig.mode,
+            state: state,
+            size: size,
+            refinement: cropConfig.maskRefinement,
+            guideImage: nil
+        )
+        let extent = CGRect(origin: .zero, size: size)
+
+        guard let cgImage = ciContext.createCGImage(maskImage, from: extent) else {
             throw ExportError.maskGenerationFailed
         }
-
-        guard let context = NSGraphicsContext(bitmapImageRep: bitmap) else {
-            throw ExportError.maskGenerationFailed
-        }
-
-        NSGraphicsContext.saveGraphicsState()
-        NSGraphicsContext.current = context
-
-        // Black background (masked out)
-        NSColor.black.setFill()
-        NSBezierPath(rect: CGRect(origin: .zero, size: size)).fill()
-
-        // White = visible area
-        NSColor.white.setFill()
-
-        switch cropConfig.mode {
-        case .rectangle:
-            NSBezierPath(rect: cropConfig.cropRect.denormalized(to: size)).fill()
-        case .circle:
-            let center = cropConfig.circleCenter.denormalized(to: size)
-            let radius = cropConfig.circleRadius * min(size.width, size.height)
-            NSBezierPath(ovalIn: CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2)).fill()
-        case .freehand:
-            // Try to use bezier path data if available
-            if let pathData = cropConfig.freehandPathData,
-               let vertices = try? JSONDecoder().decode([MaskVertex].self, from: pathData),
-               vertices.count >= 3 {
-                let path = NSBezierPath()
-                let firstPos = vertices[0].position.denormalized(to: size)
-                path.move(to: firstPos)
-
-                for i in 1..<vertices.count {
-                    let fromVertex = vertices[i - 1]
-                    let toVertex = vertices[i]
-                    addBezierSegment(to: path, from: fromVertex, to: toVertex, size: size)
-                }
-
-                // Close the path
-                let lastVertex = vertices[vertices.count - 1]
-                let firstVertex = vertices[0]
-                addBezierSegment(to: path, from: lastVertex, to: firstVertex, size: size)
-
-                path.close()
-                path.fill()
-            } else if cropConfig.freehandPoints.count >= 3 {
-                // Fallback to simple points
-                let path = NSBezierPath()
-                path.move(to: cropConfig.freehandPoints[0].denormalized(to: size))
-                for point in cropConfig.freehandPoints.dropFirst() {
-                    path.line(to: point.denormalized(to: size))
-                }
-                path.close()
-                path.fill()
-            }
-
-        case .ai:
-            // For AI mode, decode the RLE mask and render it (handles column-major COCO format)
-            guard let maskData = cropConfig.aiMaskData,
-                  let (maskImage, _, _) = AIMaskResult.decodeMaskToImage(maskData) else {
-                throw ExportError.maskGenerationFailed
-            }
-
-            // Draw the mask image scaled to target size
-            let nsImage = NSImage(cgImage: maskImage, size: size)
-            nsImage.draw(in: CGRect(origin: .zero, size: size))
-        }
-
-        NSGraphicsContext.restoreGraphicsState()
-
+        let bitmap = NSBitmapImageRep(cgImage: cgImage)
         guard let pngData = bitmap.representation(using: .png, properties: [:]) else {
             throw ExportError.maskGenerationFailed
         }
+
         try pngData.write(to: maskURL)
         return maskURL
-    }
-
-    private func addBezierSegment(to path: NSBezierPath, from: MaskVertex, to: MaskVertex, size: CGSize) {
-        let fromPx = from.position.denormalized(to: size)
-        let toPx = to.position.denormalized(to: size)
-
-        let hasFromHandle = from.controlOut != nil
-        let hasToHandle = to.controlIn != nil
-
-        if hasFromHandle && hasToHandle {
-            let ctrl1 = CGPoint(
-                x: fromPx.x + from.controlOut!.x * size.width,
-                y: fromPx.y + from.controlOut!.y * size.height
-            )
-            let ctrl2 = CGPoint(
-                x: toPx.x + to.controlIn!.x * size.width,
-                y: toPx.y + to.controlIn!.y * size.height
-            )
-            path.curve(to: toPx, controlPoint1: ctrl1, controlPoint2: ctrl2)
-        } else if hasFromHandle {
-            // Quadratic approximation using cubic
-            let ctrl = CGPoint(
-                x: fromPx.x + from.controlOut!.x * size.width,
-                y: fromPx.y + from.controlOut!.y * size.height
-            )
-            let ctrl1 = CGPoint(
-                x: fromPx.x + 2.0/3.0 * (ctrl.x - fromPx.x),
-                y: fromPx.y + 2.0/3.0 * (ctrl.y - fromPx.y)
-            )
-            let ctrl2 = CGPoint(
-                x: toPx.x + 2.0/3.0 * (ctrl.x - toPx.x),
-                y: toPx.y + 2.0/3.0 * (ctrl.y - toPx.y)
-            )
-            path.curve(to: toPx, controlPoint1: ctrl1, controlPoint2: ctrl2)
-        } else if hasToHandle {
-            let ctrl = CGPoint(
-                x: toPx.x + to.controlIn!.x * size.width,
-                y: toPx.y + to.controlIn!.y * size.height
-            )
-            let ctrl1 = CGPoint(
-                x: fromPx.x + 2.0/3.0 * (ctrl.x - fromPx.x),
-                y: fromPx.y + 2.0/3.0 * (ctrl.y - fromPx.y)
-            )
-            let ctrl2 = CGPoint(
-                x: toPx.x + 2.0/3.0 * (ctrl.x - toPx.x),
-                y: toPx.y + 2.0/3.0 * (ctrl.y - toPx.y)
-            )
-            path.curve(to: toPx, controlPoint1: ctrl1, controlPoint2: ctrl2)
-        } else {
-            path.line(to: toPx)
-        }
     }
 
     private func runFFmpeg(path: String, arguments: [String], duration: Double, progressHandler: @escaping (Double) -> Void) async throws {

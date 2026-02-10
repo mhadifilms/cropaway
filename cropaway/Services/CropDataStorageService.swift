@@ -201,6 +201,8 @@ final class CropDataStorageService {
             }
         }
 
+        config.maskRefinement = document.crop.maskRefinement?.toParams() ?? .default
+
         // Keyframes
         if let keyframes = document.crop.keyframes, !keyframes.isEmpty {
             config.keyframesEnabled = true
@@ -247,6 +249,8 @@ final class CropDataStorageService {
                         }
                     }
                 }
+
+                kf.maskRefinement = kfData.maskRefinement?.toParams() ?? .default
 
                 return kf
             }
@@ -650,6 +654,8 @@ final class CropDataStorageService {
             )
         }
 
+        cropData.maskRefinement = CropStorageDocument.MaskRefinementData.from(config.maskRefinement)
+
         // Keyframes
         if config.hasKeyframes {
             cropData.keyframes = config.keyframes.map { kf in
@@ -706,6 +712,8 @@ final class CropDataStorageService {
                         promptPoints: promptPointsData
                     )
                 }
+
+                kfData.maskRefinement = CropStorageDocument.MaskRefinementData.from(kf.maskRefinement)
 
                 return kfData
             }
@@ -774,6 +782,7 @@ struct CropStorageDocument: Codable {
         var circle: CircleData?
         var freehand: FreehandData?
         var ai: AIData?
+        var maskRefinement: MaskRefinementData?
         var keyframes: [KeyframeData]?
 
         init(mode: String) {
@@ -840,10 +849,73 @@ struct CropStorageDocument: Codable {
         var circle: CircleData?
         var freehand: FreehandData?
         var ai: AIData?
+        var maskRefinement: MaskRefinementData?
 
         init(timestamp: Double, interpolation: String) {
             self.timestamp = timestamp
             self.interpolation = interpolation
+        }
+    }
+
+    struct MaskRefinementData: Codable {
+        let mode: String
+        let shape: String
+        let radius: Int
+        let iterations: Int
+        let smoothing: Double
+        let denoise: Double
+        let blurRadius: Double
+        let inOutRatio: Double
+        let cleanBlack: Double
+        let cleanWhite: Double
+        let blackClip: Double
+        let whiteClip: Double
+        let postFilter: Double
+        let quality: String
+        let smartRefine: Double
+
+        static func from(_ params: MaskRefinementParams) -> MaskRefinementData {
+            var sanitized = params
+            sanitized.sanitize()
+            return MaskRefinementData(
+                mode: sanitized.mode.rawValue,
+                shape: sanitized.shape.rawValue,
+                radius: sanitized.radius,
+                iterations: sanitized.iterations,
+                smoothing: sanitized.smoothing,
+                denoise: sanitized.denoise,
+                blurRadius: sanitized.blurRadius,
+                inOutRatio: sanitized.inOutRatio,
+                cleanBlack: sanitized.cleanBlack,
+                cleanWhite: sanitized.cleanWhite,
+                blackClip: sanitized.blackClip,
+                whiteClip: sanitized.whiteClip,
+                postFilter: sanitized.postFilter,
+                quality: sanitized.quality.rawValue,
+                smartRefine: sanitized.smartRefine
+            )
+        }
+
+        func toParams() -> MaskRefinementParams {
+            var params = MaskRefinementParams(
+                mode: MorphMode(rawValue: mode) ?? .grow,
+                shape: KernelShape(rawValue: shape) ?? .circle,
+                radius: radius,
+                iterations: iterations,
+                smoothing: smoothing,
+                denoise: denoise,
+                blurRadius: blurRadius,
+                inOutRatio: inOutRatio,
+                cleanBlack: cleanBlack,
+                cleanWhite: cleanWhite,
+                blackClip: blackClip,
+                whiteClip: whiteClip,
+                postFilter: postFilter,
+                quality: Quality(rawValue: quality) ?? .faster,
+                smartRefine: smartRefine
+            )
+            params.sanitize()
+            return params
         }
     }
 

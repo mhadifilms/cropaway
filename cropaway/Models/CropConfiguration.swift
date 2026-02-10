@@ -34,6 +34,9 @@ final class CropConfiguration: ObservableObject {
     @Published var aiConfidence: Double = 0
     @Published var aiInteractionMode: AIInteractionMode = .point
 
+    // Non-destructive mask refinement chain
+    @Published var maskRefinement: MaskRefinementParams = .default
+
     // Keyframes for animation
     @Published var keyframes: [Keyframe] = []
     @Published var keyframesEnabled: Bool = false
@@ -110,6 +113,8 @@ final class CropConfiguration: ObservableObject {
             keyframe.aiBoundingBox = aiBoundingBox.width > 0 ? aiBoundingBox : nil
         }
 
+        keyframe.maskRefinement = maskRefinement
+
         // Insert in sorted order
         if let insertIndex = keyframes.firstIndex(where: { $0.timestamp > timestamp }) {
             keyframes.insert(keyframe, at: insertIndex)
@@ -139,6 +144,8 @@ final class CropConfiguration: ObservableObject {
             keyframe.aiPromptPoints = aiPromptPoints.isEmpty ? nil : aiPromptPoints
             keyframe.aiBoundingBox = aiBoundingBox.width > 0 ? aiBoundingBox : nil
         }
+
+        keyframe.maskRefinement = maskRefinement
     }
 
     func reset() {
@@ -155,6 +162,7 @@ final class CropConfiguration: ObservableObject {
         aiObjectId = nil
         aiBoundingBox = .zero
         aiConfidence = 0
+        maskRefinement = .default
         keyframes = []
         keyframesEnabled = false
         // Note: Don't reset preserveWidth and enableAlphaChannel as they're user preferences per video
@@ -194,6 +202,8 @@ final class CropConfiguration: ObservableObject {
                 height: max(0.01, min(1 - aiBoundingBox.origin.y, aiBoundingBox.height))
             )
         }
+
+        maskRefinement.sanitize()
     }
 
     /// Returns true if all crop values are within valid normalized 0-1 range

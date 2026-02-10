@@ -43,6 +43,9 @@ final class Keyframe: Identifiable, ObservableObject {
     @Published var aiPromptPoints: [AIPromptPoint]?
     @Published var aiBoundingBox: CGRect?
 
+    // Optional per-keyframe mask refinement settings
+    @Published var maskRefinement: MaskRefinementParams
+
     // Interpolation to next keyframe
     @Published var interpolation: KeyframeInterpolation
 
@@ -60,6 +63,7 @@ final class Keyframe: Identifiable, ObservableObject {
         self.edgeInsets = edgeInsets
         self.circleCenter = circleCenter
         self.circleRadius = circleRadius
+        self.maskRefinement = .default
         self.interpolation = interpolation
     }
 
@@ -76,6 +80,7 @@ final class Keyframe: Identifiable, ObservableObject {
         kf.aiMaskData = aiMaskData
         kf.aiPromptPoints = aiPromptPoints
         kf.aiBoundingBox = aiBoundingBox
+        kf.maskRefinement = maskRefinement
         return kf
     }
 }

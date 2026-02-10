@@ -306,19 +306,22 @@ final class VideoProcessingService {
                             freehandPoints: cropConfig.freehandPoints,
                             freehandPathData: cropConfig.freehandPathData,
                             aiMaskData: cropConfig.aiMaskData,
-                            aiBoundingBox: cropConfig.aiBoundingBox
+                            aiBoundingBox: cropConfig.aiBoundingBox,
+                            maskRefinement: cropConfig.maskRefinement
                         )
                     }
 
                     // Generate mask
+                    let inputImage = CIImage(cvPixelBuffer: pixelBuffer)
                     let mask = maskRenderer.generateMask(
                         mode: cropConfig.mode,
                         state: cropState,
-                        size: videoSize
+                        size: videoSize,
+                        refinement: cropState.maskRefinement,
+                        guideImage: inputImage
                     )
 
                     // Apply mask
-                    let inputImage = CIImage(cvPixelBuffer: pixelBuffer)
                     let outputImage = maskRenderer.applyMask(
                         to: inputImage,
                         mask: mask,

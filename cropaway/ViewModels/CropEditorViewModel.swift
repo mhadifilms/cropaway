@@ -105,6 +105,22 @@ final class CropEditorViewModel {
         }
     }
 
+    var maskRefinement: MaskRefinementParams = .default {
+        didSet {
+            var sanitized = maskRefinement
+            sanitized.sanitize()
+            if sanitized != maskRefinement {
+                maskRefinement = sanitized
+                return
+            }
+            guard !isSyncing else { return }
+            currentVideo?.cropConfiguration.maskRefinement = maskRefinement
+        }
+    }
+
+    // UI-only preview mode: true = refined mask, false = raw/before mask
+    var showRefinedMaskPreview: Bool = true
+
     // Callback for when crop editing ends (drag gesture completed)
     // Used for auto-keyframe creation
     var onCropEditEnded: (() -> Void)?
@@ -134,6 +150,7 @@ final class CropEditorViewModel {
         aiTextPrompt = config.aiTextPrompt
         aiBoundingBox = config.aiBoundingBox
         aiInteractionMode = config.aiInteractionMode
+        maskRefinement = config.maskRefinement
         isSyncing = false
     }
 
@@ -175,6 +192,7 @@ final class CropEditorViewModel {
         aiPromptPoints = []
         aiTextPrompt = nil
         aiBoundingBox = .zero
+        maskRefinement = .default
     }
 
     // Freehand drawing

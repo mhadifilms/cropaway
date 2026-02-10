@@ -423,6 +423,7 @@ struct AIToolbarView: View {
                 )
                 keyframe.aiMaskData = maskData
                 keyframe.aiBoundingBox = box
+                keyframe.maskRefinement = cropEditorVM.maskRefinement
 
                 keyframeVM.keyframes.append(keyframe)
             }

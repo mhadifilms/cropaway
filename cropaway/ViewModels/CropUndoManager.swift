@@ -28,6 +28,7 @@ struct CropUndoAction {
     let previousCircleCenter: CGPoint
     let previousCircleRadius: Double
     let previousFreehandPoints: [CGPoint]
+    let previousMaskRefinement: MaskRefinementParams
 
     // State after the action
     let newCropRect: CGRect
@@ -35,6 +36,7 @@ struct CropUndoAction {
     let newCircleCenter: CGPoint
     let newCircleRadius: Double
     let newFreehandPoints: [CGPoint]
+    let newMaskRefinement: MaskRefinementParams
 
     init(
         type: ActionType,
@@ -43,11 +45,13 @@ struct CropUndoAction {
         previousCircleCenter: CGPoint,
         previousCircleRadius: Double,
         previousFreehandPoints: [CGPoint],
+        previousMaskRefinement: MaskRefinementParams,
         newCropRect: CGRect,
         newMode: CropMode,
         newCircleCenter: CGPoint,
         newCircleRadius: Double,
-        newFreehandPoints: [CGPoint]
+        newFreehandPoints: [CGPoint],
+        newMaskRefinement: MaskRefinementParams
     ) {
         self.type = type
         self.timestamp = Date()
@@ -56,11 +60,13 @@ struct CropUndoAction {
         self.previousCircleCenter = previousCircleCenter
         self.previousCircleRadius = previousCircleRadius
         self.previousFreehandPoints = previousFreehandPoints
+        self.previousMaskRefinement = previousMaskRefinement
         self.newCropRect = newCropRect
         self.newMode = newMode
         self.newCircleCenter = newCircleCenter
         self.newCircleRadius = newCircleRadius
         self.newFreehandPoints = newFreehandPoints
+        self.newMaskRefinement = newMaskRefinement
     }
 }
 
@@ -90,7 +96,8 @@ final class CropUndoManager: ObservableObject {
         mode: CropMode,
         circleCenter: CGPoint,
         circleRadius: Double,
-        freehandPoints: [CGPoint]
+        freehandPoints: [CGPoint],
+        maskRefinement: MaskRefinementParams
     )?
 
     deinit {
@@ -110,7 +117,8 @@ final class CropUndoManager: ObservableObject {
             mode: cropEditor.mode,
             circleCenter: cropEditor.circleCenter,
             circleRadius: cropEditor.circleRadius,
-            freehandPoints: cropEditor.freehandPoints
+            freehandPoints: cropEditor.freehandPoints,
+            maskRefinement: cropEditor.maskRefinement
         )
     }
 
@@ -127,11 +135,13 @@ final class CropUndoManager: ObservableObject {
                 previousCircleCenter: state.circleCenter,
                 previousCircleRadius: state.circleRadius,
                 previousFreehandPoints: state.freehandPoints,
+                previousMaskRefinement: state.maskRefinement,
                 newCropRect: cropEditor.cropRect,
                 newMode: cropEditor.mode,
                 newCircleCenter: cropEditor.circleCenter,
                 newCircleRadius: cropEditor.circleRadius,
-                newFreehandPoints: cropEditor.freehandPoints
+                newFreehandPoints: cropEditor.freehandPoints,
+                newMaskRefinement: cropEditor.maskRefinement
             )
         }
 
@@ -164,11 +174,13 @@ final class CropUndoManager: ObservableObject {
             previousCircleCenter: startState.previousCircleCenter,
             previousCircleRadius: startState.previousCircleRadius,
             previousFreehandPoints: startState.previousFreehandPoints,
+            previousMaskRefinement: startState.previousMaskRefinement,
             newCropRect: cropEditor.cropRect,
             newMode: cropEditor.mode,
             newCircleCenter: cropEditor.circleCenter,
             newCircleRadius: cropEditor.circleRadius,
-            newFreehandPoints: cropEditor.freehandPoints
+            newFreehandPoints: cropEditor.freehandPoints,
+            newMaskRefinement: cropEditor.maskRefinement
         )
 
         pushAction(action)
@@ -191,11 +203,13 @@ final class CropUndoManager: ObservableObject {
             previousCircleCenter: state.circleCenter,
             previousCircleRadius: state.circleRadius,
             previousFreehandPoints: state.freehandPoints,
+            previousMaskRefinement: state.maskRefinement,
             newCropRect: cropEditor.cropRect,
             newMode: cropEditor.mode,
             newCircleCenter: cropEditor.circleCenter,
             newCircleRadius: cropEditor.circleRadius,
-            newFreehandPoints: cropEditor.freehandPoints
+            newFreehandPoints: cropEditor.freehandPoints,
+            newMaskRefinement: cropEditor.maskRefinement
         )
 
         pushAction(action)
@@ -220,6 +234,7 @@ final class CropUndoManager: ObservableObject {
         cropEditor.circleCenter = action.previousCircleCenter
         cropEditor.circleRadius = action.previousCircleRadius
         cropEditor.freehandPoints = action.previousFreehandPoints
+        cropEditor.maskRefinement = action.previousMaskRefinement
 
         redoStack.append(action)
         snapshotCurrentState()
@@ -236,6 +251,7 @@ final class CropUndoManager: ObservableObject {
         cropEditor.circleCenter = action.newCircleCenter
         cropEditor.circleRadius = action.newCircleRadius
         cropEditor.freehandPoints = action.newFreehandPoints
+        cropEditor.maskRefinement = action.newMaskRefinement
 
         undoStack.append(action)
         snapshotCurrentState()

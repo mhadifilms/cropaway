@@ -382,6 +382,7 @@ struct CopiedCropSettings {
     let circleCenter: CGPoint
     let circleRadius: Double
     let freehandPoints: [CGPoint]
+    let maskRefinement: MaskRefinementParams
 }
 
 struct EditNotificationHandler: ViewModifier {
@@ -427,7 +428,8 @@ struct EditNotificationHandler: ViewModifier {
             cropRect: cropEditorVM.cropRect,
             circleCenter: cropEditorVM.circleCenter,
             circleRadius: cropEditorVM.circleRadius,
-            freehandPoints: cropEditorVM.freehandPoints
+            freehandPoints: cropEditorVM.freehandPoints,
+            maskRefinement: cropEditorVM.maskRefinement
         )
     }
 
@@ -439,6 +441,7 @@ struct EditNotificationHandler: ViewModifier {
         cropEditorVM.circleCenter = settings.circleCenter
         cropEditorVM.circleRadius = settings.circleRadius
         cropEditorVM.freehandPoints = settings.freehandPoints
+        cropEditorVM.maskRefinement = settings.maskRefinement
     }
 }
 

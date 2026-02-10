@@ -121,6 +121,8 @@ final class KeyframeViewModel {
             keyframe.aiBoundingBox = cropEditor.aiBoundingBox.width > 0 ? cropEditor.aiBoundingBox : nil
         }
 
+        keyframe.maskRefinement = cropEditor.maskRefinement
+
         // Insert in sorted order
         if let insertIndex = keyframes.firstIndex(where: { $0.timestamp > timestamp }) {
             keyframes.insert(keyframe, at: insertIndex)
@@ -190,6 +192,8 @@ final class KeyframeViewModel {
             keyframe.aiBoundingBox = cropEditor.aiBoundingBox.width > 0 ? cropEditor.aiBoundingBox : nil
         }
 
+        keyframe.maskRefinement = cropEditor.maskRefinement
+
         currentVideo?.cropConfiguration.keyframes = keyframes
     }
 
@@ -218,6 +222,8 @@ final class KeyframeViewModel {
                     cropEditor.cropRect = state.aiBoundingBox
                 }
             }
+
+            cropEditor.maskRefinement = state.maskRefinement
         }
     }
     // MARK: - Query
@@ -249,6 +255,8 @@ final class KeyframeViewModel {
                 existingKeyframe.aiPromptPoints = cropEditor.aiPromptPoints.isEmpty ? nil : cropEditor.aiPromptPoints
                 existingKeyframe.aiBoundingBox = cropEditor.aiBoundingBox.width > 0 ? cropEditor.aiBoundingBox : nil
             }
+
+            existingKeyframe.maskRefinement = cropEditor.maskRefinement
 
             currentVideo?.cropConfiguration.keyframes = keyframes
             selectedKeyframeIDs = [existingKeyframe.id]

@@ -32,50 +32,58 @@ struct VideoDetailView: View {
         VStack(spacing: 0) {
             CropToolbarView(video: activeVideo)
 
-            GeometryReader { geometry in
-                VStack(spacing: 0) {
-                    // Video with live crop preview
-                    LiveCropPreviewView(
-                        preserveSize: preserveSize,
-                        enableAlpha: enableAlpha,
-                        viewScale: $viewScale
-                    )
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background {
-                        if enableAlpha {
-                            // True transparency - app background shows through masked areas
-                            Color.clear
-                        } else {
-                            Color.black
+            GeometryReader { _ in
+                HStack(spacing: 0) {
+                    VStack(spacing: 0) {
+                        // Video with live crop preview
+                        LiveCropPreviewView(
+                            preserveSize: preserveSize,
+                            enableAlpha: enableAlpha,
+                            viewScale: $viewScale
+                        )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background {
+                            if enableAlpha {
+                                // True transparency - app background shows through masked areas
+                                Color.clear
+                            } else {
+                                Color.black
+                            }
+                        }
+                        .clipped()
+
+                        // Player controls
+                        VideoPlayerControlsView()
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
+                            .toolbarGlassBackground()
+
+                        // Keyframe timeline (when enabled)
+                        if keyframeVM.keyframesEnabled {
+                            Divider()
+                            KeyframeTimelineView()
+                                .frame(height: 56)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .toolbarGlassBackground()
+                        }
+
+                        // Sequence timeline (when panel is visible)
+                        if timelineVM.isTimelinePanelVisible && timelineVM.activeTimeline != nil {
+                            Divider()
+                            TimelineTrackView()
+                                .frame(height: 80)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .toolbarGlassBackground()
                         }
                     }
-                    .clipped()
 
-                    // Player controls
-                    VideoPlayerControlsView()
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 10)
-                        .toolbarGlassBackground()
+                    Divider()
 
-                    // Keyframe timeline (when enabled)
-                    if keyframeVM.keyframesEnabled {
-                        Divider()
-                        KeyframeTimelineView()
-                            .frame(height: 56)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .toolbarGlassBackground()
-                    }
-                    
-                    // Sequence timeline (when panel is visible)
-                    if timelineVM.isTimelinePanelVisible && timelineVM.activeTimeline != nil {
-                        Divider()
-                        TimelineTrackView()
-                            .frame(height: 80)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .toolbarGlassBackground()
-                    }
+                    MaskRefinementPanelView(video: activeVideo)
+                        .frame(width: 320)
+                        .background(.bar)
                 }
             }
         }
@@ -136,7 +144,8 @@ struct LiveCropPreviewView: View {
                             freehandPoints: cropEditorVM.freehandPoints,
                             freehandPathData: cropEditorVM.freehandPathData,
                             aiMaskData: cropEditorVM.aiMaskData,
-                            videoDisplaySize: displayConfig.videoDisplaySize
+                            videoDisplaySize: displayConfig.videoDisplaySize,
+                            maskRefinement: cropEditorVM.showRefinedMaskPreview ? cropEditorVM.maskRefinement : .default
                         )
                         .frame(width: displayConfig.videoDisplaySize.width, height: displayConfig.videoDisplaySize.height)
                         .offset(x: displayConfig.videoOffset.width, y: displayConfig.videoOffset.height)
@@ -155,7 +164,8 @@ struct LiveCropPreviewView: View {
                                 freehandPoints: cropEditorVM.freehandPoints,
                                 freehandPathData: cropEditorVM.freehandPathData,
                                 aiMaskData: cropEditorVM.aiMaskData,
-                                videoSize: displayConfig.videoDisplaySize
+                                videoSize: displayConfig.videoDisplaySize,
+                                maskRefinement: cropEditorVM.showRefinedMaskPreview ? cropEditorVM.maskRefinement : .default
                             )
                         }
                         .offset(x: displayConfig.videoOffset.width, y: displayConfig.videoOffset.height)
@@ -419,146 +429,43 @@ struct DimmedCropOverlay: View {
     var freehandPathData: Data? = nil
     var aiMaskData: Data? = nil
     let videoSize: CGSize
+    var maskRefinement: MaskRefinementParams = .default
 
-    // Computed property to decode vertices once per render
-    private var freehandVertices: [MaskVertex]? {
-        guard let data = freehandPathData,
-              let vertices = try? JSONDecoder().decode([MaskVertex].self, from: data),
-              vertices.count >= 3 else {
-            return nil
-        }
-        return vertices
-    }
-
-    // Use data hash to force Canvas re-render when data changes
-    private var dataHash: Int {
-        var hasher = Hasher()
-        hasher.combine(freehandPathData?.hashValue ?? 0)
-        hasher.combine(aiMaskData?.hashValue ?? 0)
-        return hasher.finalize()
-    }
+    private static let renderer = CropMaskRenderer()
 
     var body: some View {
-        let _ = print("[DimmedCropOverlay] mode=\(mode), aiMaskData=\(aiMaskData?.count ?? 0) bytes")
+        let state = InterpolatedCropState(
+            cropRect: cropRect,
+            edgeInsets: .init(),
+            circleCenter: circleCenter,
+            circleRadius: circleRadius,
+            freehandPoints: freehandPoints,
+            freehandPathData: freehandPathData,
+            aiMaskData: aiMaskData,
+            aiBoundingBox: .zero,
+            maskRefinement: maskRefinement
+        )
+        let maskImage = Self.renderer.renderMaskImage(
+            mode: mode,
+            state: state,
+            size: videoSize,
+            refinement: maskRefinement,
+            guideImage: nil
+        )
 
         ZStack {
-            if mode == .ai {
-                // AI mode: use RLE mask if available, otherwise show nothing (full video visible)
-                if let maskData = aiMaskData {
-                    let _ = print("[DimmedCropOverlay] Using AIDimmedMaskView")
-                    AIDimmedMaskView(maskData: maskData, size: videoSize)
-                } else {
-                    // No mask data yet - don't dim anything, show full video
-                    let _ = print("[DimmedCropOverlay] AI mode with no mask - showing full video")
-                    Color.clear
-                        .frame(width: videoSize.width, height: videoSize.height)
-                }
-            } else {
-                // Other modes: use canvas-based overlay
-                let _ = print("[DimmedCropOverlay] Using Canvas overlay (mode=\(mode))")
-                Canvas { context, canvasSize in
-                    // Fill entire area with dim color
-                    context.fill(
-                        Path(CGRect(origin: .zero, size: canvasSize)),
-                        with: .color(.black.opacity(0.5))
-                    )
+            Color.black.opacity(0.5)
 
-                    // Cut out crop area (make it transparent to show video underneath)
-                    context.blendMode = .destinationOut
-
-                    switch mode {
-                    case .rectangle:
-                        let pixelRect = cropRect.denormalized(to: canvasSize)
-                        context.fill(Path(pixelRect), with: .color(.white))
-
-                    case .circle:
-                        let pixelCenter = circleCenter.denormalized(to: canvasSize)
-                        let pixelRadius = circleRadius * min(canvasSize.width, canvasSize.height)
-                        let circleRect = CGRect(
-                            x: pixelCenter.x - pixelRadius,
-                            y: pixelCenter.y - pixelRadius,
-                            width: pixelRadius * 2,
-                            height: pixelRadius * 2
-                        )
-                        context.fill(Path(ellipseIn: circleRect), with: .color(.white))
-
-                    case .freehand:
-                        if let vertices = freehandVertices {
-                            let path = buildBezierPath(vertices: vertices, size: canvasSize)
-                            context.fill(path, with: .color(.white))
-                        } else if freehandPoints.count >= 3 {
-                            var path = Path()
-                            let first = freehandPoints[0].denormalized(to: canvasSize)
-                            path.move(to: first)
-                            for point in freehandPoints.dropFirst() {
-                                path.addLine(to: point.denormalized(to: canvasSize))
-                            }
-                            path.closeSubpath()
-                            context.fill(path, with: .color(.white))
-                        }
-
-                    case .ai:
-                        // AI mode is handled above - this case should not be reached
-                        break
-                    }
-                }
-                .frame(width: videoSize.width, height: videoSize.height)
+            if let maskImage {
+                Image(decorative: maskImage, scale: 1.0)
+                    .resizable()
+                    .interpolation(.high)
+                    .blendMode(.destinationOut)
             }
         }
-        .id(dataHash)
+        .compositingGroup()
+        .frame(width: videoSize.width, height: videoSize.height)
         .allowsHitTesting(false)
-    }
-
-    /// Build a SwiftUI Path with bezier curves from MaskVertex array
-    private func buildBezierPath(vertices: [MaskVertex], size: CGSize) -> Path {
-        Path { path in
-            guard vertices.count >= 3 else { return }
-
-            path.move(to: vertices[0].position.denormalized(to: size))
-
-            for i in 1..<vertices.count {
-                addBezierSegment(to: &path, from: vertices[i-1], to: vertices[i], size: size)
-            }
-
-            // Close the path
-            addBezierSegment(to: &path, from: vertices[vertices.count - 1], to: vertices[0], size: size)
-            path.closeSubpath()
-        }
-    }
-
-    /// Add a bezier curve segment between two vertices
-    private func addBezierSegment(to path: inout Path, from: MaskVertex, to: MaskVertex, size: CGSize) {
-        let fromPx = from.position.denormalized(to: size)
-        let toPx = to.position.denormalized(to: size)
-
-        let hasFromHandle = from.controlOut != nil
-        let hasToHandle = to.controlIn != nil
-
-        if hasFromHandle && hasToHandle {
-            let ctrl1 = CGPoint(
-                x: fromPx.x + from.controlOut!.x * size.width,
-                y: fromPx.y + from.controlOut!.y * size.height
-            )
-            let ctrl2 = CGPoint(
-                x: toPx.x + to.controlIn!.x * size.width,
-                y: toPx.y + to.controlIn!.y * size.height
-            )
-            path.addCurve(to: toPx, control1: ctrl1, control2: ctrl2)
-        } else if hasFromHandle {
-            let ctrl = CGPoint(
-                x: fromPx.x + from.controlOut!.x * size.width,
-                y: fromPx.y + from.controlOut!.y * size.height
-            )
-            path.addQuadCurve(to: toPx, control: ctrl)
-        } else if hasToHandle {
-            let ctrl = CGPoint(
-                x: toPx.x + to.controlIn!.x * size.width,
-                y: toPx.y + to.controlIn!.y * size.height
-            )
-            path.addQuadCurve(to: toPx, control: ctrl)
-        } else {
-            path.addLine(to: toPx)
-        }
     }
 }
 
