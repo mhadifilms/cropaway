@@ -144,7 +144,7 @@ public partial class ExportViewModel : ObservableObject
 
             var outputPath = await _exportService.ExportVideoAsync(
                 video.SourcePath,
-                exportConfig.OutputPath,
+                exportConfig.OutputPath ?? throw new InvalidOperationException("Output path not set"),
                 video.Metadata,
                 crop.Mode,
                 crop.CropRect,
