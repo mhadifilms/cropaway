@@ -266,18 +266,10 @@ struct CropToolbarView: View {
                 Label("Export Crop Data (JSON)...", systemImage: "doc.text")
             }
 
-            Divider()
-
             Button {
                 NotificationCenter.default.post(name: .exportBoundingBox, object: nil)
             } label: {
-                Label("Export Bounding Boxes (JSON)...", systemImage: "rectangle.dashed")
-            }
-
-            Button {
-                NotificationCenter.default.post(name: .exportBoundingBoxPickle, object: nil)
-            } label: {
-                Label("Export Bounding Boxes (Pickle)...", systemImage: "rectangle.dashed.badge.record")
+                Label("Export Bounding Boxes...", systemImage: "rectangle.dashed")
             }
         } label: {
             HStack(spacing: 5) {
