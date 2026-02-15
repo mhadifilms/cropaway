@@ -365,6 +365,67 @@ struct CropawayCommands: Commands {
             }
             .keyboardShortcut("l", modifiers: .command)
         }
+        
+        // Timeline menu (timeline-native mode)
+        CommandMenu("Timeline") {
+            Button("Split Clip at Playhead") {
+                NotificationCenter.default.post(name: .splitClipAtPlayhead, object: nil)
+            }
+            .keyboardShortcut("b", modifiers: .command)
+            
+            Divider()
+            
+            Button("Delete Selected Clips") {
+                NotificationCenter.default.post(name: .deleteSelectedClips, object: nil)
+            }
+            .keyboardShortcut(.delete, modifiers: [])
+            
+            Button("Ripple Delete Selected Clips") {
+                NotificationCenter.default.post(name: .rippleDeleteSelectedClips, object: nil)
+            }
+            .keyboardShortcut(.delete, modifiers: .shift)
+            
+            Divider()
+            
+            Button("Select Next Clip") {
+                NotificationCenter.default.post(name: .selectNextClip, object: nil)
+            }
+            .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
+            
+            Button("Select Previous Clip") {
+                NotificationCenter.default.post(name: .selectPreviousClip, object: nil)
+            }
+            .keyboardShortcut(.leftArrow, modifiers: [.command, .option])
+            
+            Divider()
+            
+            Button("Set In Point") {
+                NotificationCenter.default.post(name: .setInPoint, object: nil)
+            }
+            .keyboardShortcut("i", modifiers: [])
+            
+            Button("Set Out Point") {
+                NotificationCenter.default.post(name: .setOutPoint, object: nil)
+            }
+            .keyboardShortcut("o", modifiers: [])
+            
+            Button("Clear In/Out Points") {
+                NotificationCenter.default.post(name: .clearInOutPoints, object: nil)
+            }
+            .keyboardShortcut("x", modifiers: [.command, .option])
+            
+            Divider()
+            
+            Button("Go to In Point") {
+                NotificationCenter.default.post(name: .goToInPoint, object: nil)
+            }
+            .keyboardShortcut("i", modifiers: .shift)
+            
+            Button("Go to Out Point") {
+                NotificationCenter.default.post(name: .goToOutPoint, object: nil)
+            }
+            .keyboardShortcut("o", modifiers: .shift)
+        }
 
         // Window menu additions
         CommandGroup(after: .windowSize) {
@@ -440,4 +501,16 @@ extension Notification.Name {
     // Video selection
     static let selectNextVideo = Notification.Name("selectNextVideo")
     static let selectPreviousVideo = Notification.Name("selectPreviousVideo")
+    
+    // Timeline operations (timeline-native mode)
+    static let splitClipAtPlayhead = Notification.Name("splitClipAtPlayhead")
+    static let deleteSelectedClips = Notification.Name("deleteSelectedClips")
+    static let rippleDeleteSelectedClips = Notification.Name("rippleDeleteSelectedClips")
+    static let selectNextClip = Notification.Name("selectNextClip")
+    static let selectPreviousClip = Notification.Name("selectPreviousClip")
+    static let setInPoint = Notification.Name("setInPoint")
+    static let setOutPoint = Notification.Name("setOutPoint")
+    static let clearInOutPoints = Notification.Name("clearInOutPoints")
+    static let goToInPoint = Notification.Name("goToInPoint")
+    static let goToOutPoint = Notification.Name("goToOutPoint")
 }

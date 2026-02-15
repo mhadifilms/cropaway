@@ -14,6 +14,7 @@ final class KeyframeViewModel: ObservableObject {
     @Published var selectedKeyframeIDs: Set<UUID> = []
 
     private var currentVideo: VideoItem?
+    private var currentClip: TimelineClip?
     private var cropEditor: CropEditorViewModel?
     private var cancellables = Set<AnyCancellable>()
 
@@ -35,13 +36,45 @@ final class KeyframeViewModel: ObservableObject {
     var selectedKeyframes: [Keyframe] {
         keyframes.filter { selectedKeyframeIDs.contains($0.id) }
     }
+    
+    /// Get the crop configuration being edited (works for both VideoItem and TimelineClip)
+    private var cropConfiguration: CropConfiguration? {
+        if let video = currentVideo {
+            return video.cropConfiguration
+        } else if let clip = currentClip {
+            return clip.cropConfiguration
+        }
+        return nil
+    }
 
     func bind(to video: VideoItem, cropEditor: CropEditorViewModel) {
         cancellables.removeAll()
         currentVideo = video
+        currentClip = nil
         self.cropEditor = cropEditor
 
         let config = video.cropConfiguration
+
+        // Sync from config
+        keyframes = config.keyframes
+        keyframesEnabled = config.keyframesEnabled
+        selectedKeyframeIDs.removeAll()
+
+        // Sync changes back
+        $keyframesEnabled
+            .dropFirst()
+            .sink { config.keyframesEnabled = $0 }
+            .store(in: &cancellables)
+    }
+    
+    /// Bind to a TimelineClip (timeline-native approach)
+    func bind(to clip: TimelineClip, cropEditor: CropEditorViewModel) {
+        cancellables.removeAll()
+        currentClip = clip
+        currentVideo = nil
+        self.cropEditor = cropEditor
+
+        let config = clip.cropConfiguration
 
         // Sync from config
         keyframes = config.keyframes
@@ -119,13 +152,13 @@ final class KeyframeViewModel: ObservableObject {
             keyframes.append(keyframe)
         }
 
-        currentVideo?.cropConfiguration.keyframes = keyframes
+        cropConfiguration?.keyframes = keyframes
         selectedKeyframeIDs = [keyframe.id]
     }
 
     func removeKeyframe(_ keyframe: Keyframe) {
         keyframes.removeAll { $0.id == keyframe.id }
-        currentVideo?.cropConfiguration.keyframes = keyframes
+        cropConfiguration?.keyframes = keyframes
         selectedKeyframeIDs.remove(keyframe.id)
     }
 
@@ -138,7 +171,7 @@ final class KeyframeViewModel: ObservableObject {
     func deleteSelected() {
         let idsToRemove = selectedKeyframeIDs
         keyframes.removeAll { idsToRemove.contains($0.id) }
-        currentVideo?.cropConfiguration.keyframes = keyframes
+        cropConfiguration?.keyframes = keyframes
         selectedKeyframeIDs.removeAll()
     }
 
@@ -158,7 +191,7 @@ final class KeyframeViewModel: ObservableObject {
 
     func sortKeyframes() {
         keyframes.sort { $0.timestamp < $1.timestamp }
-        currentVideo?.cropConfiguration.keyframes = keyframes
+        cropConfiguration?.keyframes = keyframes
     }
 
     // MARK: - Update
@@ -181,7 +214,7 @@ final class KeyframeViewModel: ObservableObject {
             keyframe.aiBoundingBox = cropEditor.aiBoundingBox.width > 0 ? cropEditor.aiBoundingBox : nil
         }
 
-        currentVideo?.cropConfiguration.keyframes = keyframes
+        cropConfiguration?.keyframes = keyframes
     }
 
     func applyKeyframeState(at timestamp: Double) {
@@ -241,7 +274,7 @@ final class KeyframeViewModel: ObservableObject {
                 existingKeyframe.aiBoundingBox = cropEditor.aiBoundingBox.width > 0 ? cropEditor.aiBoundingBox : nil
             }
 
-            currentVideo?.cropConfiguration.keyframes = keyframes
+            cropConfiguration?.keyframes = keyframes
             selectedKeyframeIDs = [existingKeyframe.id]
         } else {
             addKeyframe(at: timestamp)

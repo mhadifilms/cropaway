@@ -39,15 +39,104 @@ final class CropEditorViewModel: ObservableObject {
     // Used for auto-keyframe creation
     var onCropEditEnded: (() -> Void)?
 
-    // Active video
+    // Active video (legacy)
     private var currentVideo: VideoItem?
+    
+    // Active clip (timeline-native)
+    private var currentClip: TimelineClip?
+    
     private var cancellables = Set<AnyCancellable>()
 
     func bind(to video: VideoItem) {
         cancellables.removeAll()
         currentVideo = video
+        currentClip = nil
 
         let config = video.cropConfiguration
+
+        // Sync from config
+        mode = config.mode
+        cropRect = config.cropRect
+        edgeInsets = config.edgeInsets
+        circleCenter = config.circleCenter
+        circleRadius = config.circleRadius
+        freehandPoints = config.freehandPoints
+        freehandPathData = config.freehandPathData
+        aiMaskData = config.aiMaskData
+        aiPromptPoints = config.aiPromptPoints
+        aiTextPrompt = config.aiTextPrompt
+        aiBoundingBox = config.aiBoundingBox
+        aiInteractionMode = config.aiInteractionMode
+
+        // Sync changes back to config
+        $mode
+            .dropFirst()
+            .sink { config.mode = $0 }
+            .store(in: &cancellables)
+
+        $cropRect
+            .dropFirst()
+            .sink { config.cropRect = $0 }
+            .store(in: &cancellables)
+
+        $edgeInsets
+            .dropFirst()
+            .sink { config.edgeInsets = $0 }
+            .store(in: &cancellables)
+
+        $circleCenter
+            .dropFirst()
+            .sink { config.circleCenter = $0 }
+            .store(in: &cancellables)
+
+        $circleRadius
+            .dropFirst()
+            .sink { config.circleRadius = $0 }
+            .store(in: &cancellables)
+
+        $freehandPoints
+            .dropFirst()
+            .sink { config.freehandPoints = $0 }
+            .store(in: &cancellables)
+
+        $freehandPathData
+            .dropFirst()
+            .sink { config.freehandPathData = $0 }
+            .store(in: &cancellables)
+
+        $aiMaskData
+            .dropFirst()
+            .sink { config.aiMaskData = $0 }
+            .store(in: &cancellables)
+
+        $aiPromptPoints
+            .dropFirst()
+            .sink { config.aiPromptPoints = $0 }
+            .store(in: &cancellables)
+
+        $aiTextPrompt
+            .dropFirst()
+            .sink { config.aiTextPrompt = $0 }
+            .store(in: &cancellables)
+
+        $aiBoundingBox
+            .dropFirst()
+            .sink { config.aiBoundingBox = $0 }
+            .store(in: &cancellables)
+
+        $aiInteractionMode
+            .dropFirst()
+            .sink { config.aiInteractionMode = $0 }
+            .store(in: &cancellables)
+    }
+    
+    /// Bind to a TimelineClip (timeline-native approach)
+    func bind(to clip: TimelineClip) {
+        cancellables.removeAll()
+        currentClip = clip
+        currentVideo = nil
+
+        let config = clip.cropConfiguration
 
         // Sync from config
         mode = config.mode

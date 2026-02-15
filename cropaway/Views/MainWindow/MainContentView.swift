@@ -9,18 +9,26 @@ import Combine
 
 struct MainContentView: View {
     @EnvironmentObject var projectVM: ProjectViewModel
+    
+    // Legacy ViewModels (for VideoItem-based workflow)
     @StateObject private var playerVM = VideoPlayerViewModel()
     @StateObject private var cropEditorVM = CropEditorViewModel()
     @StateObject private var exportVM = ExportViewModel()
     @StateObject private var keyframeVM = KeyframeViewModel()
     @StateObject private var undoManager = CropUndoManager()
-
+    
     @State private var columnVisibility = NavigationSplitViewVisibility.all
     @State private var viewScale: CGFloat = 1.0
     @State private var copiedCropSettings: CopiedCropSettings?
     @State private var isPreviewMode: Bool = false
 
     var body: some View {
+        legacyView
+    }
+    
+    // MARK: - Main View
+    
+    private var legacyView: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             VideoSidebarView()
                 .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 300)

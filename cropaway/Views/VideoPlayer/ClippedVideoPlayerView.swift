@@ -100,7 +100,7 @@ class ClippedPlayerContainerView: NSView {
         CATransaction.commit()
 
         let frameAspect = frameSize.width / frameSize.height
-        let cropPixelAspect = (cropRect.width * 16) / (cropRect.height * 9) // Assuming 16:9 video
+        let _ = (cropRect.width * 16) / (cropRect.height * 9) // Assuming 16:9 video
         print("[ClippedVideoPlayerView] frameSize=\(frameSize) (aspect: \(String(format: "%.3f", frameAspect))), cropRect=\(cropRect), fullVideo=\(fullVideoWidth)x\(fullVideoHeight), bounds=\(bounds)")
     }
 }

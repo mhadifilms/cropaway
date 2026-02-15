@@ -41,6 +41,10 @@ final class CropConfiguration: ObservableObject {
     // Export settings (per-video)
     @Published var preserveWidth: Bool = true
     @Published var enableAlphaChannel: Bool = false
+    
+    // Timeline in/out points for export range
+    @Published var inPoint: Double?
+    @Published var outPoint: Double?
 
     init() {}
 
@@ -215,5 +219,115 @@ final class CropConfiguration: ObservableObject {
         }
 
         return rectValid && circleValid && freehandValid
+    }
+    
+    /// Create a deep copy of this configuration
+    func copy() -> CropConfiguration {
+        let copy = CropConfiguration()
+        copy.mode = mode
+        copy.isEnabled = isEnabled
+        copy.cropRect = cropRect
+        copy.edgeInsets = edgeInsets
+        copy.circleCenter = circleCenter
+        copy.circleRadius = circleRadius
+        copy.freehandPathData = freehandPathData
+        copy.freehandPoints = freehandPoints
+        copy.aiMaskData = aiMaskData
+        copy.aiPromptPoints = aiPromptPoints
+        copy.aiTextPrompt = aiTextPrompt
+        copy.aiObjectId = aiObjectId
+        copy.aiBoundingBox = aiBoundingBox
+        copy.aiConfidence = aiConfidence
+        copy.aiInteractionMode = aiInteractionMode
+        copy.keyframes = keyframes.map { $0.copy() }
+        copy.keyframesEnabled = keyframesEnabled
+        copy.preserveWidth = preserveWidth
+        copy.enableAlphaChannel = enableAlphaChannel
+        copy.inPoint = inPoint
+        copy.outPoint = outPoint
+        return copy
+    }
+}
+
+// MARK: - Codable
+
+extension CropConfiguration: Codable {
+    enum CodingKeys: String, CodingKey {
+        case mode, isEnabled
+        case cropRect, edgeInsets
+        case circleCenter, circleRadius
+        case freehandPathData, freehandPoints
+        case aiMaskData, aiPromptPoints, aiTextPrompt, aiObjectId
+        case aiBoundingBox, aiConfidence, aiInteractionMode
+        case keyframes, keyframesEnabled
+        case preserveWidth, enableAlphaChannel
+        case inPoint, outPoint
+    }
+    
+    convenience init(from decoder: Decoder) throws {
+        self.init()
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        
+        mode = try container.decode(CropMode.self, forKey: .mode)
+        isEnabled = try container.decode(Bool.self, forKey: .isEnabled)
+        
+        cropRect = try container.decode(CGRect.self, forKey: .cropRect)
+        edgeInsets = try container.decode(EdgeInsets.self, forKey: .edgeInsets)
+        
+        circleCenter = try container.decode(CGPoint.self, forKey: .circleCenter)
+        circleRadius = try container.decode(Double.self, forKey: .circleRadius)
+        
+        freehandPathData = try container.decodeIfPresent(Data.self, forKey: .freehandPathData)
+        freehandPoints = try container.decode([CGPoint].self, forKey: .freehandPoints)
+        
+        aiMaskData = try container.decodeIfPresent(Data.self, forKey: .aiMaskData)
+        aiPromptPoints = try container.decode([AIPromptPoint].self, forKey: .aiPromptPoints)
+        aiTextPrompt = try container.decodeIfPresent(String.self, forKey: .aiTextPrompt)
+        aiObjectId = try container.decodeIfPresent(String.self, forKey: .aiObjectId)
+        aiBoundingBox = try container.decode(CGRect.self, forKey: .aiBoundingBox)
+        aiConfidence = try container.decode(Double.self, forKey: .aiConfidence)
+        aiInteractionMode = try container.decode(AIInteractionMode.self, forKey: .aiInteractionMode)
+        
+        keyframes = try container.decode([Keyframe].self, forKey: .keyframes)
+        keyframesEnabled = try container.decode(Bool.self, forKey: .keyframesEnabled)
+        
+        preserveWidth = try container.decode(Bool.self, forKey: .preserveWidth)
+        enableAlphaChannel = try container.decode(Bool.self, forKey: .enableAlphaChannel)
+        
+        inPoint = try container.decodeIfPresent(Double.self, forKey: .inPoint)
+        outPoint = try container.decodeIfPresent(Double.self, forKey: .outPoint)
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        
+        try container.encode(mode, forKey: .mode)
+        try container.encode(isEnabled, forKey: .isEnabled)
+        
+        try container.encode(cropRect, forKey: .cropRect)
+        try container.encode(edgeInsets, forKey: .edgeInsets)
+        
+        try container.encode(circleCenter, forKey: .circleCenter)
+        try container.encode(circleRadius, forKey: .circleRadius)
+        
+        try container.encodeIfPresent(freehandPathData, forKey: .freehandPathData)
+        try container.encode(freehandPoints, forKey: .freehandPoints)
+        
+        try container.encodeIfPresent(aiMaskData, forKey: .aiMaskData)
+        try container.encode(aiPromptPoints, forKey: .aiPromptPoints)
+        try container.encodeIfPresent(aiTextPrompt, forKey: .aiTextPrompt)
+        try container.encodeIfPresent(aiObjectId, forKey: .aiObjectId)
+        try container.encode(aiBoundingBox, forKey: .aiBoundingBox)
+        try container.encode(aiConfidence, forKey: .aiConfidence)
+        try container.encode(aiInteractionMode, forKey: .aiInteractionMode)
+        
+        try container.encode(keyframes, forKey: .keyframes)
+        try container.encode(keyframesEnabled, forKey: .keyframesEnabled)
+        
+        try container.encode(preserveWidth, forKey: .preserveWidth)
+        try container.encode(enableAlphaChannel, forKey: .enableAlphaChannel)
+        
+        try container.encodeIfPresent(inPoint, forKey: .inPoint)
+        try container.encodeIfPresent(outPoint, forKey: .outPoint)
     }
 }

@@ -57,6 +57,12 @@ struct VideoDetailView: View {
                             .padding(.vertical, 8)
                             .toolbarGlassBackground()
                     }
+                    
+                    // Timeline (always visible)
+                    Divider()
+                    VideoTimelineTrackView(video: video)
+                        .frame(height: 80)
+                        .background(Color(nsColor: .textBackgroundColor))
                 }
             }
         }

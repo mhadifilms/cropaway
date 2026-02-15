@@ -90,7 +90,11 @@ final class VideoProcessingService {
         let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mov)
 
         // Copy global/container metadata from source (creation time, copyright, etc.)
-        writer.metadata = asset.metadata
+        if #available(macOS 13.0, *) {
+            writer.metadata = try await asset.load(.metadata)
+        } else {
+            writer.metadata = asset.metadata
+        }
 
         // Build video output settings
         let videoSettings = try await buildVideoOutputSettings(

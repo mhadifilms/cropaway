@@ -80,6 +80,59 @@ final class Keyframe: Identifiable, ObservableObject {
     }
 }
 
+// MARK: - Codable
+
+extension Keyframe: Codable {
+    enum CodingKeys: String, CodingKey {
+        case id, timestamp
+        case cropRect, edgeInsets
+        case circleCenter, circleRadius
+        case freehandPathData
+        case aiMaskData, aiPromptPoints, aiBoundingBox
+        case interpolation
+    }
+    
+    convenience init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let timestamp = try container.decode(Double.self, forKey: .timestamp)
+        let cropRect = try container.decode(CGRect.self, forKey: .cropRect)
+        let edgeInsets = try container.decode(EdgeInsets.self, forKey: .edgeInsets)
+        let circleCenter = try container.decode(CGPoint.self, forKey: .circleCenter)
+        let circleRadius = try container.decode(Double.self, forKey: .circleRadius)
+        let interpolation = try container.decode(KeyframeInterpolation.self, forKey: .interpolation)
+        
+        self.init(
+            timestamp: timestamp,
+            cropRect: cropRect,
+            edgeInsets: edgeInsets,
+            circleCenter: circleCenter,
+            circleRadius: circleRadius,
+            interpolation: interpolation
+        )
+        
+        // Decode optional fields
+        self.freehandPathData = try container.decodeIfPresent(Data.self, forKey: .freehandPathData)
+        self.aiMaskData = try container.decodeIfPresent(Data.self, forKey: .aiMaskData)
+        self.aiPromptPoints = try container.decodeIfPresent([AIPromptPoint].self, forKey: .aiPromptPoints)
+        self.aiBoundingBox = try container.decodeIfPresent(CGRect.self, forKey: .aiBoundingBox)
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(timestamp, forKey: .timestamp)
+        try container.encode(cropRect, forKey: .cropRect)
+        try container.encode(edgeInsets, forKey: .edgeInsets)
+        try container.encode(circleCenter, forKey: .circleCenter)
+        try container.encode(circleRadius, forKey: .circleRadius)
+        try container.encodeIfPresent(freehandPathData, forKey: .freehandPathData)
+        try container.encodeIfPresent(aiMaskData, forKey: .aiMaskData)
+        try container.encodeIfPresent(aiPromptPoints, forKey: .aiPromptPoints)
+        try container.encodeIfPresent(aiBoundingBox, forKey: .aiBoundingBox)
+        try container.encode(interpolation, forKey: .interpolation)
+    }
+}
+
 struct EdgeInsets: Equatable, Codable {
     var top: Double = 0
     var left: Double = 0
