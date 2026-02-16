@@ -141,6 +141,16 @@ final class CropDataStorageService {
 
     /// Apply loaded crop data to a VideoItem
     func apply(_ document: CropStorageDocument, to video: VideoItem) {
+        // Wrap in do-catch to prevent crashes from corrupted data
+        do {
+            try applyUnsafe(document, to: video)
+        } catch {
+            print("Failed to apply crop data: \(error). Using defaults.")
+        }
+    }
+    
+    /// Internal apply that can throw
+    private func applyUnsafe(_ document: CropStorageDocument, to video: VideoItem) throws {
         let config = video.cropConfiguration
 
         config.mode = CropMode(rawValue: document.crop.mode) ?? .rectangle
@@ -207,7 +217,8 @@ final class CropDataStorageService {
             config.keyframes = keyframes.map { kfData in
                 let kf = Keyframe(
                     timestamp: kfData.timestamp,
-                    interpolation: KeyframeInterpolation(rawValue: kfData.interpolation) ?? .linear
+                    interpolation: KeyframeInterpolation(rawValue: kfData.interpolation) ?? .linear,
+                    isAbsent: kfData.isAbsent ?? false
                 )
 
                 if let rect = kfData.rectangle {
@@ -252,11 +263,6 @@ final class CropDataStorageService {
             }
         }
 
-        if let ranges = document.crop.absenceRanges {
-            config.absenceRanges = ranges.map { AbsenceRange(start: $0.start, end: $0.end) }
-        } else {
-            config.absenceRanges = []
-        }
     }
 
     /// List all crop data files for a video (Application Support only)
@@ -359,14 +365,9 @@ final class CropDataStorageService {
         for frameIndex in 0..<totalFrames {
             let timestamp = Double(frameIndex) / meta.frameRate
 
-            if config.isAbsent(at: timestamp) {
-                // Empty array for absent frames
-                boundingBoxes.append([])
-                continue
-            }
-
-            // Get crop rect at this timestamp (interpolated if keyframes exist)
+            // Get crop state at this timestamp (interpolated if keyframes exist)
             let cropRect: CGRect
+            let isAbsent: Bool
             if config.hasKeyframes {
                 let state = KeyframeInterpolator.shared.interpolate(
                     keyframes: config.keyframes,
@@ -374,8 +375,16 @@ final class CropDataStorageService {
                     mode: config.mode
                 )
                 cropRect = state.cropRect
+                isAbsent = state.isAbsent
             } else {
                 cropRect = config.effectiveCropRect
+                isAbsent = false
+            }
+
+            // Empty array for absent frames
+            if isAbsent {
+                boundingBoxes.append([])
+                continue
             }
 
             // Convert normalized rect to pixel bounding box [x1, y1, x2, y2]
@@ -478,14 +487,9 @@ final class CropDataStorageService {
         for frameIndex in 0..<totalFrames {
             let timestamp = Double(frameIndex) / meta.frameRate
 
-            // Empty array for absent frames
-            if config.isAbsent(at: timestamp) {
-                boundingBoxes.append([])
-                continue
-            }
-
-            // Get crop rect at this timestamp (interpolated if keyframes exist)
+            // Get crop state at this timestamp (interpolated if keyframes exist)
             let cropRect: CGRect
+            let isAbsent: Bool
             if config.hasKeyframes {
                 let state = KeyframeInterpolator.shared.interpolate(
                     keyframes: config.keyframes,
@@ -493,8 +497,16 @@ final class CropDataStorageService {
                     mode: config.mode
                 )
                 cropRect = state.cropRect
+                isAbsent = state.isAbsent
             } else {
                 cropRect = config.effectiveCropRect
+                isAbsent = false
+            }
+
+            // Empty array for absent frames
+            if isAbsent {
+                boundingBoxes.append([])
+                continue
             }
 
             // Convert normalized rect to pixel bounding box [x1, y1, x2, y2]
@@ -678,7 +690,8 @@ final class CropDataStorageService {
             cropData.keyframes = config.keyframes.map { kf in
                 var kfData = CropStorageDocument.KeyframeData(
                     timestamp: kf.timestamp,
-                    interpolation: kf.interpolation.rawValue
+                    interpolation: kf.interpolation.rawValue,
+                    isAbsent: kf.isAbsent
                 )
 
                 kfData.rectangle = CropStorageDocument.RectangleData(
@@ -731,12 +744,6 @@ final class CropDataStorageService {
                 }
 
                 return kfData
-            }
-        }
-
-        if !config.absenceRanges.isEmpty {
-            cropData.absenceRanges = config.absenceRanges.map {
-                CropStorageDocument.AbsenceRangeData(start: $0.start, end: $0.end)
             }
         }
 
@@ -866,14 +873,16 @@ struct CropStorageDocument: Codable {
     struct KeyframeData: Codable {
         let timestamp: Double
         let interpolation: String
+        var isAbsent: Bool?
         var rectangle: RectangleData?
         var circle: CircleData?
         var freehand: FreehandData?
         var ai: AIData?
 
-        init(timestamp: Double, interpolation: String) {
+        init(timestamp: Double, interpolation: String, isAbsent: Bool = false) {
             self.timestamp = timestamp
             self.interpolation = interpolation
+            self.isAbsent = isAbsent
         }
     }
 

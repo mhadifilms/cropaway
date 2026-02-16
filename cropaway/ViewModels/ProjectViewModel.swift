@@ -11,11 +11,24 @@ import UniformTypeIdentifiers
 @MainActor
 final class ProjectViewModel: ObservableObject {
     @Published var videos: [VideoItem] = []
-    @Published var selectedVideo: VideoItem?
+    @Published private var selectedVideoID: VideoItem.ID?
     @Published var selectedVideoIDs: Set<VideoItem.ID> = []
     @Published var isImporting: Bool = false
 
     private let metadataExtractor = VideoMetadataExtractor()
+
+    /// Selected video - computed property that validates the video still exists in the array
+    /// This prevents crashes from accessing a deallocated VideoItem
+    var selectedVideo: VideoItem? {
+        get {
+            guard let id = selectedVideoID else { return nil }
+            return videos.first { $0.id == id }
+        }
+        set {
+            selectedVideoID = newValue?.id
+            objectWillChange.send()
+        }
+    }
 
     /// Returns videos matching the current selection (for batch operations)
     var selectedVideos: [VideoItem] {
@@ -45,25 +58,41 @@ final class ProjectViewModel: ObservableObject {
             }
 
             // Select first added video
-            if selectedVideo == nil {
-                selectedVideo = video
+            if selectedVideoID == nil {
+                selectedVideoID = video.id
             }
         }
     }
 
     func removeVideo(_ video: VideoItem) {
+        // Clear selection BEFORE removing to prevent accessing deallocated object
+        if selectedVideoID == video.id {
+            selectedVideoID = nil
+        }
+        selectedVideoIDs.remove(video.id)
+        
         videos.removeAll { $0.id == video.id }
-        if selectedVideo?.id == video.id {
-            selectedVideo = videos.first
+        
+        // Select another video if we had one selected
+        if selectedVideoID == nil && !videos.isEmpty {
+            selectedVideoID = videos.first?.id
         }
     }
 
     func removeVideos(at offsets: IndexSet) {
-        let removedIds = offsets.map { videos[$0].id }
+        let removedIds = Set(offsets.map { videos[$0].id })
+        
+        // Clear selection BEFORE removing to prevent accessing deallocated object
+        if let currentID = selectedVideoID, removedIds.contains(currentID) {
+            selectedVideoID = nil
+        }
+        selectedVideoIDs.subtract(removedIds)
+        
         videos.remove(atOffsets: offsets)
-
-        if let selected = selectedVideo, removedIds.contains(selected.id) {
-            selectedVideo = videos.first
+        
+        // Select another video if we had one selected
+        if selectedVideoID == nil && !videos.isEmpty {
+            selectedVideoID = videos.first?.id
         }
     }
 

@@ -9,10 +9,40 @@ import AppKit
 struct KeyframeTimelineView: View {
     @EnvironmentObject var playerVM: VideoPlayerViewModel
     @EnvironmentObject var keyframeVM: KeyframeViewModel
+    @EnvironmentObject var cropEditorVM: CropEditorViewModel
 
     @State private var draggedKeyframe: Keyframe? = nil
     @State private var dragOffset: CGFloat = 0
     @FocusState private var isFocused: Bool
+    
+    /// Returns true if the current crop editor state differs from the selected keyframe's saved values
+    private var hasUnsavedChanges: Bool {
+        // Reference updateTrigger to force re-evaluation when keyframe is updated
+        let _ = keyframeVM.updateTrigger
+        
+        guard let keyframe = keyframeVM.selectedKeyframe else { return false }
+        
+        // Don't show changes for absent keyframes
+        if keyframe.isAbsent { return false }
+        
+        // Compare crop rect (with small tolerance for floating point)
+        let tolerance: CGFloat = 0.0001
+        if abs(keyframe.cropRect.origin.x - cropEditorVM.cropRect.origin.x) > tolerance ||
+           abs(keyframe.cropRect.origin.y - cropEditorVM.cropRect.origin.y) > tolerance ||
+           abs(keyframe.cropRect.size.width - cropEditorVM.cropRect.size.width) > tolerance ||
+           abs(keyframe.cropRect.size.height - cropEditorVM.cropRect.size.height) > tolerance {
+            return true
+        }
+        
+        // Compare circle properties
+        if abs(keyframe.circleCenter.x - cropEditorVM.circleCenter.x) > tolerance ||
+           abs(keyframe.circleCenter.y - cropEditorVM.circleCenter.y) > tolerance ||
+           abs(keyframe.circleRadius - cropEditorVM.circleRadius) > tolerance {
+            return true
+        }
+        
+        return false
+    }
 
     var body: some View {
         VStack(spacing: 6) {
@@ -43,13 +73,43 @@ struct KeyframeTimelineView: View {
                 }
 
                 Button(action: { keyframeVM.addKeyframe(at: playerVM.currentTime) }) {
-                    Image(systemName: "plus.diamond")
+                    Image(systemName: "plus.diamond.fill")
                         .font(.system(size: 11))
+                        .foregroundStyle(.blue)
                         .frame(width: 22, height: 22)
                 }
                 .buttonStyle(.borderless)
                 .help("Add keyframe (⌘K)")
 
+                Button(action: { keyframeVM.addKeyframe(at: playerVM.currentTime, isAbsent: true) }) {
+                    ZStack {
+                        Image(systemName: "diamond")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                        Image(systemName: "nosign")
+                            .font(.system(size: 7, weight: .bold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(width: 22, height: 22)
+                }
+                .buttonStyle(.borderless)
+                .help("Add 'None' keyframe (no crop at this point)")
+                
+                // Update keyframe button - updates selected keyframe with current crop state
+                // Enabled and bright when there are unsaved changes, disabled and dim when already saved
+                if keyframeVM.selectedKeyframe != nil {
+                    Button(action: { keyframeVM.updateCurrentKeyframe() }) {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.orange)
+                            .frame(width: 22, height: 22)
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(!hasUnsavedChanges)
+                    .opacity(hasUnsavedChanges ? 1.0 : 0.3)
+                    .help(hasUnsavedChanges ? "Update selected keyframe with current crop" : "No changes to save")
+                }
+                
                 if !keyframeVM.selectedKeyframeIDs.isEmpty {
                     Button(action: { keyframeVM.deleteSelected() }) {
                         Image(systemName: "minus.diamond")
@@ -259,13 +319,34 @@ class KeyframeTrackNSView: NSView {
             }
         }
 
-        // Keyframe markers
-        for keyframe in keyframes {
+        // Draw keyframe spans (colored regions showing keyframe duration)
+        let sortedKeyframes = keyframes.sorted { $0.timestamp < $1.timestamp }
+        for (index, keyframe) in sortedKeyframes.enumerated() {
+            let startX = xPosition(for: keyframe)
+            let endX: CGFloat
+            
+            if index + 1 < sortedKeyframes.count {
+                endX = xPosition(for: sortedKeyframes[index + 1])
+            } else {
+                endX = rect.width  // Last keyframe spans to end
+            }
+            
+            // White for absent keyframes, colored for normal keyframes
+            let color: NSColor = keyframe.isAbsent ? .white : keyframeColor(at: index)
+            color.withAlphaComponent(0.15).setFill()
+            
+            let spanRect = NSRect(x: startX, y: 4, width: endX - startX, height: rect.height - 8)
+            let spanPath = NSBezierPath(roundedRect: spanRect, xRadius: 2, yRadius: 2)
+            spanPath.fill()
+        }
+
+        // Keyframe markers (with indexed colors, white for absent)
+        for (index, keyframe) in sortedKeyframes.enumerated() {
             let x = xPosition(for: keyframe)
             let isSelected = selectedIDs.contains(keyframe.id)
             let isDragged = draggedKeyframe?.id == keyframe.id
 
-            drawKeyframeMarker(at: x, selected: isSelected, dragging: isDragged)
+            drawKeyframeMarker(at: x, selected: isSelected, dragging: isDragged, colorIndex: index, isAbsent: keyframe.isAbsent)
         }
 
         // Playhead
@@ -291,8 +372,7 @@ class KeyframeTrackNSView: NSView {
         }
     }
 
-
-    private func drawKeyframeMarker(at x: CGFloat, selected: Bool, dragging: Bool) {
+    private func drawKeyframeMarker(at x: CGFloat, selected: Bool, dragging: Bool, colorIndex: Int, isAbsent: Bool) {
         let y = bounds.midY
         let size: CGFloat = dragging ? 14 : 12
 
@@ -304,13 +384,13 @@ class KeyframeTrackNSView: NSView {
         path.line(to: NSPoint(x: x - size/2, y: y))
         path.close()
 
-        // Fill
+        // Fill - WHITE for absent keyframes, colored for normal
         if dragging {
             NSColor.orange.setFill()
-        } else if selected {
-            NSColor.controlAccentColor.setFill()
+        } else if isAbsent {
+            NSColor.white.withAlphaComponent(selected ? 1.0 : 0.8).setFill()
         } else {
-            NSColor.labelColor.withAlphaComponent(0.6).setFill()
+            keyframeColor(at: colorIndex).withAlphaComponent(selected ? 1.0 : 0.8).setFill()
         }
         path.fill()
 
@@ -323,7 +403,13 @@ class KeyframeTrackNSView: NSView {
             ringPath.line(to: NSPoint(x: x, y: y + ringSize/2))
             ringPath.line(to: NSPoint(x: x - ringSize/2, y: y))
             ringPath.close()
-            NSColor.controlAccentColor.setStroke()
+            
+            // Gray ring for absent keyframes, colored for normal
+            if isAbsent {
+                NSColor.gray.setStroke()
+            } else {
+                keyframeColor(at: colorIndex).setStroke()
+            }
             ringPath.lineWidth = 1.5
             ringPath.stroke()
         }
@@ -342,6 +428,20 @@ class KeyframeTrackNSView: NSView {
         guard duration > 0, bounds.width > 0 else { return 0 }
         let fraction = max(0, min(1, x / bounds.width))
         return fraction * duration
+    }
+
+    private func keyframeColor(at index: Int) -> NSColor {
+        let colors: [NSColor] = [
+            .systemBlue,
+            .systemGreen,
+            .systemOrange,
+            .systemPurple,
+            .systemPink,
+            .systemTeal,
+            .systemYellow,
+            .systemIndigo
+        ]
+        return colors[index % colors.count]
     }
 
     private func keyframeAt(_ point: NSPoint) -> Keyframe? {

@@ -74,9 +74,15 @@ struct LiveCropPreviewView: View {
 
     @EnvironmentObject var playerVM: VideoPlayerViewModel
     @EnvironmentObject var cropEditorVM: CropEditorViewModel
+    @EnvironmentObject var keyframeVM: KeyframeViewModel
 
     // For pinch-to-zoom gesture
     @GestureState private var magnifyBy: CGFloat = 1.0
+    
+    /// Whether the current playhead position is in an "absent" keyframe region (no crop)
+    private var isCurrentlyAbsent: Bool {
+        keyframeVM.isAbsent(at: playerVM.currentTime)
+    }
 
     var body: some View {
         GeometryReader { geometry in
@@ -102,6 +108,7 @@ struct LiveCropPreviewView: View {
                     }
 
                     // Video layer - behavior depends on preserveSize and enableAlpha
+                    // Note: We keep the same view structure regardless of absent state to avoid video jerk
                     if !preserveSize {
                         // Preserve Size OFF: Show only cropped area filling the frame
                         // Use ClippedVideoPlayerView which uses AVPlayerLayer with proper CALayer clipping
@@ -131,7 +138,7 @@ struct LiveCropPreviewView: View {
                             VideoPlayerView()
                                 .frame(width: displayConfig.videoDisplaySize.width, height: displayConfig.videoDisplaySize.height)
 
-                            // Dimmed overlay outside crop area
+                            // Dimmed overlay outside crop area - fade out when in absent state
                             DimmedCropOverlay(
                                 mode: cropEditorVM.mode,
                                 cropRect: cropRect,
@@ -142,15 +149,18 @@ struct LiveCropPreviewView: View {
                                 aiMaskData: cropEditorVM.aiMaskData,
                                 videoSize: displayConfig.videoDisplaySize
                             )
+                            .opacity(isCurrentlyAbsent ? 0 : 1)
                         }
                         .offset(x: displayConfig.videoOffset.width, y: displayConfig.videoOffset.height)
                     }
 
                     // Crop handles overlay - only show when preserveSize is ON
                     // When preserveSize is OFF, the cropped view fills the frame and handles would be confusing
+                    // Fade out when in absent state (no crop to show handles for)
                     if preserveSize {
                         CropHandlesView(videoDisplaySize: displayConfig.videoDisplaySize)
                             .offset(x: displayConfig.videoOffset.width, y: displayConfig.videoOffset.height)
+                            .opacity(isCurrentlyAbsent ? 0 : 1)
                     }
                 }
                 .frame(width: displayConfig.frameSize.width, height: displayConfig.frameSize.height)

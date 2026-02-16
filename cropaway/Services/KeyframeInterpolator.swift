@@ -15,6 +15,7 @@ struct InterpolatedCropState {
     var freehandPathData: Data?
     var aiMaskData: Data?
     var aiBoundingBox: CGRect
+    var isAbsent: Bool
 }
 
 final class KeyframeInterpolator {
@@ -111,7 +112,8 @@ final class KeyframeInterpolator {
             freehandPoints: [],
             freehandPathData: nil,
             aiMaskData: nil,
-            aiBoundingBox: .zero
+            aiBoundingBox: .zero,
+            isAbsent: false
         )
     }
 
@@ -140,7 +142,8 @@ final class KeyframeInterpolator {
             freehandPoints: freehandPoints,
             freehandPathData: keyframe.freehandPathData,
             aiMaskData: keyframe.aiMaskData,
-            aiBoundingBox: keyframe.aiBoundingBox ?? .zero
+            aiBoundingBox: keyframe.aiBoundingBox ?? .zero,
+            isAbsent: keyframe.isAbsent
         )
     }
 
@@ -172,7 +175,8 @@ final class KeyframeInterpolator {
             freehandPoints: t < 0.5 ? from.freehandPoints : to.freehandPoints,
             freehandPathData: t < 0.5 ? from.freehandPathData : to.freehandPathData,  // Hold interpolation for freehand
             aiMaskData: t < 0.5 ? from.aiMaskData : to.aiMaskData,  // Hold interpolation for AI masks
-            aiBoundingBox: lerp(from.aiBoundingBox, to.aiBoundingBox, t)  // Linear interpolation for AI bounding box
+            aiBoundingBox: lerp(from.aiBoundingBox, to.aiBoundingBox, t),  // Linear interpolation for AI bounding box
+            isAbsent: t < 0.5 ? from.isAbsent : to.isAbsent  // Hold interpolation for absence
         )
     }
 
