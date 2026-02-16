@@ -5,6 +5,21 @@ A fast, native macOS app for cropping videos and saving crop data.
 ![macOS](https://img.shields.io/badge/macOS-14.0+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
+## Recent changes
+
+![Keyframe Timeline](assets/cropaway_new.gif)
+![Keyframe Timeline](assets/cropaway_timeline.png)
+- ### Keyframe Timeline Enhancements
+    - **Color-coded keyframe spans** - Timeline now shows colored spans indicating each keyframe's active duration until the next keyframe
+    - **"None" keyframe type** - Add keyframes that disable the bounding box for a duration (shown in white on the timeline)
+    - **Update keyframe button** - New button to update the selected keyframe with the current bounding box; disabled when no changes pending
+    - **Keyframe bar open by default** - Timeline is now visible by default when loading a video
+
+
+
+
+
+
 ## Features
 
 - **Rectangle Crop** - Precise rectangular cropping with draggable handles
@@ -48,7 +63,7 @@ Download the latest DMG from [Releases](../../releases/latest).
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/cropaway.git
+git clone https://github.com/mhadifilms/cropaway.git
 cd cropaway
 
 # Build release
