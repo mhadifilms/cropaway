@@ -57,63 +57,6 @@ public partial class TimelineViewModel : ObservableObject
         IsTimelinePanelVisible = !IsTimelinePanelVisible;
     }
 
-    [RelayCommand]
-    public void DeleteSequence(Timeline? timeline)
-    {
-        var target = timeline ?? ActiveTimeline;
-        if (target == null) return;
-
-        var index = Timelines.IndexOf(target);
-        Timelines.Remove(target);
-
-        if (ActiveTimeline == target)
-        {
-            if (Timelines.Count > 0)
-            {
-                ActiveTimeline = Timelines[Math.Min(index, Timelines.Count - 1)];
-            }
-            else
-            {
-                ActiveTimeline = null;
-            }
-        }
-    }
-
-    [RelayCommand]
-    public void RenameSequence(string? newName)
-    {
-        if (ActiveTimeline != null && !string.IsNullOrWhiteSpace(newName))
-        {
-            ActiveTimeline.Name = newName.Trim();
-        }
-    }
-
-    [RelayCommand]
-    public void DuplicateSequence(Timeline? timeline)
-    {
-        var source = timeline ?? ActiveTimeline;
-        if (source == null) return;
-
-        var newTimeline = new Timeline
-        {
-            Id = Guid.NewGuid(),
-            Name = $"{source.Name} Copy"
-        };
-
-        // Copy clips from source
-        foreach (var clip in source.Clips)
-        {
-            var copiedClip = clip.Copy();
-            if (copiedClip != null)
-            {
-                newTimeline.AddClip(copiedClip);
-            }
-        }
-
-        Timelines.Add(newTimeline);
-        ActiveTimeline = newTimeline;
-    }
-
     public void AddClipFromVideo(VideoItem video)
     {
         if (ActiveTimeline == null)

@@ -5,26 +5,11 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:CropawayWindows.ViewModels"
              xmlns:models="clr-namespace:CropawayWindows.Models"
-             xmlns:views="clr-namespace:CropawayWindows.Views"
              mc:Ignorable="d"
              d:DataContext="{d:DesignInstance vm:MainViewModel}"
              Background="{StaticResource SidebarBrush}">
 
     <Grid>
-        <!-- Tabbed sidebar: Media + Sequences -->
-        <TabControl Style="{StaticResource DarkTabControl}">
-            <!-- ===== MEDIA TAB ===== -->
-            <TabItem Style="{StaticResource DarkTabItem}">
-                <TabItem.Header>
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock FontFamily="Segoe Fluent Icons"
-                                   Text="{StaticResource IconVideo}"
-                                   FontSize="12" Margin="0,0,5,0" VerticalAlignment="Center" />
-                        <TextBlock Text="Media" VerticalAlignment="Center" />
-                    </StackPanel>
-                </TabItem.Header>
-
-                <Grid>
                     <Grid.RowDefinitions>
                         <!-- Header -->
                         <RowDefinition Height="Auto" />
@@ -349,22 +334,5 @@
                             </StackPanel>
                         </Button>
                     </Border>
-                </Grid>
-            </TabItem>
-
-            <!-- ===== SEQUENCES TAB ===== -->
-            <TabItem Style="{StaticResource DarkTabItem}">
-                <TabItem.Header>
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock FontFamily="Segoe Fluent Icons"
-                                   Text="{StaticResource IconTimeline}"
-                                   FontSize="12" Margin="0,0,5,0" VerticalAlignment="Center" />
-                        <TextBlock Text="Sequences" VerticalAlignment="Center" />
-                    </StackPanel>
-                </TabItem.Header>
-
-                <views:SequencesTabView DataContext="{Binding Timeline}" />
-            </TabItem>
-        </TabControl>
     </Grid>
 </UserControl>
