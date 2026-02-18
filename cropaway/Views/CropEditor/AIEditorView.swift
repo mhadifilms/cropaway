@@ -14,6 +14,9 @@ struct AIEditorView: View {
     @Binding var maskData: Data?
     @Binding var boundingBox: CGRect
     @Binding var interactionMode: AIInteractionMode
+    let maskSmoothness: Double
+    let maskRadius: Double
+    let maskDenoise: Double
     let videoSize: CGSize
     let onEditEnded: () -> Void
 
@@ -26,7 +29,13 @@ struct AIEditorView: View {
             ZStack {
                 // Mask visualization (semi-transparent overlay where mask exists)
                 if let data = maskData {
-                    AIMaskOverlay(maskData: data, size: size)
+                    AIMaskOverlay(
+                        maskData: data,
+                        size: size,
+                        smoothness: maskSmoothness,
+                        radius: maskRadius,
+                        denoise: maskDenoise
+                    )
                         .allowsHitTesting(false)
                 }
 
@@ -145,12 +154,35 @@ struct PromptPointMarker: View {
 struct AIMaskOverlay: View {
     let maskData: Data
     let size: CGSize
+    let smoothness: Double
+    let radius: Double
+    let denoise: Double
+
+    private static let previewMaskRenderer = CropMaskRenderer()
 
     var body: some View {
-        if let (cgImage, _, _) = AIMaskResult.decodeMaskToImage(maskData) {
+        let state = InterpolatedCropState(
+            cropRect: CGRect(x: 0, y: 0, width: 1, height: 1),
+            edgeInsets: EdgeInsets(),
+            circleCenter: CGPoint(x: 0.5, y: 0.5),
+            circleRadius: 0.5,
+            freehandPoints: [],
+            freehandPathData: nil,
+            aiMaskData: maskData,
+            aiBoundingBox: .zero
+        )
+
+        if let cgImage = Self.previewMaskRenderer.generateMaskImage(
+            mode: .ai,
+            state: state,
+            size: size,
+            smoothness: smoothness,
+            radius: radius,
+            denoise: denoise
+        ) {
             Image(decorative: cgImage, scale: 1.0)
                 .resizable()
-                .interpolation(.high)
+                .interpolation(.none)
                 .frame(width: size.width, height: size.height)
                 .opacity(0.4)
                 .blendMode(.sourceAtop)
@@ -171,6 +203,9 @@ struct AIMaskOverlay: View {
                 maskData: $maskData,
                 boundingBox: $boundingBox,
                 interactionMode: $mode,
+                maskSmoothness: 0,
+                maskRadius: 0,
+                maskDenoise: 0,
                 videoSize: CGSize(width: 1920, height: 1080),
                 onEditEnded: {}
             )

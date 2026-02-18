@@ -8,6 +8,10 @@ import Foundation
 import CoreGraphics
 
 final class CropConfiguration: ObservableObject {
+    static let maskSmoothnessRange: ClosedRange<Double> = 0...2
+    static let maskRadiusRange: ClosedRange<Double> = 0...24
+    static let maskDenoiseRange: ClosedRange<Double> = 0...16
+
     @Published var mode: CropMode = .rectangle
     @Published var isEnabled: Bool = true
 
@@ -34,6 +38,11 @@ final class CropConfiguration: ObservableObject {
     @Published var aiConfidence: Double = 0
     @Published var aiInteractionMode: AIInteractionMode = .point
 
+    // Non-destructive mask post-processing (applies to preview/export only)
+    @Published var maskSmoothness: Double = 0
+    @Published var maskRadius: Double = 0
+    @Published var maskDenoise: Double = 0
+
     // Keyframes for animation
     @Published var keyframes: [Keyframe] = []
     @Published var keyframesEnabled: Bool = false
@@ -48,6 +57,10 @@ final class CropConfiguration: ObservableObject {
         keyframesEnabled && keyframes.count > 1
     }
 
+    var hasMaskAdjustments: Bool {
+        maskSmoothness > 0.0001 || maskRadius > 0.0001 || maskDenoise > 0.0001
+    }
+
     /// Returns true if any crop changes have been made from the default full-frame state
     var hasCropChanges: Bool {
         switch mode {
@@ -57,16 +70,16 @@ final class CropConfiguration: ObservableObject {
                               cropRect.origin.y < 0.001 &&
                               cropRect.width > 0.999 &&
                               cropRect.height > 0.999
-            return !isFullFrame || hasKeyframes
+            return !isFullFrame || hasKeyframes || hasMaskAdjustments
         case .circle:
             // Circle mode always implies masking (parts will be black/transparent)
             return true
         case .freehand:
             // Freehand with points implies masking
-            return freehandPoints.count >= 3 || hasKeyframes
+            return freehandPoints.count >= 3 || hasKeyframes || hasMaskAdjustments
         case .ai:
             // AI mode has changes if mask data exists
-            return aiMaskData != nil || hasKeyframes
+            return aiMaskData != nil || hasKeyframes || hasMaskAdjustments
         }
     }
 
@@ -155,6 +168,9 @@ final class CropConfiguration: ObservableObject {
         aiObjectId = nil
         aiBoundingBox = .zero
         aiConfidence = 0
+        maskSmoothness = 0
+        maskRadius = 0
+        maskDenoise = 0
         keyframes = []
         keyframesEnabled = false
         // Note: Don't reset preserveWidth and enableAlphaChannel as they're user preferences per video
@@ -194,6 +210,11 @@ final class CropConfiguration: ObservableObject {
                 height: max(0.01, min(1 - aiBoundingBox.origin.y, aiBoundingBox.height))
             )
         }
+
+        // Clamp post-processing controls
+        maskSmoothness = max(Self.maskSmoothnessRange.lowerBound, min(Self.maskSmoothnessRange.upperBound, maskSmoothness))
+        maskRadius = max(Self.maskRadiusRange.lowerBound, min(Self.maskRadiusRange.upperBound, maskRadius))
+        maskDenoise = max(Self.maskDenoiseRange.lowerBound, min(Self.maskDenoiseRange.upperBound, maskDenoise))
     }
 
     /// Returns true if all crop values are within valid normalized 0-1 range

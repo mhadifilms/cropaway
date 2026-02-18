@@ -35,6 +35,11 @@ final class CropEditorViewModel: ObservableObject {
     @Published var aiBoundingBox: CGRect = .zero
     @Published var aiInteractionMode: AIInteractionMode = .point
 
+    // Non-destructive mask post-processing
+    @Published var maskSmoothness: Double = 0
+    @Published var maskRadius: Double = 0
+    @Published var maskDenoise: Double = 0
+
     // Callback for when crop editing ends (drag gesture completed)
     // Used for auto-keyframe creation
     var onCropEditEnded: (() -> Void)?
@@ -62,6 +67,9 @@ final class CropEditorViewModel: ObservableObject {
         aiTextPrompt = config.aiTextPrompt
         aiBoundingBox = config.aiBoundingBox
         aiInteractionMode = config.aiInteractionMode
+        maskSmoothness = config.maskSmoothness
+        maskRadius = config.maskRadius
+        maskDenoise = config.maskDenoise
 
         // Sync changes back to config
         $mode
@@ -123,6 +131,21 @@ final class CropEditorViewModel: ObservableObject {
             .dropFirst()
             .sink { config.aiInteractionMode = $0 }
             .store(in: &cancellables)
+
+        $maskSmoothness
+            .dropFirst()
+            .sink { config.maskSmoothness = max(CropConfiguration.maskSmoothnessRange.lowerBound, min(CropConfiguration.maskSmoothnessRange.upperBound, $0)) }
+            .store(in: &cancellables)
+
+        $maskRadius
+            .dropFirst()
+            .sink { config.maskRadius = max(CropConfiguration.maskRadiusRange.lowerBound, min(CropConfiguration.maskRadiusRange.upperBound, $0)) }
+            .store(in: &cancellables)
+
+        $maskDenoise
+            .dropFirst()
+            .sink { config.maskDenoise = max(CropConfiguration.maskDenoiseRange.lowerBound, min(CropConfiguration.maskDenoiseRange.upperBound, $0)) }
+            .store(in: &cancellables)
     }
 
     // Get effective crop area for current mode
@@ -163,6 +186,9 @@ final class CropEditorViewModel: ObservableObject {
         aiPromptPoints = []
         aiTextPrompt = nil
         aiBoundingBox = .zero
+        maskSmoothness = 0
+        maskRadius = 0
+        maskDenoise = 0
     }
 
     // Freehand drawing
