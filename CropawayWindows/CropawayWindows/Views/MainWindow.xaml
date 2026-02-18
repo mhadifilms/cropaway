@@ -35,10 +35,8 @@
                 <MenuItem Header="Export _Video..." Command="{Binding ExportCurrentVideoCommand}" InputGestureText="Ctrl+E" />
                 <MenuItem Header="Export _All..." Command="{Binding ExportAllCommand}" InputGestureText="Ctrl+Shift+E" />
                 <Separator />
-                <MenuItem Header="Export Crop _Data (JSON)..." Command="{Binding ExportCropJsonCommand}" InputGestureText="Ctrl+Shift+J" />
-                <Separator />
-                <MenuItem Header="Export _Bounding Boxes (JSON)..." Command="{Binding ExportBoundingBoxJsonCommand}" />
-                <MenuItem Header="Export Bounding Boxes (_Pickle)..." Command="{Binding ExportBoundingBoxPickleCommand}" />
+                <MenuItem Header="Export Crop _JSON..." Command="{Binding ExportBoundingBoxJsonCommand}" />
+                <MenuItem Header="Export Crop _Pickle..." Command="{Binding ExportBoundingBoxPickleCommand}" />
                 <Separator />
                 <MenuItem Header="_Reveal in Explorer" Command="{Binding RevealInExplorerCommand}" />
                 <Separator />
@@ -255,19 +253,12 @@
                                         </MenuItem.Icon>
                                     </MenuItem>
                                     <Separator Background="{StaticResource BorderBrush}" />
-                                    <MenuItem Header="Export Crop Data (JSON)..." Command="{Binding ExportCropJsonCommand}"
-                                              InputGestureText="Ctrl+Shift+J">
-                                        <MenuItem.Icon>
-                                            <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE8A5;" FontSize="12" />
-                                        </MenuItem.Icon>
-                                    </MenuItem>
-                                    <Separator Background="{StaticResource BorderBrush}" />
-                                    <MenuItem Header="Export Bounding Boxes (JSON)..." Command="{Binding ExportBoundingBoxJsonCommand}">
+                                    <MenuItem Header="Export Crop JSON..." Command="{Binding ExportBoundingBoxJsonCommand}">
                                         <MenuItem.Icon>
                                             <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xED5C;" FontSize="12" />
                                         </MenuItem.Icon>
                                     </MenuItem>
-                                    <MenuItem Header="Export Bounding Boxes (Pickle)..." Command="{Binding ExportBoundingBoxPickleCommand}">
+                                    <MenuItem Header="Export Crop Pickle..." Command="{Binding ExportBoundingBoxPickleCommand}">
                                         <MenuItem.Icon>
                                             <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xED5C;" FontSize="12" />
                                         </MenuItem.Icon>

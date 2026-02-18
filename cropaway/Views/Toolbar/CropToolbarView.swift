@@ -31,8 +31,11 @@ struct CropToolbarView: View {
 
             Divider()
 
+            maskAdjustmentsToolbar
+
             // AI sub-toolbar
             if cropEditorVM.mode == .ai {
+                Divider()
                 AIToolbarView(video: video)
                 Divider()
             }
@@ -167,6 +170,69 @@ struct CropToolbarView: View {
         }
     }
 
+    // MARK: - Mask Adjustments
+
+    private var maskAdjustmentsToolbar: some View {
+        HStack(spacing: 14) {
+            MaskAdjustmentSlider(
+                title: "Smoothness",
+                value: Binding(
+                    get: { cropEditorVM.maskSmoothness },
+                    set: { cropEditorVM.maskSmoothness = $0 }
+                ),
+                range: CropConfiguration.maskSmoothnessRange,
+                step: 0.05
+            )
+
+            MaskAdjustmentSlider(
+                title: "Radius",
+                value: Binding(
+                    get: { cropEditorVM.maskRadius },
+                    set: { cropEditorVM.maskRadius = $0 }
+                ),
+                range: CropConfiguration.maskRadiusRange,
+                step: 0.25
+            )
+
+            MaskAdjustmentSlider(
+                title: "Denoise",
+                value: Binding(
+                    get: { cropEditorVM.maskDenoise },
+                    set: { cropEditorVM.maskDenoise = $0 }
+                ),
+                range: CropConfiguration.maskDenoiseRange,
+                step: 0.25
+            )
+
+            Spacer(minLength: 8)
+
+            Button {
+                cropEditorVM.maskSmoothness = 0
+                cropEditorVM.maskRadius = 0
+                cropEditorVM.maskDenoise = 0
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.counterclockwise")
+                        .font(.system(size: 10))
+                    Text("Reset Mask")
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .padding(.horizontal, 10)
+                .frame(height: 30)
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.borderless)
+            .liquidGlassCapsule()
+            .disabled(!cropConfig.hasMaskAdjustments)
+            .opacity(cropConfig.hasMaskAdjustments ? 1 : 0.45)
+            .help("Reset mask smoothness, radius, and denoise")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .frame(height: 48)
+        .background(.bar)
+    }
+
     // MARK: - Edit Actions
 
     private var editActions: some View {
@@ -226,23 +292,15 @@ struct CropToolbarView: View {
             Divider()
 
             Button {
-                NotificationCenter.default.post(name: .exportJSON, object: nil)
-            } label: {
-                Label("Export Crop Data (JSON)...", systemImage: "doc.text")
-            }
-
-            Divider()
-
-            Button {
                 NotificationCenter.default.post(name: .exportBoundingBox, object: nil)
             } label: {
-                Label("Export Bounding Boxes (JSON)...", systemImage: "rectangle.dashed")
+                Label("Export Crop JSON...", systemImage: "rectangle.dashed")
             }
 
             Button {
                 NotificationCenter.default.post(name: .exportBoundingBoxPickle, object: nil)
             } label: {
-                Label("Export Bounding Boxes (Pickle)...", systemImage: "rectangle.dashed.badge.record")
+                Label("Export Crop Pickle...", systemImage: "rectangle.dashed.badge.record")
             }
         } label: {
             HStack(spacing: 5) {
@@ -265,6 +323,33 @@ struct CropToolbarView: View {
         .liquidGlassCapsule(isSelected: cropConfig.hasCropChanges, tint: .accentColor)
         .disabled(!cropConfig.hasCropChanges)
         .help(cropConfig.hasCropChanges ? "Export video (⌘E)" : "Make changes to enable export")
+    }
+}
+
+private struct MaskAdjustmentSlider: View {
+    let title: String
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    let step: Double
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(title)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .frame(width: 70, alignment: .leading)
+
+            Slider(value: $value, in: range, step: step)
+                .frame(width: 120)
+
+            Text(value, format: .number.precision(.fractionLength(2)))
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .frame(width: 42, alignment: .trailing)
+        }
+        .padding(.horizontal, 8)
+        .frame(height: 30)
+        .liquidGlassCapsule()
     }
 }
 

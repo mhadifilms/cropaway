@@ -396,15 +396,6 @@ public partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task ExportCropJson()
-    {
-        if (Project.SelectedVideo != null)
-        {
-            await Export.ExportCropJson(Project.SelectedVideo);
-        }
-    }
-
-    [RelayCommand]
     private void ExportBoundingBoxJson()
     {
         if (Project.SelectedVideo == null) return;
@@ -792,11 +783,6 @@ public partial class MainViewModel : ObservableObject
                     _ = ExportCurrentVideo();
                 e.Handled = true;
                 break;
-            case Key.J when ctrl && shift:
-                _ = ExportCropJson();
-                e.Handled = true;
-                break;
-
             // View
             case Key.OemPlus when ctrl:
                 ZoomIn();

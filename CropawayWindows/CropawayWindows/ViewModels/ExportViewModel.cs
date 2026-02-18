@@ -239,33 +239,6 @@ public partial class ExportViewModel : ObservableObject
         _exportService.Cancel();
     }
 
-    [RelayCommand]
-    public async Task ExportCropJson(VideoItem video)
-    {
-        var dialog = new System.Windows.Forms.FolderBrowserDialog
-        {
-            Description = "Export Crop JSON to Folder"
-        };
-
-        if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
-
-        try
-        {
-            var document = CropDataStorageService.Instance.Load(video.SourcePath);
-            if (document == null)
-            {
-                StatusMessage = "No crop data to export";
-                return;
-            }
-            var path = CropDataStorageService.Instance.ExportToFolder(document, dialog.SelectedPath, video.FileName);
-            StatusMessage = $"Crop data exported to {Path.GetFileName(path)}";
-        }
-        catch (Exception ex)
-        {
-            StatusMessage = $"Export failed: {ex.Message}";
-        }
-    }
-
     public void ExportBoundingBoxJson(VideoItem video)
     {
         if (video.Metadata.Width <= 0 || video.Metadata.Height <= 0)
