@@ -3,6 +3,7 @@ name: Build Windows Installer
 on:
   push:
     branches: [windows]
+    tags: ['v*']
   workflow_dispatch:
     inputs:
       version:
@@ -17,6 +18,20 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Determine version
+        id: version
+        shell: pwsh
+        run: |
+          if ("${{ github.ref_type }}" -eq "tag") {
+              $ver = "${{ github.ref_name }}" -replace '^v', ''
+          } elseif ("${{ github.event.inputs.version }}" -ne "") {
+              $ver = "${{ github.event.inputs.version }}"
+          } else {
+              $ver = "1.0.0"
+          }
+          Write-Host "Version: $ver"
+          "VERSION=$ver" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       - name: Setup .NET 8
         uses: actions/setup-dotnet@v4
@@ -67,6 +82,7 @@ jobs:
             --self-contained true `
             -p:PublishSingleFile=false `
             -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:Version=${{ steps.version.outputs.VERSION }} `
             -o publish
 
       - name: Bundle FFmpeg
@@ -85,7 +101,6 @@ jobs:
         run: |
           $inno = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
           if (-not (Test-Path $inno)) {
-              # Fallback path after choco install
               $inno = (Get-Command ISCC.exe -ErrorAction SilentlyContinue).Source
           }
           if (-not $inno) {
@@ -94,11 +109,18 @@ jobs:
           }
 
           New-Item -ItemType Directory -Path output -Force | Out-Null
-          & $inno installer.iss
+          & $inno "/DMyAppVersion=${{ steps.version.outputs.VERSION }}" installer.iss
           if ($LASTEXITCODE -ne 0) { exit 1 }
 
           Write-Host "Installer created:"
           Get-ChildItem output/
+
+      - name: Create portable ZIP
+        working-directory: CropawayWindows
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "publish\*" -DestinationPath "output\Cropaway-Portable-${{ steps.version.outputs.VERSION }}.zip"
+          Write-Host "Portable ZIP created"
 
       - name: Upload installer
         uses: actions/upload-artifact@v4
@@ -111,5 +133,26 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Cropaway-Portable
-          path: CropawayWindows/publish/
+          path: CropawayWindows/output/Cropaway-Portable-*.zip
           if-no-files-found: error
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Cropaway ${{ steps.version.outputs.VERSION }}
+          body: |
+            ## Cropaway for Windows ${{ steps.version.outputs.VERSION }}
+
+            ### Downloads
+            - **CropawaySetup** — Full installer with Start Menu shortcuts and optional file associations
+            - **Cropaway-Portable** — Standalone ZIP, no installation needed
+
+            ### Requirements
+            - Windows 10 or later (64-bit)
+            - FFmpeg is bundled — no separate install needed
+          files: |
+            CropawayWindows/output/CropawaySetup-${{ steps.version.outputs.VERSION }}.exe
+            CropawayWindows/output/Cropaway-Portable-${{ steps.version.outputs.VERSION }}.zip
+          draft: false
+          prerelease: false

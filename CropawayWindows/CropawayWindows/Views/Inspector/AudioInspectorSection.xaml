@@ -1,0 +1,48 @@
+<UserControl x:Class="CropawayWindows.Views.Inspector.AudioInspectorSection"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d"
+             d:DesignWidth="250">
+
+    <StackPanel>
+        <!-- Audio Codec -->
+        <DockPanel Margin="0,0,0,6">
+            <TextBlock Text="Codec:" Foreground="{StaticResource TextSecondaryBrush}"
+                       FontSize="11" Width="70" />
+            <TextBlock Text="{Binding AudioCodec}" Foreground="{StaticResource TextPrimaryBrush}"
+                       FontSize="11" />
+        </DockPanel>
+
+        <!-- Sample Rate -->
+        <DockPanel Margin="0,0,0,6">
+            <TextBlock Text="Sample Rate:" Foreground="{StaticResource TextSecondaryBrush}"
+                       FontSize="11" Width="70" />
+            <TextBlock Text="{Binding AudioSampleRate}" Foreground="{StaticResource TextPrimaryBrush}"
+                       FontSize="11" />
+        </DockPanel>
+
+        <!-- Channel Count -->
+        <DockPanel Margin="0,0,0,6">
+            <TextBlock Text="Channels:" Foreground="{StaticResource TextSecondaryBrush}"
+                       FontSize="11" Width="70" />
+            <TextBlock Text="{Binding AudioChannels}" Foreground="{StaticResource TextPrimaryBrush}"
+                       FontSize="11" />
+        </DockPanel>
+
+        <!-- Audio Bit Rate -->
+        <DockPanel Margin="0,0,0,6">
+            <TextBlock Text="Bit Rate:" Foreground="{StaticResource TextSecondaryBrush}"
+                       FontSize="11" Width="70" />
+            <TextBlock Text="{Binding AudioBitRate}" Foreground="{StaticResource TextPrimaryBrush}"
+                       FontSize="11" />
+        </DockPanel>
+
+        <!-- No Audio Indicator -->
+        <TextBlock Text="No audio track detected"
+                   Foreground="{StaticResource TextTertiaryBrush}"
+                   FontSize="10" FontStyle="Italic" Margin="0,4,0,0"
+                   Visibility="{Binding HasAudio, Converter={StaticResource InverseBoolToVisConverter}}" />
+    </StackPanel>
+</UserControl>

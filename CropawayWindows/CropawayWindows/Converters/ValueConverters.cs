@@ -234,6 +234,24 @@ public class NotNullToVisibilityConverter : IValueConverter
 }
 
 /// <summary>
+/// Converts a boolean to inverse Visibility (true = Collapsed, false = Visible).
+/// </summary>
+public class InverseBoolToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is bool b)
+            return b ? Visibility.Collapsed : Visibility.Visible;
+        return Visibility.Visible;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        return value is Visibility v && v == Visibility.Collapsed;
+    }
+}
+
+/// <summary>
 /// Converts non-empty string to Visible, empty/null string to Collapsed.
 /// </summary>
 public class StringToVisibilityConverter : IValueConverter
@@ -246,6 +264,152 @@ public class StringToVisibilityConverter : IValueConverter
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        throw new NotSupportedException();
+    }
+}
+
+/// <summary>
+/// Converts a CropMode enum to a user-friendly display string for the status bar.
+/// Rectangle -> "Rectangle", Circle -> "Circle", Freehand -> "Mask", AI -> "AI"
+/// </summary>
+public class CropModeToDisplayConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is Models.CropMode mode)
+        {
+            return mode switch
+            {
+                Models.CropMode.Rectangle => "Rectangle",
+                Models.CropMode.Circle => "Circle",
+                Models.CropMode.Freehand => "Mask",
+                Models.CropMode.AI => "AI",
+                _ => "Rectangle"
+            };
+        }
+        return "Rectangle";
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        throw new NotSupportedException();
+    }
+}
+
+/// <summary>
+/// Converts a codec type string (e.g., "h264", "hevc", "prores") to a friendly display name.
+/// </summary>
+public class CodecTypeToDisplayConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is string codec && !string.IsNullOrEmpty(codec))
+        {
+            return codec.ToLowerInvariant() switch
+            {
+                "h264" => "H.264",
+                "avc" => "H.264",
+                "hevc" => "H.265",
+                "h265" => "H.265",
+                "prores" => "ProRes",
+                "vp9" => "VP9",
+                "vp8" => "VP8",
+                "av1" => "AV1",
+                "mpeg4" => "MPEG-4",
+                "mpeg2video" => "MPEG-2",
+                "dnxhd" => "DNxHD",
+                "dnxhr" => "DNxHR",
+                "mjpeg" => "MJPEG",
+                _ => codec.ToUpperInvariant()
+            };
+        }
+        return "";
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        throw new NotSupportedException();
+    }
+}
+
+/// <summary>
+/// Converts a frame rate double to a display string. Shows up to 3 decimal places
+/// for common non-integer frame rates (23.976, 29.97, 59.94), otherwise 2 decimals.
+/// Trims trailing zeros for clean display.
+/// </summary>
+public class FrameRateToDisplayConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is double fps && fps > 0)
+        {
+            // Common non-integer frame rates get 3 decimal places
+            string formatted;
+            double fractional = fps - Math.Floor(fps);
+            if (fractional > 0.001 && fractional < 0.999)
+                formatted = fps.ToString("F3").TrimEnd('0').TrimEnd('.');
+            else
+                formatted = ((int)Math.Round(fps)).ToString();
+
+            return $"{formatted} fps";
+        }
+        return "";
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        throw new NotSupportedException();
+    }
+}
+
+/// <summary>
+/// Converts a boolean HDR flag to Visibility. True = Visible, False = Collapsed.
+/// Same as BoolToVisibilityConverter but semantically clearer for HDR badge usage.
+/// </summary>
+public class HdrToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is bool isHdr)
+            return isHdr ? Visibility.Visible : Visibility.Collapsed;
+        return Visibility.Collapsed;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        throw new NotSupportedException();
+    }
+}
+
+/// <summary>
+/// Multi-value converter that formats current playback position and total duration
+/// as "MM:SS / MM:SS" or "H:MM:SS / H:MM:SS" for the status bar.
+/// Values[0] = CurrentTime (double, seconds), Values[1] = Duration (double, seconds).
+/// </summary>
+public class PlaybackPositionConverter : IMultiValueConverter
+{
+    public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (values.Length >= 2 &&
+            values[0] is double currentTime &&
+            values[1] is double duration)
+        {
+            return $"{FormatTime(currentTime)} / {FormatTime(duration)}";
+        }
+        return "00:00 / 00:00";
+    }
+
+    private static string FormatTime(double seconds)
+    {
+        if (seconds < 0) seconds = 0;
+        var ts = TimeSpan.FromSeconds(seconds);
+        if (ts.TotalHours >= 1)
+            return ts.ToString(@"h\:mm\:ss");
+        return ts.ToString(@"mm\:ss");
+    }
+
+    public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
     {
         throw new NotSupportedException();
     }

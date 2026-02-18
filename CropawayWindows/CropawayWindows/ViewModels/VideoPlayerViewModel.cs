@@ -259,10 +259,54 @@ public partial class VideoPlayerViewModel : ObservableObject
     public void GoToEnd() => Seek(Math.Max(0, Duration - 0.1));
 
     [RelayCommand]
-    public void JumpForward() => Seek(Math.Min(Duration, CurrentTime + 5));
+    public void JumpForward() => JumpForwardBy(1);
 
     [RelayCommand]
-    public void JumpBackward() => Seek(Math.Max(0, CurrentTime - 5));
+    public void JumpBackward() => JumpBackwardBy(1);
+
+    [RelayCommand]
+    public void JumpForwardLarge() => JumpForwardBy(10);
+
+    [RelayCommand]
+    public void JumpBackwardLarge() => JumpBackwardBy(10);
+
+    /// <summary>
+    /// Jump forward by the specified number of seconds, clamped to duration.
+    /// </summary>
+    public void JumpForwardBy(double seconds)
+    {
+        Seek(Math.Min(Duration, CurrentTime + seconds));
+    }
+
+    /// <summary>
+    /// Jump backward by the specified number of seconds, clamped to 0.
+    /// </summary>
+    public void JumpBackwardBy(double seconds)
+    {
+        Seek(Math.Max(0, CurrentTime - seconds));
+    }
+
+    // Playback speed presets
+
+    [RelayCommand]
+    public void SetSpeedSlow()
+    {
+        SetPlaybackRate(0.5f);
+        if (!IsPlaying) Play();
+    }
+
+    [RelayCommand]
+    public void SetSpeedNormal()
+    {
+        SetPlaybackRate(1.0f);
+    }
+
+    [RelayCommand]
+    public void SetSpeedFast()
+    {
+        SetPlaybackRate(2.0f);
+        if (!IsPlaying) Play();
+    }
 
     [RelayCommand]
     public void ToggleLoop()
@@ -282,7 +326,7 @@ public partial class VideoPlayerViewModel : ObservableObject
     {
         get
         {
-            if (CurrentRate == 0 || CurrentRate == 1.0f) return "";
+            if (!IsPlaying || CurrentRate == 0 || CurrentRate == 1.0f) return "";
             if (CurrentRate == -1.0f) return "Reverse";
             if (CurrentRate < 0) return $"{-CurrentRate:F1}x Reverse";
             return $"{CurrentRate:F1}x";
@@ -341,6 +385,11 @@ public partial class VideoPlayerViewModel : ObservableObject
         OnPropertyChanged(nameof(FrameDisplayString));
         OnPropertyChanged(nameof(TimecodeDisplayString));
         OnPropertyChanged(nameof(CurrentFrameIndex));
+    }
+
+    partial void OnIsPlayingChanged(bool value)
+    {
+        OnPropertyChanged(nameof(RateDisplayString));
     }
 
     partial void OnCurrentRateChanged(float value)

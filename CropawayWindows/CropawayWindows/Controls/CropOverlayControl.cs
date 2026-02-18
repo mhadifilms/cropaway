@@ -48,7 +48,7 @@ public class CropOverlayControl : Canvas
     private static readonly Brush CropBorderBrush = new SolidColorBrush(Color.FromRgb(0, 180, 255));
     private static readonly Brush HandleBrush = new SolidColorBrush(Color.FromRgb(0, 180, 255));
     private static readonly Brush HandleFillBrush = Brushes.White;
-    private static readonly Brush GuidelineBrush = new SolidColorBrush(Color.FromArgb(80, 255, 255, 255));
+    private static readonly Brush GuidelineBrush = new SolidColorBrush(Color.FromArgb(64, 255, 255, 255));
     private static readonly Brush FreehandBrush = new SolidColorBrush(Color.FromRgb(0, 255, 128));
     private static readonly Brush AIBrush = new SolidColorBrush(Color.FromRgb(255, 185, 0));
     private static readonly Brush LabelBackgroundBrush = new SolidColorBrush(Color.FromArgb(180, 0, 0, 0));
@@ -191,7 +191,7 @@ public class CropOverlayControl : Canvas
         dc.DrawRectangle(null, pen, cropRect);
 
         // Draw rule-of-thirds guidelines
-        var guidePen = new Pen(GuidelineBrush, 0.5);
+        var guidePen = new Pen(GuidelineBrush, 1);
         guidePen.Freeze();
         for (int i = 1; i <= 2; i++)
         {

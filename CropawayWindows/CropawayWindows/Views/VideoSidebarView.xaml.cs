@@ -15,7 +15,8 @@ public partial class VideoSidebarView : UserControl
     private Point _dragStartPoint;
     private bool _isDragging;
 
-    private ProjectViewModel? ViewModel => DataContext as ProjectViewModel;
+    private MainViewModel? MainVM => DataContext as MainViewModel;
+    private ProjectViewModel? ProjectVM => MainVM?.Project;
 
     public VideoSidebarView()
     {
@@ -25,12 +26,21 @@ public partial class VideoSidebarView : UserControl
 
     private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
-        if (e.OldValue is ProjectViewModel oldVM)
+        if (e.OldValue is MainViewModel oldMainVM)
+        {
+            oldMainVM.Project.Videos.CollectionChanged -= OnVideosCollectionChanged;
+        }
+        else if (e.OldValue is ProjectViewModel oldVM)
         {
             oldVM.Videos.CollectionChanged -= OnVideosCollectionChanged;
         }
 
-        if (e.NewValue is ProjectViewModel newVM)
+        if (e.NewValue is MainViewModel newMainVM)
+        {
+            newMainVM.Project.Videos.CollectionChanged += OnVideosCollectionChanged;
+            UpdateEmptyState(newMainVM.Project.Videos.Count);
+        }
+        else if (e.NewValue is ProjectViewModel newVM)
         {
             newVM.Videos.CollectionChanged += OnVideosCollectionChanged;
             UpdateEmptyState(newVM.Videos.Count);
@@ -39,7 +49,7 @@ public partial class VideoSidebarView : UserControl
 
     private void OnVideosCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
-        UpdateEmptyState(ViewModel?.Videos.Count ?? 0);
+        UpdateEmptyState(ProjectVM?.Videos.Count ?? 0);
     }
 
     private void UpdateEmptyState(int count)
@@ -112,7 +122,7 @@ public partial class VideoSidebarView : UserControl
 
     private void OnListDrop(object sender, DragEventArgs e)
     {
-        if (ViewModel == null) return;
+        if (ProjectVM == null) return;
 
         // Handle reordering within the list
         if (e.Data.GetDataPresent("VideoItem"))
@@ -129,12 +139,12 @@ public partial class VideoSidebarView : UserControl
                 var targetItem = listBoxItem.DataContext as VideoItem;
                 if (targetItem != null && targetItem != draggedItem)
                 {
-                    int oldIndex = ViewModel.Videos.IndexOf(draggedItem);
-                    int newIndex = ViewModel.Videos.IndexOf(targetItem);
+                    int oldIndex = ProjectVM.Videos.IndexOf(draggedItem);
+                    int newIndex = ProjectVM.Videos.IndexOf(targetItem);
 
                     if (oldIndex >= 0 && newIndex >= 0 && oldIndex != newIndex)
                     {
-                        ViewModel.Videos.Move(oldIndex, newIndex);
+                        ProjectVM.Videos.Move(oldIndex, newIndex);
                     }
                 }
             }
@@ -145,7 +155,7 @@ public partial class VideoSidebarView : UserControl
         else if (e.Data.GetDataPresent(DataFormats.FileDrop))
         {
             var files = (string[])e.Data.GetData(DataFormats.FileDrop)!;
-            ViewModel.HandleFileDrop(files);
+            ProjectVM.HandleFileDrop(files);
             e.Handled = true;
         }
     }
@@ -154,7 +164,7 @@ public partial class VideoSidebarView : UserControl
 
     private void OnRemoveVideoClick(object sender, RoutedEventArgs e)
     {
-        if (ViewModel == null) return;
+        if (ProjectVM == null) return;
 
         var menuItem = sender as MenuItem;
         var contextMenu = menuItem?.Parent as ContextMenu;
@@ -163,83 +173,57 @@ public partial class VideoSidebarView : UserControl
         if (videoItem != null)
         {
             // Select the item first, then remove
-            ViewModel.SelectedVideo = videoItem;
-            ViewModel.RemoveSelectedVideoCommand.Execute(null);
+            ProjectVM.SelectedVideo = videoItem;
+            ProjectVM.RemoveSelectedVideoCommand.Execute(null);
         }
     }
 
     private void OnExportVideoClick(object sender, RoutedEventArgs e)
     {
         var videoItem = GetContextMenuVideoItem(sender);
-        if (videoItem == null) return;
+        if (videoItem == null || MainVM == null) return;
 
-        // Navigate up to MainViewModel to trigger export
-        var mainWindow = Window.GetWindow(this);
-        var mainVM = mainWindow?.DataContext as MainViewModel;
-        if (mainVM != null)
-        {
-            mainVM.Project.SelectedVideo = videoItem;
-            mainVM.ExportCurrentVideoCommand.Execute(null);
-        }
+        MainVM.Project.SelectedVideo = videoItem;
+        MainVM.ExportCurrentVideoCommand.Execute(null);
     }
 
     private void OnExportJsonClick(object sender, RoutedEventArgs e)
     {
         var videoItem = GetContextMenuVideoItem(sender);
-        if (videoItem == null) return;
+        if (videoItem == null || MainVM == null) return;
 
-        var mainWindow = Window.GetWindow(this);
-        var mainVM = mainWindow?.DataContext as MainViewModel;
-        if (mainVM != null)
-        {
-            mainVM.Project.SelectedVideo = videoItem;
-            mainVM.ExportCropJsonCommand.Execute(null);
-        }
+        MainVM.Project.SelectedVideo = videoItem;
+        MainVM.ExportCropJsonCommand.Execute(null);
     }
 
     private void OnCopyCropSettingsClick(object sender, RoutedEventArgs e)
     {
         var videoItem = GetContextMenuVideoItem(sender);
-        if (videoItem == null) return;
+        if (videoItem == null || MainVM == null) return;
 
-        var mainWindow = Window.GetWindow(this);
-        var mainVM = mainWindow?.DataContext as MainViewModel;
-        if (mainVM != null)
-        {
-            mainVM.Project.SelectedVideo = videoItem;
-            mainVM.CopyCropSettingsCommand.Execute(null);
-        }
+        MainVM.Project.SelectedVideo = videoItem;
+        MainVM.CopyCropSettingsCommand.Execute(null);
     }
 
     private void OnPasteCropSettingsClick(object sender, RoutedEventArgs e)
     {
         var videoItem = GetContextMenuVideoItem(sender);
-        if (videoItem == null) return;
+        if (videoItem == null || MainVM == null) return;
 
-        var mainWindow = Window.GetWindow(this);
-        var mainVM = mainWindow?.DataContext as MainViewModel;
-        if (mainVM != null)
-        {
-            mainVM.Project.SelectedVideo = videoItem;
-            mainVM.PasteCropSettingsCommand.Execute(null);
-        }
+        MainVM.Project.SelectedVideo = videoItem;
+        MainVM.PasteCropSettingsCommand.Execute(null);
     }
 
     private void OnResetCropClick(object sender, RoutedEventArgs e)
     {
         var videoItem = GetContextMenuVideoItem(sender);
-        if (videoItem == null) return;
+        if (videoItem == null || MainVM == null) return;
 
-        var mainWindow = Window.GetWindow(this);
-        var mainVM = mainWindow?.DataContext as MainViewModel;
-        if (mainVM != null)
-        {
-            mainVM.Project.SelectedVideo = videoItem;
-            mainVM.ResetCropCommand.Execute(null);
-        }
+        MainVM.Project.SelectedVideo = videoItem;
+        MainVM.ResetCropCommand.Execute(null);
     }
 
-    private void OnOpenSourceFolderClick(object sender, RoutedEventArgs e)
+    private void OnRevealInExplorerClick(object sender, RoutedEventArgs e)
     {
         var videoItem = GetContextMenuVideoItem(sender);
         if (videoItem == null) return;
@@ -249,6 +233,18 @@ public partial class VideoSidebarView : UserControl
         {
             Process.Start("explorer.exe", $"/select,\"{sourcePath}\"");
         }
+    }
+
+    private void OnListItemDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not ListBoxItem listBoxItem) return;
+        if (listBoxItem.DataContext is not VideoItem videoItem) return;
+        if (MainVM == null) return;
+
+        // Select the video and start playback
+        MainVM.Project.SelectedVideo = videoItem;
+        MainVM.Player.Play();
+        e.Handled = true;
     }
 
     // -- Helpers --

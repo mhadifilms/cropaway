@@ -24,6 +24,12 @@
             <converters:NotNullToBoolConverter x:Key="NotNullToBoolConverter" />
             <converters:NotNullToVisibilityConverter x:Key="NotNullToVisConverter" />
             <converters:StringToVisibilityConverter x:Key="StringToVisConverter" />
+            <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisConverter" />
+            <converters:CropModeToDisplayConverter x:Key="CropModeDisplayConverter" />
+            <converters:CodecTypeToDisplayConverter x:Key="CodecDisplayConverter" />
+            <converters:FrameRateToDisplayConverter x:Key="FrameRateDisplayConverter" />
+            <converters:HdrToVisibilityConverter x:Key="HdrToVisConverter" />
+            <converters:PlaybackPositionConverter x:Key="PlaybackPositionConverter" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>

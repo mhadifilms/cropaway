@@ -22,7 +22,22 @@ public partial class KeyframeViewModel : ObservableObject
     private bool _isTimelinePanelVisible;
 
     [ObservableProperty]
+    private bool _isAutoKeyframeEnabled;
+
+    [ObservableProperty]
     private double _currentTime;
+
+    /// <summary>
+    /// Zoom level for the keyframe timeline view (1.0 = fit all, higher = zoomed in).
+    /// </summary>
+    [ObservableProperty]
+    private double _timelineZoomLevel = 1.0;
+
+    /// <summary>
+    /// Horizontal scroll offset for the keyframe timeline view (in normalized 0-1 range).
+    /// </summary>
+    [ObservableProperty]
+    private double _timelineScrollOffset;
 
     private VideoItem? _currentVideo;
     private CropEditorViewModel? _cropEditor;
@@ -36,6 +51,29 @@ public partial class KeyframeViewModel : ObservableObject
         // Auto-keyframe: when crop edit ends, update current keyframe
         cropEditor.CropEditEnded += OnCropEditEnded;
     }
+
+    /// <summary>
+    /// Contextual hint text displayed in the keyframe timeline area.
+    /// Changes based on keyframe count and selection state.
+    /// </summary>
+    public string HintText
+    {
+        get
+        {
+            if (Keyframes.Count == 0)
+                return "Click + to add keyframes";
+            if (Keyframes.Count == 1)
+                return "Add another keyframe to enable animation";
+            if (SelectedKeyframe != null)
+                return "1 selected";
+            return $"{Keyframes.Count} keyframes";
+        }
+    }
+
+    private void NotifyHintTextChanged() => OnPropertyChanged(nameof(HintText));
+
+    partial void OnKeyframesChanged(ObservableCollection<Keyframe> value) => NotifyHintTextChanged();
+    partial void OnSelectedKeyframeChanged(Keyframe? value) => NotifyHintTextChanged();
 
     public void BindTo(VideoItem video)
     {
@@ -132,6 +170,12 @@ public partial class KeyframeViewModel : ObservableObject
     }
 
     [RelayCommand]
+    public void ToggleAutoKeyframe()
+    {
+        IsAutoKeyframeEnabled = !IsAutoKeyframeEnabled;
+    }
+
+    [RelayCommand]
     public void ToggleKeyframePanel()
     {
         IsTimelinePanelVisible = !IsTimelinePanelVisible;
@@ -144,11 +188,28 @@ public partial class KeyframeViewModel : ObservableObject
 
     private void OnCropEditEnded()
     {
-        if (_currentVideo == null || !KeyframesEnabled) return;
+        if (_currentVideo == null) return;
+
+        // Auto-keyframe: create a new keyframe at the current time when enabled
+        if (IsAutoKeyframeEnabled)
+        {
+            var config = _currentVideo.CropConfig;
+            config.AddKeyframe(CurrentTime);
+            Keyframes = new ObservableCollection<Keyframe>(config.Keyframes);
+
+            if (!KeyframesEnabled && Keyframes.Count >= 2)
+            {
+                KeyframesEnabled = true;
+                config.KeyframesEnabled = true;
+            }
+            return;
+        }
+
+        if (!KeyframesEnabled) return;
 
         // Auto-update keyframe at current time if one exists
-        var config = _currentVideo.CropConfig;
-        config.UpdateCurrentKeyframe(CurrentTime);
+        var cfg = _currentVideo.CropConfig;
+        cfg.UpdateCurrentKeyframe(CurrentTime);
     }
 
     public bool IsAtKeyframe => Keyframes.Any(kf => Math.Abs(kf.Timestamp - CurrentTime) < 0.001);

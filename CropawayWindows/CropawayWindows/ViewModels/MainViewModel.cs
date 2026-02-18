@@ -22,6 +22,7 @@ public partial class MainViewModel : ObservableObject
     public ExportViewModel Export { get; } = new();
     public TimelineViewModel Timeline { get; } = new();
     public CropUndoManager UndoManager { get; } = new();
+    public InspectorViewModel Inspector { get; } = new();
 
     [ObservableProperty]
     private bool _isSidebarVisible = true;
@@ -36,6 +37,17 @@ public partial class MainViewModel : ObservableObject
     private double _zoomLevel = 1.0;
 
     [ObservableProperty]
+    private ZoomMode _zoomMode = ZoomMode.Fit;
+
+    [ObservableProperty]
+    private string _zoomDisplayText = "Fit";
+
+    /// <summary>
+    /// Preset zoom levels used for stepping through zoom in/out.
+    /// </summary>
+    private static readonly double[] ZoomPresets = { 0.25, 0.50, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0 };
+
+    [ObservableProperty]
     private string _statusBarText = "Ready - Drop videos here or use File > Open";
 
     [ObservableProperty]
@@ -44,6 +56,9 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private bool _isAIPanelVisible;
 
+    [ObservableProperty]
+    private string _windowTitle = "Cropaway";
+
     // Auto-save debounce
     private CancellationTokenSource? _autoSaveCts;
     private const int AutoSaveDebounceMs = 500;
@@ -51,11 +66,18 @@ public partial class MainViewModel : ObservableObject
     // Copied crop configuration for paste
     private CropConfiguration? _copiedCropConfig;
 
+    // Playback position memory: remembers where each video was last positioned (video path -> seconds)
+    private readonly Dictionary<string, double> _videoPositions = new();
+
+    // Track the previously selected video for saving its position on switch
+    private VideoItem? _previousSelectedVideo;
+
     public MainViewModel()
     {
         // Wire up sub-ViewModels
         Keyframes.Initialize(CropEditor, Player);
         Timeline.Initialize(Player, Project);
+        Inspector.Initialize(CropEditor);
 
         // React to video selection changes
         Project.PropertyChanged += (s, e) =>
@@ -76,6 +98,7 @@ public partial class MainViewModel : ObservableObject
         };
 
         // Auto-save crop data when crop properties change (debounced)
+        // and refresh export command CanExecute state
         CropEditor.PropertyChanged += (s, e) =>
         {
             if (e.PropertyName is nameof(CropEditor.CropRect) or
@@ -89,6 +112,7 @@ public partial class MainViewModel : ObservableObject
                 nameof(CropEditor.EnableAlphaChannel))
             {
                 ScheduleAutoSave();
+                ExportCurrentVideoCommand.NotifyCanExecuteChanged();
             }
         };
 
@@ -122,15 +146,45 @@ public partial class MainViewModel : ObservableObject
     private void OnSelectedVideoChanged()
     {
         var video = Project.SelectedVideo;
-        if (video == null) return;
+        if (video == null)
+        {
+            WindowTitle = "Cropaway";
+            ExportCurrentVideoCommand.NotifyCanExecuteChanged();
+            return;
+        }
+
+        // Save playback position of the previously selected video before switching
+        if (_previousSelectedVideo != null && Player.Duration > 0)
+        {
+            _videoPositions[_previousSelectedVideo.SourcePath] = Player.CurrentTime;
+        }
 
         // Bind all ViewModels to new video
         Player.LoadVideo(video);
         CropEditor.BindTo(video);
         Keyframes.BindTo(video);
         UndoManager.BindTo(video);
+        Inspector.BindTo(video);
+
+        // Restore playback position if we have a saved position for this video
+        if (_videoPositions.TryGetValue(video.SourcePath, out var savedPosition))
+        {
+            // Defer seek slightly so MediaElement has time to open the new source
+            Application.Current?.Dispatcher.InvokeAsync(() =>
+            {
+                Player.Seek(savedPosition);
+            }, System.Windows.Threading.DispatcherPriority.Background);
+        }
+
+        _previousSelectedVideo = video;
+
+        // Update window title with current video name
+        WindowTitle = $"Cropaway - {video.FullFileName}";
 
         StatusBarText = $"{video.FileName} - {video.Metadata.Width}x{video.Metadata.Height} @ {video.Metadata.FrameRate:F2}fps";
+
+        // Refresh export command CanExecute for the newly selected video
+        ExportCurrentVideoCommand.NotifyCanExecuteChanged();
     }
 
     // MARK: - Auto-save
@@ -209,6 +263,16 @@ public partial class MainViewModel : ObservableObject
     private void ToggleFullScreen() => IsFullScreen = !IsFullScreen;
 
     [RelayCommand]
+    private void ToggleInspector() => Inspector.IsVisible = !Inspector.IsVisible;
+
+    [RelayCommand]
+    private void TogglePreviewMode()
+    {
+        CropEditor.IsPreviewMode = !CropEditor.IsPreviewMode;
+        StatusBarText = CropEditor.IsPreviewMode ? "Preview Mode - Showing cropped output" : "Edit Mode";
+    }
+
+    [RelayCommand]
     private void Undo()
     {
         UndoManager.Undo();
@@ -228,28 +292,107 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void ZoomIn()
     {
-        ZoomLevel = Math.Min(8.0, ZoomLevel * 1.25);
+        if (ZoomMode == ZoomMode.Fit)
+        {
+            // When in fit mode, jump to 100% as the first zoom-in step
+            SetZoomPercentage(1.0);
+            return;
+        }
+
+        // Find the next preset level above the current zoom
+        foreach (var preset in ZoomPresets)
+        {
+            if (preset > ZoomLevel + 0.001)
+            {
+                SetZoomPercentage(preset);
+                return;
+            }
+        }
+
+        // Already at or above max preset
     }
 
     [RelayCommand]
     private void ZoomOut()
     {
-        ZoomLevel = Math.Max(0.1, ZoomLevel / 1.25);
+        if (ZoomMode == ZoomMode.Fit)
+        {
+            // When in fit mode, jump to 75% as the first zoom-out step
+            SetZoomPercentage(0.75);
+            return;
+        }
+
+        // Find the next preset level below the current zoom
+        for (int i = ZoomPresets.Length - 1; i >= 0; i--)
+        {
+            if (ZoomPresets[i] < ZoomLevel - 0.001)
+            {
+                SetZoomPercentage(ZoomPresets[i]);
+                return;
+            }
+        }
+
+        // Already at or below min preset, go to fit
+        ZoomToFit();
     }
 
     [RelayCommand]
     private void ZoomToFit()
     {
+        ZoomMode = ZoomMode.Fit;
         ZoomLevel = 1.0;
+        UpdateZoomDisplayText();
     }
 
     [RelayCommand]
     private void ActualSize()
     {
-        ZoomLevel = 1.0;
+        SetZoomPercentage(1.0);
     }
 
-    [RelayCommand]
+    /// <summary>
+    /// Sets the zoom to a specific percentage level (1.0 = 100%).
+    /// Switches to Percentage mode and updates the display text.
+    /// </summary>
+    public void SetZoomPercentage(double level)
+    {
+        ZoomMode = ZoomMode.Percentage;
+        ZoomLevel = Math.Clamp(level, ZoomPresets[0], ZoomPresets[^1]);
+        UpdateZoomDisplayText();
+    }
+
+    /// <summary>
+    /// Handles Ctrl+MouseWheel zoom: steps through preset levels based on scroll direction.
+    /// </summary>
+    public void HandleMouseWheelZoom(int delta)
+    {
+        if (delta > 0)
+            ZoomIn();
+        else if (delta < 0)
+            ZoomOut();
+    }
+
+    private void UpdateZoomDisplayText()
+    {
+        if (ZoomMode == ZoomMode.Fit)
+        {
+            ZoomDisplayText = "Fit";
+        }
+        else
+        {
+            var pct = (int)Math.Round(ZoomLevel * 100);
+            ZoomDisplayText = $"{pct}%";
+        }
+    }
+
+    /// <summary>
+    /// Returns true if the selected video has crop changes and can be exported.
+    /// Used as CanExecute for ExportCurrentVideoCommand.
+    /// </summary>
+    private bool CanExportCurrentVideo() =>
+        Project.SelectedVideo?.HasCropChanges == true;
+
+    [RelayCommand(CanExecute = nameof(CanExportCurrentVideo))]
     private async Task ExportCurrentVideo()
     {
         if (Project.SelectedVideo != null)
@@ -269,10 +412,57 @@ public partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private async Task ExportBoundingBoxJson()
+    {
+        if (Project.SelectedVideo != null)
+        {
+            await Export.ExportBoundingBoxJson(Project.SelectedVideo);
+        }
+    }
+
+    [RelayCommand]
+    private async Task ExportBoundingBoxPickle()
+    {
+        if (Project.SelectedVideo != null)
+        {
+            await Export.ExportBoundingBoxPickle(Project.SelectedVideo);
+        }
+    }
+
+    [RelayCommand]
     private void ResetCrop()
     {
         UndoManager.SaveState();
         CropEditor.Reset();
+        ExportCurrentVideoCommand.NotifyCanExecuteChanged();
+    }
+
+    [RelayCommand]
+    private void NudgeCropLeft()
+    {
+        UndoManager.SaveState();
+        CropEditor.NudgeCrop(-0.01, 0);
+    }
+
+    [RelayCommand]
+    private void NudgeCropRight()
+    {
+        UndoManager.SaveState();
+        CropEditor.NudgeCrop(0.01, 0);
+    }
+
+    [RelayCommand]
+    private void NudgeCropUp()
+    {
+        UndoManager.SaveState();
+        CropEditor.NudgeCrop(0, -0.01);
+    }
+
+    [RelayCommand]
+    private void NudgeCropDown()
+    {
+        UndoManager.SaveState();
+        CropEditor.NudgeCrop(0, 0.01);
     }
 
     [RelayCommand]
@@ -287,6 +477,27 @@ public partial class MainViewModel : ObservableObject
     {
         UndoManager.SaveState();
         Keyframes.RemoveKeyframe();
+    }
+
+    [RelayCommand]
+    private void GoToPreviousKeyframe()
+    {
+        Keyframes.GoToPreviousKeyframe();
+    }
+
+    [RelayCommand]
+    private void GoToNextKeyframe()
+    {
+        Keyframes.GoToNextKeyframe();
+    }
+
+    [RelayCommand]
+    private void ToggleAutoKeyframe()
+    {
+        Keyframes.ToggleAutoKeyframe();
+        StatusBarText = Keyframes.IsAutoKeyframeEnabled
+            ? "Auto-Keyframe enabled"
+            : "Auto-Keyframe disabled";
     }
 
     [RelayCommand]
@@ -398,19 +609,72 @@ public partial class MainViewModel : ObservableObject
         var shift = (Keyboard.Modifiers & ModifierKeys.Shift) != 0;
         var alt = (Keyboard.Modifiers & ModifierKeys.Alt) != 0;
 
-        switch (e.Key)
+        // When Alt is held, WPF reports e.Key as Key.System; the actual key is in e.SystemKey
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+
+        switch (key)
         {
             // Playback
             case Key.Space:
                 Player.TogglePlayPause();
                 e.Handled = true;
                 break;
-            case Key.Right when !ctrl:
+
+            // Jump forward/backward 10 seconds (Ctrl+Shift+Arrow)
+            case Key.Right when ctrl && shift:
+                Player.JumpForwardBy(10);
+                e.Handled = true;
+                break;
+            case Key.Left when ctrl && shift:
+                Player.JumpBackwardBy(10);
+                e.Handled = true;
+                break;
+
+            // Jump forward/backward 1 second (Shift+Arrow)
+            case Key.Right when !ctrl && shift:
+                Player.JumpForwardBy(1);
+                e.Handled = true;
+                break;
+            case Key.Left when !ctrl && shift:
+                Player.JumpBackwardBy(1);
+                e.Handled = true;
+                break;
+
+            // Crop nudge (Alt+Arrow)
+            case Key.Right when alt && !ctrl && !shift:
+                NudgeCropRight();
+                e.Handled = true;
+                break;
+            case Key.Left when alt && !ctrl && !shift:
+                NudgeCropLeft();
+                e.Handled = true;
+                break;
+            case Key.Up when alt && !ctrl && !shift:
+                NudgeCropUp();
+                e.Handled = true;
+                break;
+            case Key.Down when alt && !ctrl && !shift:
+                NudgeCropDown();
+                e.Handled = true;
+                break;
+
+            // Step single frame (plain Arrow)
+            case Key.Right when !ctrl && !shift && !alt:
                 Player.StepForward();
                 e.Handled = true;
                 break;
-            case Key.Left when !ctrl:
+            case Key.Left when !ctrl && !shift && !alt:
                 Player.StepBackward();
+                e.Handled = true;
+                break;
+
+            // Go to start/end (Home/End)
+            case Key.Home:
+                Player.GoToStart();
+                e.Handled = true;
+                break;
+            case Key.End:
+                Player.GoToEnd();
                 e.Handled = true;
                 break;
             case Key.J when !ctrl:
@@ -423,6 +687,20 @@ public partial class MainViewModel : ObservableObject
                 break;
             case Key.L when !ctrl:
                 Player.ShuttleForward();
+                e.Handled = true;
+                break;
+
+            // Playback speed presets (Ctrl+Alt+S/D/F)
+            case Key.S when ctrl && alt:
+                Player.SetSpeedSlow();
+                e.Handled = true;
+                break;
+            case Key.D when ctrl && alt:
+                Player.SetSpeedNormal();
+                e.Handled = true;
+                break;
+            case Key.F when ctrl && alt:
+                Player.SetSpeedFast();
                 e.Handled = true;
                 break;
 
@@ -454,6 +732,22 @@ public partial class MainViewModel : ObservableObject
                 e.Handled = true;
                 break;
 
+            // Keyframe navigation
+            case Key.OemOpenBrackets when ctrl && !shift:
+                GoToPreviousKeyframe();
+                e.Handled = true;
+                break;
+            case Key.OemCloseBrackets when ctrl && !shift:
+                GoToNextKeyframe();
+                e.Handled = true;
+                break;
+
+            // Auto-keyframe toggle
+            case Key.A when ctrl && shift:
+                ToggleAutoKeyframe();
+                e.Handled = true;
+                break;
+
             // Edit
             case Key.Z when ctrl && !shift:
                 Undo();
@@ -475,7 +769,8 @@ public partial class MainViewModel : ObservableObject
                 e.Handled = true;
                 break;
             case Key.E when ctrl && !alt:
-                _ = ExportCurrentVideo();
+                if (CanExportCurrentVideo())
+                    _ = ExportCurrentVideo();
                 e.Handled = true;
                 break;
             case Key.J when ctrl && shift:
@@ -498,6 +793,10 @@ public partial class MainViewModel : ObservableObject
                 break;
             case Key.D9 when ctrl:
                 ZoomToFit();
+                e.Handled = true;
+                break;
+            case Key.OemBackslash when ctrl:
+                ToggleSidebar();
                 e.Handled = true;
                 break;
 
@@ -552,6 +851,18 @@ public partial class MainViewModel : ObservableObject
                 break;
             case Key.T when ctrl && alt:
                 Player.ToggleTimeDisplay();
+                e.Handled = true;
+                break;
+
+            // Inspector panel
+            case Key.I when ctrl && alt:
+                ToggleInspector();
+                e.Handled = true;
+                break;
+
+            // Preview mode
+            case Key.P when ctrl && shift:
+                TogglePreviewMode();
                 e.Handled = true;
                 break;
 

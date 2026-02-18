@@ -35,6 +35,7 @@ public partial class ExportViewModel : ObservableObject
     private bool _isBatchExport;
 
     private readonly FFmpegExportService _exportService = new();
+    private readonly BoundingBoxExportService _boundingBoxExportService = new();
     private CancellationTokenSource? _cancellationSource;
 
     [RelayCommand]
@@ -126,6 +127,10 @@ public partial class ExportViewModel : ObservableObject
 
         IsBatchExport = false;
         StatusMessage = $"Batch export complete: {CompletedCount}/{TotalBatchCount} videos exported";
+
+        // Show toast notification and play completion sound for the batch
+        NotificationService.Instance.ShowExportCompleteNotification(
+            $"{CompletedCount} of {TotalBatchCount} videos", folder);
     }
 
     private async Task ProcessExportJob(ExportJob job, ExportConfiguration exportConfig)
@@ -173,6 +178,13 @@ public partial class ExportViewModel : ObservableObject
             job.Video.LastExportDate = DateTime.Now;
 
             StatusMessage = $"Export complete: {Path.GetFileName(outputPath)}";
+
+            // Show toast notification and play completion sound
+            if (!IsBatchExport)
+            {
+                NotificationService.Instance.ShowExportCompleteNotification(
+                    job.Video.FileName, outputPath);
+            }
         }
         catch (OperationCanceledException)
         {
@@ -230,23 +242,56 @@ public partial class ExportViewModel : ObservableObject
     [RelayCommand]
     public async Task ExportBoundingBoxJson(VideoItem video)
     {
-        var dialog = new System.Windows.Forms.FolderBrowserDialog
+        var dialog = new SaveFileDialog
         {
-            Description = "Export Bounding Box JSON to Folder"
+            Title = "Export Bounding Box JSON",
+            FileName = $"{video.FileName}_bbox",
+            DefaultExt = ".json",
+            Filter = "JSON File (*.json)|*.json|All Files (*.*)|*.*"
         };
 
-        if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
+        if (dialog.ShowDialog() != true) return;
 
         try
         {
-            var document = CropDataStorageService.Instance.Load(video.SourcePath);
-            if (document == null)
+            if (!video.CropConfig.HasCropChanges)
             {
                 StatusMessage = "No crop data to export";
                 return;
             }
-            var path = CropDataStorageService.Instance.ExportToFolder(document, dialog.SelectedPath, video.FileName);
-            StatusMessage = $"Bounding box data exported to {Path.GetFileName(path)}";
+
+            _boundingBoxExportService.ExportAsJson(video.CropConfig, video.Metadata, dialog.FileName);
+            StatusMessage = $"Bounding box JSON exported to {Path.GetFileName(dialog.FileName)}";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Export failed: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    public async Task ExportBoundingBoxPickle(VideoItem video)
+    {
+        var dialog = new SaveFileDialog
+        {
+            Title = "Export Bounding Box Pickle",
+            FileName = $"{video.FileName}_bbox",
+            DefaultExt = ".pkl",
+            Filter = "Python Pickle (*.pkl)|*.pkl|All Files (*.*)|*.*"
+        };
+
+        if (dialog.ShowDialog() != true) return;
+
+        try
+        {
+            if (!video.CropConfig.HasCropChanges)
+            {
+                StatusMessage = "No crop data to export";
+                return;
+            }
+
+            _boundingBoxExportService.ExportAsPickle(video.CropConfig, video.Metadata, dialog.FileName);
+            StatusMessage = $"Bounding box pickle exported to {Path.GetFileName(dialog.FileName)}";
         }
         catch (Exception ex)
         {

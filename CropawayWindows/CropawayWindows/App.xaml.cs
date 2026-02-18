@@ -47,4 +47,11 @@ public partial class App : Application
         // Initialize services
         Services.CropDataStorageService.Instance.EnsureStorageDirectory();
     }
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        // Clean up the notification tray icon so it doesn't linger after exit
+        Services.NotificationService.Instance.Dispose();
+        base.OnExit(e);
+    }
 }

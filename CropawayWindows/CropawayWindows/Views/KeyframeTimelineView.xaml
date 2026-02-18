@@ -110,6 +110,7 @@
                     Background="Transparent"
                     ClipToBounds="True"
                     MouseLeftButtonDown="OnTimelineCanvasClick"
+                    PreviewMouseWheel="OnTimelineMouseWheel"
                     SizeChanged="OnTimelineCanvasSizeChanged">
 
                 <!-- Timeline track background bar -->
@@ -131,6 +132,15 @@
                       Stroke="White"
                       IsHitTestVisible="False" />
             </Canvas>
+
+            <!-- Contextual hint text (centered overlay) -->
+            <TextBlock Text="{Binding HintText}"
+                       FontSize="11" FontStyle="Italic"
+                       Foreground="{StaticResource TextSecondaryBrush}"
+                       Opacity="0.6"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"
+                       IsHitTestVisible="False" />
 
             <!-- Keyframe enabled indicator -->
             <StackPanel Orientation="Horizontal"
