@@ -61,6 +61,10 @@ public partial class CropEditorViewModel : ObservableObject
     [ObservableProperty]
     private bool _enableAlphaChannel;
 
+    // Preview mode
+    [ObservableProperty]
+    private bool _isPreviewMode;
+
     // Active video
     private VideoItem? _currentVideo;
     private bool _isSyncing;
@@ -255,6 +259,59 @@ public partial class CropEditorViewModel : ObservableObject
         CropEditEnded?.Invoke();
     }
 
+    /// <summary>
+    /// Nudges the current crop by the given normalized delta (dx, dy).
+    /// For Rectangle mode, shifts the CropRect while clamping to 0-1 bounds.
+    /// For Circle mode, shifts the CircleCenter while clamping to valid range.
+    /// For AI mode, shifts the AiBoundingBox if it has valid dimensions.
+    /// </summary>
+    public void NudgeCrop(double dx, double dy)
+    {
+        switch (Mode)
+        {
+            case CropMode.Rectangle:
+            {
+                var r = CropRect;
+                double newX = Math.Clamp(r.X + dx, 0, 1 - r.Width);
+                double newY = Math.Clamp(r.Y + dy, 0, 1 - r.Height);
+                CropRect = new Rect(newX, newY, r.Width, r.Height);
+                break;
+            }
+            case CropMode.Circle:
+            {
+                double newCx = Math.Clamp(CircleCenter.X + dx, 0, 1);
+                double newCy = Math.Clamp(CircleCenter.Y + dy, 0, 1);
+                CircleCenter = new Point(newCx, newCy);
+                break;
+            }
+            case CropMode.AI:
+            {
+                if (AiBoundingBox.Width > 0 && AiBoundingBox.Height > 0)
+                {
+                    var b = AiBoundingBox;
+                    double newX = Math.Clamp(b.X + dx, 0, 1 - b.Width);
+                    double newY = Math.Clamp(b.Y + dy, 0, 1 - b.Height);
+                    AiBoundingBox = new Rect(newX, newY, b.Width, b.Height);
+                }
+                break;
+            }
+        }
+
+        NotifyCropEditEnded();
+    }
+
+    [RelayCommand]
+    private void NudgeLeft() => NudgeCrop(-0.01, 0);
+
+    [RelayCommand]
+    private void NudgeRight() => NudgeCrop(0.01, 0);
+
+    [RelayCommand]
+    private void NudgeUp() => NudgeCrop(0, -0.01);
+
+    [RelayCommand]
+    private void NudgeDown() => NudgeCrop(0, 0.01);
+
     [RelayCommand]
     private void SetRectangleMode() => Mode = CropMode.Rectangle;
 
@@ -266,4 +323,7 @@ public partial class CropEditorViewModel : ObservableObject
 
     [RelayCommand]
     private void SetAIMode() => Mode = CropMode.AI;
+
+    [RelayCommand]
+    private void TogglePreviewMode() => IsPreviewMode = !IsPreviewMode;
 }

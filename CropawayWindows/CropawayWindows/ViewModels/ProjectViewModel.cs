@@ -103,8 +103,15 @@ public partial class ProjectViewModel : ObservableObject
                     });
                 }
 
-                // Load saved crop data
+                // Load saved crop data (new storage first, then legacy migration)
                 var savedData = CropDataStorageService.Instance.Load(video.SourcePath);
+
+                // If no data in new storage, try migrating legacy sidecar data
+                if (savedData == null)
+                {
+                    savedData = DataMigrationService.Instance.MigrateIfNeeded(video.SourcePath);
+                }
+
                 if (savedData != null)
                 {
                     Application.Current.Dispatcher.Invoke(() =>

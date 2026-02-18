@@ -6,8 +6,9 @@
         xmlns:vm="clr-namespace:CropawayWindows.ViewModels"
         xmlns:views="clr-namespace:CropawayWindows.Views"
         xmlns:controls="clr-namespace:CropawayWindows.Controls"
+        xmlns:inspector="clr-namespace:CropawayWindows.Views.Inspector"
         mc:Ignorable="d"
-        Title="Cropaway"
+        Title="{Binding WindowTitle}"
         Width="1400" Height="900"
         MinWidth="900" MinHeight="600"
         Background="{StaticResource BackgroundBrush}"
@@ -40,6 +41,9 @@
                 <MenuItem Header="Export _All..." Command="{Binding ExportAllCommand}" InputGestureText="Ctrl+Shift+E" />
                 <MenuItem Header="Export Crop _JSON..." Command="{Binding ExportCropJsonCommand}" InputGestureText="Ctrl+Shift+J" />
                 <Separator />
+                <MenuItem Header="Export _Bounding Box JSON..." Command="{Binding ExportBoundingBoxJsonCommand}" />
+                <MenuItem Header="Export Bounding Box _Pickle..." Command="{Binding ExportBoundingBoxPickleCommand}" />
+                <Separator />
                 <MenuItem Header="_Reveal in Explorer" Command="{Binding RevealInExplorerCommand}" />
                 <Separator />
                 <MenuItem Header="_Remove Selected Video" Command="{Binding Project.RemoveSelectedVideoCommand}" InputGestureText="Ctrl+Delete" />
@@ -63,9 +67,12 @@
                 <MenuItem Header="_Actual Size" Command="{Binding ActualSizeCommand}" InputGestureText="Ctrl+0" />
                 <MenuItem Header="_Fit to Window" Command="{Binding ZoomToFitCommand}" InputGestureText="Ctrl+9" />
                 <Separator />
-                <MenuItem Header="Toggle _Sidebar" Command="{Binding ToggleSidebarCommand}" InputGestureText="Ctrl+Alt+S" />
+                <MenuItem Header="Toggle _Sidebar" Command="{Binding ToggleSidebarCommand}" InputGestureText="Ctrl+\" />
                 <MenuItem Header="Toggle _Keyframes" Command="{Binding ToggleKeyframePanelCommand}" />
                 <MenuItem Header="Toggle _Timeline" Command="{Binding ToggleTimelinePanelCommand}" />
+                <MenuItem Header="Toggle _Inspector" Command="{Binding ToggleInspectorCommand}" InputGestureText="Ctrl+Alt+I" />
+                <Separator />
+                <MenuItem Header="Toggle _Preview Mode" Command="{Binding TogglePreviewModeCommand}" InputGestureText="Ctrl+Shift+P" />
             </MenuItem>
 
             <MenuItem Header="_Crop">
@@ -76,6 +83,11 @@
                 <Separator />
                 <MenuItem Header="Add _Keyframe" Command="{Binding AddKeyframeCommand}" InputGestureText="Ctrl+K" />
                 <MenuItem Header="_Remove Keyframe" Command="{Binding RemoveKeyframeCommand}" InputGestureText="Ctrl+Shift+K" />
+                <Separator />
+                <MenuItem Header="Nudge _Left" Command="{Binding NudgeCropLeftCommand}" InputGestureText="Alt+Left" />
+                <MenuItem Header="Nudge _Right" Command="{Binding NudgeCropRightCommand}" InputGestureText="Alt+Right" />
+                <MenuItem Header="Nudge _Up" Command="{Binding NudgeCropUpCommand}" InputGestureText="Alt+Up" />
+                <MenuItem Header="Nudge _Down" Command="{Binding NudgeCropDownCommand}" InputGestureText="Alt+Down" />
             </MenuItem>
 
             <MenuItem Header="_Playback">
@@ -84,9 +96,21 @@
                 <MenuItem Header="Step _Forward" Command="{Binding Player.StepForwardCommand}" InputGestureText="Right" />
                 <MenuItem Header="Step _Backward" Command="{Binding Player.StepBackwardCommand}" InputGestureText="Left" />
                 <Separator />
+                <MenuItem Header="Jump Forward _1s" Command="{Binding Player.JumpForwardCommand}" InputGestureText="Shift+Right" />
+                <MenuItem Header="Jump Backward 1s" Command="{Binding Player.JumpBackwardCommand}" InputGestureText="Shift+Left" />
+                <MenuItem Header="Jump Forward 1_0s" Command="{Binding Player.JumpForwardLargeCommand}" InputGestureText="Ctrl+Shift+Right" />
+                <MenuItem Header="Jump Backward 10s" Command="{Binding Player.JumpBackwardLargeCommand}" InputGestureText="Ctrl+Shift+Left" />
+                <Separator />
+                <MenuItem Header="_Go to Start" Command="{Binding Player.GoToStartCommand}" InputGestureText="Home" />
+                <MenuItem Header="Go to _End" Command="{Binding Player.GoToEndCommand}" InputGestureText="End" />
+                <Separator />
                 <MenuItem Header="Shuttle Back (J)" Command="{Binding Player.ShuttleReverseCommand}" InputGestureText="J" />
                 <MenuItem Header="Shuttle Stop (K)" Command="{Binding Player.ShuttleStopCommand}" InputGestureText="K" />
                 <MenuItem Header="Shuttle Forward (L)" Command="{Binding Player.ShuttleForwardCommand}" InputGestureText="L" />
+                <Separator />
+                <MenuItem Header="_Slow Motion (50%)" Command="{Binding Player.SetSpeedSlowCommand}" InputGestureText="Ctrl+Alt+S" />
+                <MenuItem Header="_Normal Speed (100%)" Command="{Binding Player.SetSpeedNormalCommand}" InputGestureText="Ctrl+Alt+D" />
+                <MenuItem Header="_Fast Forward (200%)" Command="{Binding Player.SetSpeedFastCommand}" InputGestureText="Ctrl+Alt+F" />
                 <Separator />
                 <MenuItem Header="_Loop Playback" Command="{Binding Player.ToggleLoopCommand}" InputGestureText="Ctrl+L" />
                 <MenuItem Header="Toggle _Frame Display" Command="{Binding Player.ToggleTimeDisplayCommand}" InputGestureText="Ctrl+Alt+T" />
@@ -97,6 +121,12 @@
                 <Separator />
                 <MenuItem Header="_Next Clip" Command="{Binding Timeline.GoToNextClipCommand}" />
                 <MenuItem Header="_Previous Clip" Command="{Binding Timeline.GoToPreviousClipCommand}" />
+                <Separator />
+                <MenuItem Header="Previous _Keyframe" Command="{Binding GoToPreviousKeyframeCommand}" InputGestureText="Ctrl+[" />
+                <MenuItem Header="Next K_eyframe" Command="{Binding GoToNextKeyframeCommand}" InputGestureText="Ctrl+]" />
+                <Separator />
+                <MenuItem Header="_Auto-Keyframe" Command="{Binding ToggleAutoKeyframeCommand}" InputGestureText="Ctrl+Shift+A"
+                          IsCheckable="True" IsChecked="{Binding Keyframes.IsAutoKeyframeEnabled}" />
                 <Separator />
                 <MenuItem Header="_Add Selected to Sequence" Command="{Binding AddToSequenceCommand}" InputGestureText="Ctrl+=" />
             </MenuItem>
@@ -167,6 +197,22 @@
                     </Button>
                 </StackPanel>
 
+                <!-- Separator -->
+                <Rectangle Width="1" Fill="{StaticResource BorderBrush}" DockPanel.Dock="Left" Margin="8,2" />
+
+                <!-- Preview mode toggle -->
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" Margin="8,0">
+                    <ToggleButton Style="{StaticResource CropModeToggle}"
+                                  IsChecked="{Binding CropEditor.IsPreviewMode}"
+                                  Command="{Binding TogglePreviewModeCommand}"
+                                  ToolTip="Toggle Preview Mode (Ctrl+Shift+P)">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE7B3;" FontSize="14" Margin="0,0,4,0" />
+                            <TextBlock Text="Preview" />
+                        </StackPanel>
+                    </ToggleButton>
+                </StackPanel>
+
                 <!-- Right-side tools -->
                 <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right">
                     <!-- Export settings -->
@@ -175,7 +221,18 @@
                     <CheckBox Content="Alpha Channel" IsChecked="{Binding CropEditor.EnableAlphaChannel}"
                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,12,0" VerticalAlignment="Center" />
 
-                    <Button Style="{StaticResource AccentButton}" Command="{Binding ExportCurrentVideoCommand}" ToolTip="Export Video (Ctrl+E)">
+                    <Button Command="{Binding ExportCurrentVideoCommand}"
+                            ToolTipService.ShowOnDisabled="True"
+                            ToolTip="Export Video (Ctrl+E)">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource AccentButton}">
+                                <Style.Triggers>
+                                    <Trigger Property="IsEnabled" Value="False">
+                                        <Setter Property="ToolTip" Value="Make crop changes to enable export" />
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
                         <StackPanel Orientation="Horizontal">
                             <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xEDE1;" FontSize="14" Margin="0,0,6,0" />
                             <TextBlock Text="Export" />
@@ -191,23 +248,151 @@
         <!-- Numeric Crop Input Panel -->
         <views:CropInputPanel DockPanel.Dock="Top" />
 
-        <!-- Status Bar -->
+        <!-- Enhanced Status Bar -->
         <Border DockPanel.Dock="Bottom" Background="{StaticResource SurfaceBrush}"
                 BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0"
-                Padding="8,3">
-            <DockPanel>
-                <TextBlock Text="{Binding StatusBarText}" Foreground="{StaticResource TextSecondaryBrush}"
-                           FontSize="11" VerticalAlignment="Center" />
+                Padding="0" Height="24">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <!-- Left: Status message -->
+                    <ColumnDefinition Width="Auto" MinWidth="120" />
+                    <!-- Left separator -->
+                    <ColumnDefinition Width="Auto" />
+                    <!-- Center: Video metadata -->
+                    <ColumnDefinition Width="*" />
+                    <!-- Right separator -->
+                    <ColumnDefinition Width="Auto" />
+                    <!-- Right: Playback position + crop mode -->
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
 
-                <!-- Export progress -->
-                <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right"
-                            Visibility="{Binding Export.IsExporting, Converter={StaticResource BoolToVisConverter}}">
-                    <ProgressBar Style="{StaticResource ExportProgress}" Width="120"
-                                 Value="{Binding Export.OverallProgress}" Maximum="1" Margin="0,0,8,0" />
-                    <Button Style="{StaticResource ToolbarButton}" Command="{Binding Export.CancelExportCommand}"
-                            Content="Cancel" FontSize="11" Padding="4,2" />
+                <!-- LEFT: Status message / Export progress -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0,6,0">
+                    <!-- Normal status text (hidden during export) -->
+                    <TextBlock Text="{Binding StatusBarText}" FontSize="11"
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="280"
+                               Visibility="{Binding Export.IsExporting, Converter={StaticResource InverseBoolToVisConverter}}" />
+                    <!-- Export progress (shown during export) -->
+                    <StackPanel Orientation="Horizontal"
+                                Visibility="{Binding Export.IsExporting, Converter={StaticResource BoolToVisConverter}}">
+                        <TextBlock Text="{Binding StatusBarText}" FontSize="11"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="160"
+                                   Margin="0,0,8,0" />
+                        <ProgressBar Style="{StaticResource ExportProgress}" Width="100"
+                                     Value="{Binding Export.OverallProgress}" Maximum="1"
+                                     VerticalAlignment="Center" Margin="0,0,6,0" />
+                        <Button Style="{StaticResource ToolbarButton}" Command="{Binding Export.CancelExportCommand}"
+                                Content="Cancel" FontSize="10" Padding="4,1" VerticalAlignment="Center" />
+                    </StackPanel>
                 </StackPanel>
-            </DockPanel>
+
+                <!-- Separator -->
+                <Rectangle Grid.Column="1" Width="1" Fill="{StaticResource BorderBrush}" Margin="0,4" />
+
+                <!-- CENTER: Video metadata (visible only when a video is selected) -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center"
+                            HorizontalAlignment="Center"
+                            Visibility="{Binding Project.SelectedVideo, Converter={StaticResource NotNullToVisConverter}}">
+                    <!-- Resolution -->
+                    <TextBlock FontSize="11" VerticalAlignment="Center" Margin="8,0,0,0">
+                        <Run Text="{Binding Project.SelectedVideo.Metadata.DimensionsDisplay, Mode=OneWay, FallbackValue=''}"
+                             Foreground="{StaticResource TextPrimaryBrush}" />
+                    </TextBlock>
+
+                    <!-- Separator -->
+                    <TextBlock Text="|" FontSize="11" Foreground="{StaticResource TextTertiaryBrush}"
+                               VerticalAlignment="Center" Margin="8,0" />
+
+                    <!-- Frame rate -->
+                    <TextBlock Text="{Binding Project.SelectedVideo.Metadata.FrameRate, Mode=OneWay,
+                               Converter={StaticResource FrameRateDisplayConverter}, FallbackValue=''}"
+                               FontSize="11" Foreground="{StaticResource TextPrimaryBrush}"
+                               VerticalAlignment="Center" />
+
+                    <!-- Separator -->
+                    <TextBlock Text="|" FontSize="11" Foreground="{StaticResource TextTertiaryBrush}"
+                               VerticalAlignment="Center" Margin="8,0" />
+
+                    <!-- Codec -->
+                    <TextBlock Text="{Binding Project.SelectedVideo.Metadata.CodecType, Mode=OneWay,
+                               Converter={StaticResource CodecDisplayConverter}, FallbackValue=''}"
+                               FontSize="11" Foreground="{StaticResource TextPrimaryBrush}"
+                               VerticalAlignment="Center" />
+
+                    <!-- Separator -->
+                    <TextBlock Text="|" FontSize="11" Foreground="{StaticResource TextTertiaryBrush}"
+                               VerticalAlignment="Center" Margin="8,0" />
+
+                    <!-- Duration -->
+                    <TextBlock Text="{Binding Project.SelectedVideo.Metadata.DurationDisplay, Mode=OneWay, FallbackValue=''}"
+                               FontSize="11" Foreground="{StaticResource TextPrimaryBrush}"
+                               VerticalAlignment="Center" />
+
+                    <!-- Color space (shown only when available) -->
+                    <TextBlock Text="|" FontSize="11" Foreground="{StaticResource TextTertiaryBrush}"
+                               VerticalAlignment="Center" Margin="8,0"
+                               Visibility="{Binding Project.SelectedVideo.Metadata.ColorSpaceDescription, Mode=OneWay,
+                               Converter={StaticResource StringToVisConverter}, FallbackValue=Collapsed}" />
+                    <TextBlock Text="{Binding Project.SelectedVideo.Metadata.ColorSpaceDescription, Mode=OneWay, FallbackValue=''}"
+                               FontSize="11" Foreground="{StaticResource TextPrimaryBrush}"
+                               VerticalAlignment="Center"
+                               Visibility="{Binding Project.SelectedVideo.Metadata.ColorSpaceDescription, Mode=OneWay,
+                               Converter={StaticResource StringToVisConverter}, FallbackValue=Collapsed}" />
+
+                    <!-- HDR badge (shown only for HDR content, accent-colored) -->
+                    <Border Background="#330078D4" CornerRadius="3" Padding="5,1" Margin="8,0,0,0"
+                            VerticalAlignment="Center"
+                            Visibility="{Binding Project.SelectedVideo.Metadata.IsHDR, Mode=OneWay,
+                            Converter={StaticResource HdrToVisConverter}, FallbackValue=Collapsed}">
+                        <TextBlock Text="{Binding Project.SelectedVideo.Metadata.HdrDescription, Mode=OneWay, FallbackValue='HDR'}"
+                                   FontSize="10" FontWeight="SemiBold"
+                                   Foreground="{StaticResource AccentBrush}"
+                                   VerticalAlignment="Center" />
+                    </Border>
+                </StackPanel>
+
+                <!-- "No video loaded" placeholder when no video is selected -->
+                <TextBlock Grid.Column="2" Text="No video loaded" FontSize="11"
+                           Foreground="{StaticResource TextTertiaryBrush}"
+                           VerticalAlignment="Center" HorizontalAlignment="Center"
+                           Visibility="{Binding Project.SelectedVideo, Converter={StaticResource NullToVisConverter}}" />
+
+                <!-- Separator -->
+                <Rectangle Grid.Column="3" Width="1" Fill="{StaticResource BorderBrush}" Margin="0,4" />
+
+                <!-- RIGHT: Playback position + Crop mode -->
+                <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center" Margin="6,0,10,0">
+                    <!-- Playback position -->
+                    <TextBlock FontSize="11" Foreground="{StaticResource TextPrimaryBrush}"
+                               VerticalAlignment="Center"
+                               Visibility="{Binding Project.SelectedVideo, Converter={StaticResource NotNullToVisConverter}}">
+                        <TextBlock.Text>
+                            <MultiBinding Converter="{StaticResource PlaybackPositionConverter}">
+                                <Binding Path="Player.CurrentTime" />
+                                <Binding Path="Player.Duration" />
+                            </MultiBinding>
+                        </TextBlock.Text>
+                    </TextBlock>
+
+                    <!-- Separator -->
+                    <TextBlock Text="|" FontSize="11" Foreground="{StaticResource TextTertiaryBrush}"
+                               VerticalAlignment="Center" Margin="8,0"
+                               Visibility="{Binding Project.SelectedVideo, Converter={StaticResource NotNullToVisConverter}}" />
+
+                    <!-- Crop mode indicator -->
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
+                                Visibility="{Binding Project.SelectedVideo, Converter={StaticResource NotNullToVisConverter}}">
+                        <TextBlock Text="Crop:" FontSize="11"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   VerticalAlignment="Center" Margin="0,0,4,0" />
+                        <TextBlock Text="{Binding CropEditor.Mode, Converter={StaticResource CropModeDisplayConverter}}"
+                                   FontSize="11" Foreground="{StaticResource TextPrimaryBrush}"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
         </Border>
 
         <!-- Main Content Area (wrapped in a Grid so ExportProgressView can overlay) -->
@@ -223,13 +408,15 @@
                     <ColumnDefinition Width="*" />
                     <!-- AI Editor panel (collapsible) -->
                     <ColumnDefinition Width="Auto" />
+                    <!-- Inspector panel (collapsible) -->
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <!-- Video Sidebar -->
+                <!-- Project Sidebar (tabbed: Media + Sequences) -->
                 <Border Grid.Column="0" Background="{StaticResource SidebarBrush}"
                         BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0"
                         Visibility="{Binding IsSidebarVisible, Converter={StaticResource BoolToVisConverter}}">
-                    <views:VideoSidebarView DataContext="{Binding Project}" />
+                    <views:VideoSidebarView DataContext="{Binding}" />
                 </Border>
 
                 <!-- Splitter -->
@@ -250,20 +437,22 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <!-- Video Preview with Crop Overlay -->
-                    <Grid Grid.Row="0" Background="#000000">
-                        <!-- Video player -->
+                    <!-- Video Preview with Crop Overlay (zoomable) -->
+                    <Grid Grid.Row="0" Background="#000000" x:Name="VideoPreviewArea"
+                          PreviewMouseWheel="OnVideoPreviewMouseWheel">
+                        <!-- Video player (always rendered; CropPreviewControl overlays on top in preview mode) -->
                         <MediaElement x:Name="VideoPlayer"
                                       Source="{Binding Player.MediaSource}"
                                       LoadedBehavior="Manual" UnloadedBehavior="Manual"
                                       ScrubbingEnabled="True"
                                       Stretch="Uniform" />
 
-                        <!-- Crop overlay (drawn on top of video) -->
+                        <!-- Crop overlay (drawn on top of video, hidden in preview mode) -->
                         <controls:CropOverlayControl
                             DataContext="{Binding CropEditor}"
                             VideoWidth="{Binding DataContext.Player.VideoSize.Width, RelativeSource={RelativeSource AncestorType=Window}}"
-                            VideoHeight="{Binding DataContext.Player.VideoSize.Height, RelativeSource={RelativeSource AncestorType=Window}}">
+                            VideoHeight="{Binding DataContext.Player.VideoSize.Height, RelativeSource={RelativeSource AncestorType=Window}}"
+                            Visibility="{Binding IsPreviewMode, Converter={StaticResource InverseBoolToVisConverter}}">
                             <controls:CropOverlayControl.ContextMenu>
                                 <ContextMenu Background="{StaticResource SurfaceBrush}"
                                              Foreground="{StaticResource TextPrimaryBrush}"
@@ -333,6 +522,28 @@
                             </controls:CropOverlayControl.ContextMenu>
                         </controls:CropOverlayControl>
 
+                        <!-- Crop preview (shown in preview mode, renders only the cropped region) -->
+                        <controls:CropPreviewControl
+                            x:Name="CropPreview"
+                            DataContext="{Binding CropEditor}"
+                            VideoSource="{Binding ElementName=VideoPlayer}"
+                            VideoWidth="{Binding DataContext.Player.VideoSize.Width, RelativeSource={RelativeSource AncestorType=Window}}"
+                            VideoHeight="{Binding DataContext.Player.VideoSize.Height, RelativeSource={RelativeSource AncestorType=Window}}"
+                            Visibility="{Binding IsPreviewMode, Converter={StaticResource BoolToVisConverter}}" />
+
+                        <!-- "PREVIEW" indicator badge (top-left corner when preview mode is active) -->
+                        <Border Background="#CC0078D4" CornerRadius="0,0,6,0" Padding="10,4"
+                                HorizontalAlignment="Left" VerticalAlignment="Top"
+                                Visibility="{Binding CropEditor.IsPreviewMode, Converter={StaticResource BoolToVisConverter}}">
+                            <TextBlock Text="PREVIEW" FontSize="11" FontWeight="Bold"
+                                       Foreground="White" />
+                        </Border>
+
+                        <!-- Preview mode border indicator -->
+                        <Border BorderThickness="2" CornerRadius="0" IsHitTestVisible="False"
+                                BorderBrush="#800078D4"
+                                Visibility="{Binding CropEditor.IsPreviewMode, Converter={StaticResource BoolToVisConverter}}" />
+
                         <!-- Drop hint when no video -->
                         <Border Background="#80000000"
                                 Visibility="{Binding Project.SelectedVideo, Converter={StaticResource NullToVisConverter}}">
@@ -350,7 +561,7 @@
                         <!-- Rate display overlay -->
                         <TextBlock Text="{Binding Player.RateDisplayString}" FontSize="14" FontWeight="Bold"
                                    Foreground="#80FFFFFF" HorizontalAlignment="Right" VerticalAlignment="Top"
-                                   Margin="0,8,12,0" />
+                                   Margin="0,8,12,0" IsHitTestVisible="False" />
                     </Grid>
 
                     <!-- Player Controls -->
@@ -379,6 +590,14 @@
                         BorderBrush="{StaticResource BorderBrush}" BorderThickness="1,0,0,0"
                         Visibility="{Binding IsAIPanelVisible, Converter={StaticResource BoolToVisConverter}}">
                     <views:AIEditorView DataContext="{Binding CropEditor}" />
+                </Border>
+
+                <!-- Inspector Panel (right side, toggled via View menu or Ctrl+Alt+I) -->
+                <Border Grid.Column="4"
+                        Background="{StaticResource PanelBrush}"
+                        BorderBrush="{StaticResource BorderBrush}" BorderThickness="1,0,0,0"
+                        Visibility="{Binding Inspector.IsVisible, Converter={StaticResource BoolToVisConverter}}">
+                    <inspector:InspectorPanelView DataContext="{Binding Inspector}" />
                 </Border>
             </Grid>
 

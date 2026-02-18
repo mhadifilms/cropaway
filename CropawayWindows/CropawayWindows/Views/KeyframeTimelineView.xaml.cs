@@ -275,6 +275,65 @@ public partial class KeyframeTimelineView : UserControl
     }
 
     /// <summary>
+    /// Mouse wheel over the keyframe timeline:
+    /// - Ctrl+scroll: zoom the timeline in/out
+    /// - Plain scroll: scroll the timeline horizontally (scrub through time)
+    /// </summary>
+    private void OnTimelineMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (ViewModel == null) return;
+
+        bool ctrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
+
+        if (ctrl)
+        {
+            // Ctrl+scroll: zoom the keyframe timeline in/out
+            double zoomDelta = e.Delta > 0 ? 0.25 : -0.25;
+            double newZoom = Math.Clamp(ViewModel.TimelineZoomLevel + zoomDelta, 1.0, 10.0);
+            ViewModel.TimelineZoomLevel = newZoom;
+
+            // Clamp scroll offset when zooming out
+            double maxOffset = Math.Max(0, 1.0 - (1.0 / newZoom));
+            ViewModel.TimelineScrollOffset = Math.Clamp(ViewModel.TimelineScrollOffset, 0, maxOffset);
+
+            RedrawAll();
+        }
+        else
+        {
+            // Plain scroll: horizontal pan through the timeline
+            double duration = GetVideoDuration();
+            if (duration <= 0) return;
+
+            if (ViewModel.TimelineZoomLevel > 1.0)
+            {
+                // When zoomed in, scroll shifts the visible window
+                double scrollStep = 0.05 / ViewModel.TimelineZoomLevel;
+                double newOffset = ViewModel.TimelineScrollOffset + (e.Delta > 0 ? -scrollStep : scrollStep);
+                double maxOffset = Math.Max(0, 1.0 - (1.0 / ViewModel.TimelineZoomLevel));
+                ViewModel.TimelineScrollOffset = Math.Clamp(newOffset, 0, maxOffset);
+
+                RedrawAll();
+            }
+            else
+            {
+                // When not zoomed in, scroll scrubs through time (seek)
+                var mainWindow = Window.GetWindow(this);
+                var mainVM = mainWindow?.DataContext as MainViewModel;
+                if (mainVM != null)
+                {
+                    double seekStep = duration * 0.02; // 2% of duration per scroll tick
+                    if (e.Delta > 0)
+                        mainVM.Player.Seek(mainVM.Player.CurrentTime + seekStep);
+                    else
+                        mainVM.Player.Seek(mainVM.Player.CurrentTime - seekStep);
+                }
+            }
+        }
+
+        e.Handled = true;
+    }
+
+    /// <summary>
     /// Gets the total video duration by traversing to the MainViewModel's player.
     /// </summary>
     private double GetVideoDuration()

@@ -85,6 +85,21 @@ public partial class Timeline : ObservableObject, IEquatable<Timeline>
     public int ClipCount => Clips.Count;
 
     /// <summary>
+    /// Formatted duration display string for the timeline.
+    /// </summary>
+    [JsonIgnore]
+    public string DurationDisplay
+    {
+        get
+        {
+            var ts = TimeSpan.FromSeconds(TotalDuration);
+            if (ts.Hours > 0)
+                return ts.ToString(@"h\:mm\:ss");
+            return ts.ToString(@"m\:ss");
+        }
+    }
+
+    /// <summary>
     /// Whether the timeline contains no clips.
     /// </summary>
     [JsonIgnore]
