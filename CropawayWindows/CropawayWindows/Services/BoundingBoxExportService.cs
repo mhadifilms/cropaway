@@ -18,9 +18,6 @@ public sealed class BoundingBoxExportService
     /// <summary>
     /// Exports bounding box data as a JSON file containing a list of [x1, y1, x2, y2] arrays.
     /// </summary>
-    /// <param name="config">The crop configuration with mode, coordinates, and keyframes.</param>
-    /// <param name="metadata">Video metadata providing dimensions, duration, and frame rate.</param>
-    /// <param name="outputPath">Full path for the output .json file.</param>
     public void ExportAsJson(CropConfiguration config, VideoMetadata metadata, string outputPath)
     {
         var boxes = GenerateBoundingBoxes(config, metadata);
@@ -37,9 +34,6 @@ public sealed class BoundingBoxExportService
     /// <summary>
     /// Exports bounding box data as a Python pickle (protocol 4) file containing a list of lists of floats.
     /// </summary>
-    /// <param name="config">The crop configuration with mode, coordinates, and keyframes.</param>
-    /// <param name="metadata">Video metadata providing dimensions, duration, and frame rate.</param>
-    /// <param name="outputPath">Full path for the output .pkl file.</param>
     public void ExportAsPickle(CropConfiguration config, VideoMetadata metadata, string outputPath)
     {
         var boxes = GenerateBoundingBoxes(config, metadata);
@@ -49,23 +43,31 @@ public sealed class BoundingBoxExportService
 
     /// <summary>
     /// Generates per-frame bounding boxes in pixel coordinates from the crop configuration.
-    /// Uses keyframe interpolation when keyframes are present, otherwise uses the static crop state.
+    /// Matches macOS: uses EffectiveCropRect for static, interpolated cropRect for keyframed.
     /// </summary>
     private List<double[]> GenerateBoundingBoxes(CropConfiguration config, VideoMetadata metadata)
     {
-        int totalFrames = metadata.TotalFrameCount;
-        if (totalFrames <= 0) totalFrames = 1;
-
-        double frameRate = metadata.FrameRate > 0 ? metadata.FrameRate : 30.0;
         int width = metadata.Width;
         int height = metadata.Height;
+
+        if (width <= 0 || height <= 0)
+            throw new InvalidOperationException(
+                "Cannot export bounding boxes: video metadata has no dimensions. " +
+                "Ensure ffprobe is available and the video loaded correctly.");
+
+        double frameRate = metadata.FrameRate > 0 ? metadata.FrameRate : 30.0;
+
+        int totalFrames = metadata.TotalFrameCount;
+        if (totalFrames <= 0)
+            totalFrames = Math.Max(1, (int)Math.Ceiling(metadata.Duration * frameRate));
+        if (totalFrames <= 0)
+            totalFrames = 1;
+
         var boxes = new List<double[]>(totalFrames);
 
-        bool useKeyframes = config.HasKeyframes;
-
-        if (useKeyframes)
+        if (config.HasKeyframes)
         {
-            // Convert Keyframe objects to KeyframeData for the interpolator
+            // Keyframed: interpolate per frame (matches macOS)
             var keyframeDataList = config.Keyframes
                 .Select(kf => new KeyframeData
                 {
@@ -87,14 +89,17 @@ public sealed class BoundingBoxExportService
             {
                 double timestamp = frame / frameRate;
                 var state = interpolator.Interpolate(keyframeDataList, timestamp, config.Mode);
-                double[] box = ComputePixelBoundingBox(state, config.Mode, width, height);
-                boxes.Add(box);
+
+                // Use the interpolated state's effective crop rect based on mode
+                Rect normalizedRect = GetEffectiveRect(state, config.Mode);
+                boxes.Add(NormalizedRectToPixelBox(normalizedRect, width, height));
             }
         }
         else
         {
-            // Static crop: same bounding box for every frame
-            double[] box = ComputeStaticPixelBoundingBox(config, width, height);
+            // Static: use EffectiveCropRect (matches macOS config.effectiveCropRect)
+            Rect normalizedRect = config.EffectiveCropRect;
+            double[] box = NormalizedRectToPixelBox(normalizedRect, width, height);
             for (int frame = 0; frame < totalFrames; frame++)
             {
                 boxes.Add(box);
@@ -105,95 +110,23 @@ public sealed class BoundingBoxExportService
     }
 
     /// <summary>
-    /// Computes the pixel bounding box [x1, y1, x2, y2] from an interpolated crop state.
+    /// Gets the effective bounding rect from an interpolated crop state based on mode.
     /// </summary>
-    private static double[] ComputePixelBoundingBox(
-        InterpolatedCropState state, CropMode mode, int width, int height)
+    private static Rect GetEffectiveRect(InterpolatedCropState state, CropMode mode)
     {
-        Rect normalizedRect;
-
-        switch (mode)
+        return mode switch
         {
-            case CropMode.Rectangle:
-                normalizedRect = state.CropRect;
-                break;
-
-            case CropMode.Circle:
-            {
-                double cx = state.CircleCenter.X;
-                double cy = state.CircleCenter.Y;
-                double r = state.CircleRadius;
-                // CircleRadius is relative to min dimension in normalized space
-                // Compute bounding box in normalized coordinates
-                normalizedRect = new Rect(cx - r, cy - r, r * 2, r * 2);
-                break;
-            }
-
-            case CropMode.AI:
-            {
-                if (state.AIBoundingBox.Width > 0 && state.AIBoundingBox.Height > 0)
-                {
-                    normalizedRect = state.AIBoundingBox;
-                }
-                else
-                {
-                    // Fall back to crop rect
-                    normalizedRect = state.CropRect;
-                }
-                break;
-            }
-
-            case CropMode.Freehand:
-            default:
-                normalizedRect = state.CropRect;
-                break;
-        }
-
-        return NormalizedRectToPixelBox(normalizedRect, width, height);
-    }
-
-    /// <summary>
-    /// Computes the pixel bounding box [x1, y1, x2, y2] from a static (non-keyframed) crop configuration.
-    /// </summary>
-    private static double[] ComputeStaticPixelBoundingBox(CropConfiguration config, int width, int height)
-    {
-        Rect normalizedRect;
-
-        switch (config.Mode)
-        {
-            case CropMode.Rectangle:
-                normalizedRect = config.CropRect;
-                break;
-
-            case CropMode.Circle:
-            {
-                double cx = config.CircleCenter.X;
-                double cy = config.CircleCenter.Y;
-                double r = config.CircleRadius;
-                normalizedRect = new Rect(cx - r, cy - r, r * 2, r * 2);
-                break;
-            }
-
-            case CropMode.AI:
-            {
-                if (config.AiBoundingBox.Width > 0 && config.AiBoundingBox.Height > 0)
-                {
-                    normalizedRect = config.AiBoundingBox;
-                }
-                else
-                {
-                    normalizedRect = config.CropRect;
-                }
-                break;
-            }
-
-            case CropMode.Freehand:
-            default:
-                normalizedRect = config.CropRect;
-                break;
-        }
-
-        return NormalizedRectToPixelBox(normalizedRect, width, height);
+            CropMode.Rectangle => state.CropRect,
+            CropMode.Circle => new Rect(
+                state.CircleCenter.X - state.CircleRadius,
+                state.CircleCenter.Y - state.CircleRadius,
+                state.CircleRadius * 2,
+                state.CircleRadius * 2),
+            CropMode.AI when state.AIBoundingBox.Width > 0 && state.AIBoundingBox.Height > 0
+                => state.AIBoundingBox,
+            CropMode.AI => state.CropRect,
+            _ => state.CropRect
+        };
     }
 
     /// <summary>

@@ -268,6 +268,15 @@ public partial class ExportViewModel : ObservableObject
 
     public void ExportBoundingBoxJson(VideoItem video)
     {
+        if (video.Metadata.Width <= 0 || video.Metadata.Height <= 0)
+        {
+            StatusMessage = "Cannot export: video metadata not loaded (ensure FFmpeg/ffprobe is installed)";
+            System.Windows.MessageBox.Show(
+                "Video metadata is missing dimensions. Make sure FFmpeg (ffprobe) is installed and the video loaded correctly.",
+                "Export Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+            return;
+        }
+
         var dialog = new SaveFileDialog
         {
             Title = "Export Bounding Box JSON",
@@ -281,16 +290,28 @@ public partial class ExportViewModel : ObservableObject
         try
         {
             _boundingBoxExportService.ExportAsJson(video.CropConfig, video.Metadata, dialog.FileName);
-            StatusMessage = $"Bounding box JSON exported to {Path.GetFileName(dialog.FileName)}";
+            StatusMessage = $"Bounding box JSON exported: {Path.GetFileName(dialog.FileName)} " +
+                            $"({video.Metadata.TotalFrameCount} frames, {video.Metadata.Width}x{video.Metadata.Height})";
         }
         catch (Exception ex)
         {
             StatusMessage = $"Bounding box export failed: {ex.Message}";
+            System.Windows.MessageBox.Show(ex.Message, "Export Error",
+                System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
         }
     }
 
     public void ExportBoundingBoxPickle(VideoItem video)
     {
+        if (video.Metadata.Width <= 0 || video.Metadata.Height <= 0)
+        {
+            StatusMessage = "Cannot export: video metadata not loaded (ensure FFmpeg/ffprobe is installed)";
+            System.Windows.MessageBox.Show(
+                "Video metadata is missing dimensions. Make sure FFmpeg (ffprobe) is installed and the video loaded correctly.",
+                "Export Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+            return;
+        }
+
         var dialog = new SaveFileDialog
         {
             Title = "Export Bounding Box Pickle",
@@ -304,11 +325,14 @@ public partial class ExportViewModel : ObservableObject
         try
         {
             _boundingBoxExportService.ExportAsPickle(video.CropConfig, video.Metadata, dialog.FileName);
-            StatusMessage = $"Bounding box pickle exported to {Path.GetFileName(dialog.FileName)}";
+            StatusMessage = $"Bounding box pickle exported: {Path.GetFileName(dialog.FileName)} " +
+                            $"({video.Metadata.TotalFrameCount} frames, {video.Metadata.Width}x{video.Metadata.Height})";
         }
         catch (Exception ex)
         {
             StatusMessage = $"Bounding box export failed: {ex.Message}";
+            System.Windows.MessageBox.Show(ex.Message, "Export Error",
+                System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
         }
     }
 }
