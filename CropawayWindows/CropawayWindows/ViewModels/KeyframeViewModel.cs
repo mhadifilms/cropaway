@@ -190,26 +190,31 @@ public partial class KeyframeViewModel : ObservableObject
     {
         if (_currentVideo == null) return;
 
-        // Auto-keyframe: create a new keyframe at the current time when enabled
+        var config = _currentVideo.CropConfig;
+
+        // When keyframes are enabled, always create or update a keyframe at the
+        // current time (matches macOS behavior). This ensures every crop change
+        // in keyframe mode is captured automatically.
+        if (KeyframesEnabled)
+        {
+            config.AddKeyframe(CurrentTime);
+            Keyframes = new ObservableCollection<Keyframe>(config.Keyframes);
+            return;
+        }
+
+        // When IsAutoKeyframeEnabled is on but keyframes aren't yet enabled,
+        // create keyframes and auto-enable keyframe mode once we have 2+.
         if (IsAutoKeyframeEnabled)
         {
-            var config = _currentVideo.CropConfig;
             config.AddKeyframe(CurrentTime);
             Keyframes = new ObservableCollection<Keyframe>(config.Keyframes);
 
-            if (!KeyframesEnabled && Keyframes.Count >= 2)
+            if (Keyframes.Count >= 2)
             {
                 KeyframesEnabled = true;
                 config.KeyframesEnabled = true;
             }
-            return;
         }
-
-        if (!KeyframesEnabled) return;
-
-        // Auto-update keyframe at current time if one exists
-        var cfg = _currentVideo.CropConfig;
-        cfg.UpdateCurrentKeyframe(CurrentTime);
     }
 
     public bool IsAtKeyframe => Keyframes.Any(kf => Math.Abs(kf.Timestamp - CurrentTime) < 0.001);
