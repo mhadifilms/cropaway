@@ -14,22 +14,48 @@ struct MainContentView: View {
     @State private var exportVM = ExportViewModel()
     @State private var keyframeVM = KeyframeViewModel()
     @State private var timelineVM = TimelineViewModel()
+    @State private var inspectorVM = InspectorViewModel()
     @StateObject private var undoManager = CropUndoManager()
 
     @State private var columnVisibility = NavigationSplitViewVisibility.all
     @State private var viewScale: CGFloat = 1.0
     @State private var copiedCropSettings: CopiedCropSettings?
     @State private var isPreviewMode: Bool = false
+    @State private var showInspector: Bool = true
 
     var body: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
-            VideoSidebarView()
-                .environment(timelineVM)
-                .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 300)
-        } detail: {
-            detailContent
+        HStack(spacing: 0) {
+            // Left sidebar - PHASE 5: Project sidebar with Sequences and Media Bin tabs
+            ProjectSidebarView(
+                projectViewModel: projectVM,
+                timelineViewModel: timelineVM
+            )
+            .frame(width: 220)
+            
+            Divider()
+            
+            // Center panel - PHASE 7: Timeline editor (always visible)
+            TimelineEditorView(
+                viewScale: $viewScale,
+                isPreviewMode: $isPreviewMode
+            )
+            .environment(playerVM)
+            .environment(timelineVM)
+            .environment(cropEditorVM)
+            .environment(keyframeVM)
+            .frame(maxWidth: .infinity)
+            
+            // Right inspector panel
+            if showInspector {
+                Divider()
+                
+                InspectorPanelView(
+                    inspectorViewModel: inspectorVM,
+                    cropEditorViewModel: cropEditorVM,
+                    keyframeViewModel: keyframeVM
+                )
+            }
         }
-        .navigationSplitViewStyle(.balanced)
         .onAppear {
             // Bind player and timeline for bi-directional synchronization
             timelineVM.videoPlayer = playerVM
@@ -126,9 +152,9 @@ struct MainContentView: View {
         }
         
         // Sync timeline playhead with player when timeline is active
-        if timelineVM.isTimelinePanelVisible && timelineVM.activeTimeline != nil {
+        if timelineVM.activeTimeline != nil {
             // Calculate timeline position based on current clip and time within it
-            if let clip = timelineVM.selectedClip,
+            if let _ = timelineVM.selectedClip,
                let clipIndex = timelineVM.selectedClipIndex,
                let timeline = timelineVM.activeTimeline {
                 let clipStartTime = timeline.startTime(forClipAt: clipIndex)
@@ -139,14 +165,23 @@ struct MainContentView: View {
     
     private func handleTimelineClipChange(_ oldClip: TimelineClip?, _ newClip: TimelineClip?) {
         // When timeline is active, switching clips should load that clip's video
-        guard timelineVM.isTimelinePanelVisible,
-              let clip = newClip,
-              let video = clip.videoItem else { return }
+        guard let clip = newClip,
+              let video = clip.videoItem else {
+            // No clip selected - unbind inspector
+            inspectorVM.bind(to: nil)
+            return
+        }
         
         // Load the clip's video into player and crop editor
         playerVM.loadVideo(video)
-        cropEditorVM.bind(to: video)
-        keyframeVM.bind(to: video, cropEditor: cropEditorVM)
+        
+        // PHASE 2: Bind to clip instead of video for per-clip cropping
+        cropEditorVM.bind(to: clip)
+        keyframeVM.bind(to: clip, cropEditor: cropEditorVM)
+        
+        // PHASE 3: Bind inspector to selected clip
+        inspectorVM.bind(to: clip)
+        
         undoManager.bind(to: cropEditorVM)
         undoManager.clearHistory()
         
@@ -735,10 +770,13 @@ struct SequenceNotificationHandler: ViewModifier {
                 _ = timelineVM.splitSelectedClipAtPlayhead()
             }
             .onReceive(NotificationCenter.default.publisher(for: .setInPoint)) { _ in
-                timelineVM.setInPointAtPlayhead()
+                timelineVM.setInPoint()
             }
             .onReceive(NotificationCenter.default.publisher(for: .setOutPoint)) { _ in
-                timelineVM.setOutPointAtPlayhead()
+                timelineVM.setOutPoint()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .clearInOutPoints)) { _ in
+                timelineVM.clearInOutPoints()
             }
             .onReceive(NotificationCenter.default.publisher(for: .nextClip)) { _ in
                 timelineVM.goToNextClip()
@@ -748,6 +786,20 @@ struct SequenceNotificationHandler: ViewModifier {
             }
             .onReceive(NotificationCenter.default.publisher(for: .exportSequence)) { _ in
                 exportSequence()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .deleteSelectedClip)) { _ in
+                timelineVM.removeSelectedClip()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .bladeAtPlayhead)) { _ in
+                timelineVM.bladeAtPlayhead()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .timelineUndo)) { _ in
+                timelineVM.undoManager.undo()
+                timelineVM.rebuildComposition()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .timelineRedo)) { _ in
+                timelineVM.undoManager.redo()
+                timelineVM.rebuildComposition()
             }
     }
 
@@ -777,8 +829,8 @@ struct SequenceNotificationHandler: ViewModifier {
                 // Add videos to project first
                 await projectVM.addVideos(from: panel.urls)
                 
-                // Only add to timeline if timeline panel is already visible
-                guard timelineVM.isTimelinePanelVisible, timelineVM.activeTimeline != nil else {
+                // Only add to timeline if there's an active timeline
+                guard timelineVM.activeTimeline != nil else {
                     return
                 }
                 

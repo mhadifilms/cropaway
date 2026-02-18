@@ -8,6 +8,12 @@ import Combine
 import AppKit
 import Observation
 
+/// Direction for moving tracks
+enum TrackMoveDirection {
+    case up
+    case down
+}
+
 /// ViewModel for managing timeline/sequence state and operations
 @Observable
 @MainActor
@@ -21,9 +27,6 @@ final class TimelineViewModel {
     /// The currently active timeline being edited
     var activeTimeline: Timeline?
     
-    /// Whether timeline panel is visible
-    var isTimelinePanelVisible: Bool = false
-
     /// Currently selected clip ID in active timeline
     var selectedClipID: UUID?
 
@@ -42,6 +45,12 @@ final class TimelineViewModel {
 
     /// Index being dragged (for reordering)
     var draggingClipIndex: Int?
+    
+    /// PHASE 8: Magnetic snapping enabled (snaps to clips, playhead, markers)
+    var magneticSnappingEnabled: Bool = true
+    
+    /// PHASE 8: Snap threshold in seconds (how close to snap)
+    var snapThreshold: Double = 0.1  // 100ms / 3 frames at 30fps
 
     @ObservationIgnored private var cancellables = Set<AnyCancellable>()
     @ObservationIgnored private let storageService = TimelineStorageService.shared
@@ -54,16 +63,23 @@ final class TimelineViewModel {
     private var lastSaveTime: TimeInterval = 0
     private let minSaveInterval: TimeInterval = 2.0 // 2 seconds between auto-saves
     
+    /// PHASE 10: Auto-save timer (saves every 30 seconds)
+    @ObservationIgnored private var autoSaveTimer: Timer?
+    private let autoSaveInterval: TimeInterval = 30.0 // 30 seconds
+    
+    /// PHASE 10: Undo/redo manager for timeline operations
+    let undoManager = TimelineUndoManager()
+    
     /// Legacy support - maps to activeTimeline for backward compatibility
     var timeline: Timeline? {
         get { activeTimeline }
         set { activeTimeline = newValue }
     }
     
-    /// Legacy support - maps to panel visibility
+    /// Legacy support - always true now (timeline always visible)
     var isSequenceMode: Bool {
-        get { isTimelinePanelVisible && activeTimeline != nil }
-        set { isTimelinePanelVisible = newValue }
+        get { activeTimeline != nil }
+        set { /* Timeline always visible in Phase 7 */ }
     }
 
     // MARK: - Computed Properties
@@ -71,7 +87,7 @@ final class TimelineViewModel {
     /// The currently selected clip
     var selectedClip: TimelineClip? {
         guard let id = selectedClipID else { return nil }
-        return activeTimeline?.clips.first { $0.id == id }
+        return activeTimeline?.findClip(withID: id)  // Use multi-track finder
     }
 
     /// The currently selected transition
@@ -80,10 +96,10 @@ final class TimelineViewModel {
         return activeTimeline?.transitions.first { $0.id == id }
     }
 
-    /// Index of the currently selected clip
+    /// Index of the currently selected clip (in its track)
     var selectedClipIndex: Int? {
         guard let id = selectedClipID else { return nil }
-        return activeTimeline?.clips.firstIndex { $0.id == id }
+        return activeTimeline?.findClipLocation(withID: id)?.clipIndex
     }
 
     /// Total duration of the timeline
@@ -91,14 +107,14 @@ final class TimelineViewModel {
         activeTimeline?.totalDuration ?? 0
     }
 
-    /// Number of clips in the timeline
+    /// Number of clips in the timeline (across all tracks)
     var clipCount: Int {
-        activeTimeline?.clipCount ?? 0
+        activeTimeline?.allClips.count ?? 0
     }
 
     /// Whether there are multiple clips (transitions possible)
     var hasMultipleClips: Bool {
-        activeTimeline?.hasMultipleClips ?? false
+        (activeTimeline?.allClips.count ?? 0) > 1
     }
 
     // MARK: - Initialization
@@ -106,6 +122,23 @@ final class TimelineViewModel {
     init() {
         setupObservers()
         loadAllTimelines()
+        
+        // PHASE 7: Ensure a default timeline always exists for timeline-first UI
+        if activeTimeline == nil {
+            let defaultTimeline = Timeline(name: "Sequence 1")
+            timelines.append(defaultTimeline)
+            activeTimeline = defaultTimeline
+        }
+        
+        // PHASE 10: Wire up undo manager
+        undoManager.timeline = activeTimeline
+        
+        // PHASE 10: Start auto-save timer
+        startAutoSaveTimer()
+    }
+    
+    deinit {
+        autoSaveTimer?.invalidate()
     }
 
     private func setupObservers() {
@@ -120,8 +153,8 @@ final class TimelineViewModel {
 
         guard let timeline = activeTimeline else { return }
 
-        // Observe each clip's trim point changes
-        for clip in timeline.clips {
+        // Observe each clip's trim point changes across ALL tracks
+        for clip in timeline.allClips {
             clip.$inPoint
                 .dropFirst()  // Skip initial value
                 .sink { [weak self] _ in
@@ -141,8 +174,8 @@ final class TimelineViewModel {
                 .store(in: &cancellables)
         }
 
-        // Observe timeline's clips array changes
-        timeline.$clips
+        // Observe timeline's tracks array changes (multi-track support)
+        timeline.$tracks
             .dropFirst()
             .sink { [weak self] _ in
                 Task { @MainActor in
@@ -153,6 +186,38 @@ final class TimelineViewModel {
             .store(in: &cancellables)
     }
     
+    // MARK: - Auto-Save (Phase 10)
+    
+    /// Start the auto-save timer
+    private func startAutoSaveTimer() {
+        autoSaveTimer?.invalidate()
+        
+        autoSaveTimer = Timer.scheduledTimer(withTimeInterval: autoSaveInterval, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.performAutoSave()
+            }
+        }
+        
+        print("✅ Auto-save enabled: saving every \(Int(autoSaveInterval))s")
+    }
+    
+    /// Perform auto-save if there's an active timeline
+    private func performAutoSave() {
+        guard let timeline = activeTimeline else { return }
+        
+        // Only save if timeline has clips or has been modified
+        guard !timeline.allClips.isEmpty || timeline.inPoint != nil || timeline.outPoint != nil else {
+            return
+        }
+        
+        do {
+            try storageService.save(timeline)
+            print("💾 Auto-saved timeline: \(timeline.name)")
+        } catch {
+            print("⚠️ Auto-save failed: \(error)")
+        }
+    }
+    
     // MARK: - Persistence
     
     /// Load all saved timelines on startup
@@ -160,10 +225,9 @@ final class TimelineViewModel {
         let loadedTimelines = storageService.loadAll()
         timelines = loadedTimelines
         
-        // Set most recent as active if available
+        // PHASE 7: Set most recent as active if available (timeline always visible now)
         if let mostRecent = loadedTimelines.first {
             activeTimeline = mostRecent
-            isTimelinePanelVisible = true
         }
     }
     
@@ -176,9 +240,11 @@ final class TimelineViewModel {
         guard now - lastSaveTime >= minSaveInterval else { return }
         lastSaveTime = now
         
-        Task.detached { [weak self] in
+        Task.detached {
             do {
-                try self?.storageService.save(timeline)
+                try await MainActor.run {
+                    try self.storageService.save(timeline)
+                }
             } catch {
                 print("⚠️ Failed to save timeline: \(error)")
             }
@@ -193,11 +259,10 @@ final class TimelineViewModel {
     // MARK: - Timeline Panel Management
 
     /// Toggle timeline panel visibility with optional starting video
+    /// PHASE 7: Timeline always visible now - this just creates sequences if needed
     func toggleTimelinePanel(startingWith video: VideoItem? = nil) {
-        isTimelinePanelVisible.toggle()
-        
-        // If showing panel and no active timeline, create one with the current video
-        if isTimelinePanelVisible && activeTimeline == nil {
+        // If no active timeline, create one with the current video
+        if activeTimeline == nil {
             if let video = video {
                 createSequence(from: [video])
             } else {
@@ -219,7 +284,6 @@ final class TimelineViewModel {
     /// Set the active timeline
     func setActiveTimeline(_ timeline: Timeline) {
         activeTimeline = timeline
-        isTimelinePanelVisible = true
         observeActiveTimeline()  // NEW: Set up observers
     }
     
@@ -229,9 +293,12 @@ final class TimelineViewModel {
         if activeTimeline?.id == timeline.id {
             activeTimeline = timelines.first
         }
-        if timelines.isEmpty {
-            isTimelinePanelVisible = false
-        }
+    }
+    
+    /// Delete a timeline (close and remove from storage)
+    func deleteTimeline(_ timeline: Timeline) {
+        closeTimeline(timeline)
+        try? storageService.delete(timeline)
     }
 
     // MARK: - Sequence Creation
@@ -246,11 +313,10 @@ final class TimelineViewModel {
 
         timelines.append(newTimeline)
         activeTimeline = newTimeline
-        isTimelinePanelVisible = true
         observeActiveTimeline()  // NEW: Set up observers
 
         // Select first clip
-        if let firstClip = newTimeline.clips.first {
+        if let firstClip = newTimeline.allClips.first {
             selectedClipID = firstClip.id
         }
 
@@ -273,11 +339,32 @@ final class TimelineViewModel {
     func rebuildComposition() {
         guard let timeline = activeTimeline else { return }
         
-        // Only rebuild if we have clips
-        guard !timeline.clips.isEmpty else { return }
+        // Only rebuild if we have clips (check across all tracks)
+        guard !timeline.allClips.isEmpty else { return }
         
         // Load the composition into the player
         videoPlayer?.loadComposition(from: timeline)
+        
+        // PHASE 10: Pre-warm thumbnail cache for visible clips
+        Task {
+            await prewarmVisibleClipThumbnails()
+        }
+    }
+    
+    /// PHASE 10: Pre-warm thumbnail cache for currently visible clips
+    private func prewarmVisibleClipThumbnails() async {
+        guard let timeline = activeTimeline else { return }
+        
+        // Generate thumbnails for first 10 clips across all tracks (likely visible)
+        let visibleClips = Array(timeline.allClips.prefix(10))
+        
+        await withTaskGroup(of: Void.self) { group in
+            for clip in visibleClips {
+                group.addTask {
+                    await clip.generateThumbnailStrip()
+                }
+            }
+        }
     }
 
     // MARK: - Clip Management
@@ -301,7 +388,7 @@ final class TimelineViewModel {
             // Changes tracked automatically with @Observable
             
             // Select the new clip
-            if let newClip = timeline.clips.last {
+            if let newClip = timeline.allClips.last {
                 selectedClipID = newClip.id
             }
             
@@ -327,18 +414,20 @@ final class TimelineViewModel {
     func removeClip(id: UUID) {
         guard let timeline = activeTimeline else { return }
 
-        if let index = timeline.clips.firstIndex(where: { $0.id == id }) {
-            timeline.removeClip(at: index)
+        if let location = timeline.findClipLocation(withID: id) {
+            let index = location.clipIndex
+            let track = location.track
+            track.clips.remove(at: index)
             
             // Rebuild composition
             rebuildComposition()
 
             // Select adjacent clip if possible
             if selectedClipID == id {
-                if index < timeline.clips.count {
-                    selectedClipID = timeline.clips[index].id
-                } else if !timeline.clips.isEmpty {
-                    selectedClipID = timeline.clips[timeline.clips.count - 1].id
+                if index < track.clips.count {
+                    selectedClipID = track.clips[index].id
+                } else if !track.clips.isEmpty {
+                    selectedClipID = track.clips[track.clips.count - 1].id
                 } else {
                     selectedClipID = nil
                 }
@@ -390,6 +479,70 @@ final class TimelineViewModel {
         return success
     }
     
+    // MARK: - Track Management (Phase 4)
+    
+    /// Add a new video track
+    func addVideoTrack() {
+        guard let timeline = activeTimeline else { return }
+        
+        let trackNumber = timeline.videoTracks.count + 1
+        let track = Track(
+            name: "Video \(trackNumber)",
+            clips: [],
+            mediaType: .video,
+            verticalOrder: timeline.tracks.count
+        )
+        
+        timeline.addTrack(track)
+        saveActiveTimeline()
+    }
+    
+    /// Add a new audio track
+    func addAudioTrack() {
+        guard let timeline = activeTimeline else { return }
+        
+        let trackNumber = timeline.audioTracks.count + 1
+        let track = Track(
+            name: "Audio \(trackNumber)",
+            clips: [],
+            mediaType: .audio,
+            verticalOrder: timeline.tracks.count
+        )
+        
+        timeline.addTrack(track)
+        saveActiveTimeline()
+    }
+    
+    /// Delete a track
+    func deleteTrack(_ track: Track) {
+        guard let timeline = activeTimeline else { return }
+        
+        timeline.removeTrack(track.id)
+        rebuildComposition()
+        saveActiveTimeline()
+    }
+    
+    /// Move a track up or down
+    func moveTrack(_ track: Track, direction: TrackMoveDirection) {
+        guard let timeline = activeTimeline else { return }
+        
+        let tracks = timeline.tracks
+        guard let currentIndex = tracks.firstIndex(where: { $0.id == track.id }) else { return }
+        
+        let newIndex: Int
+        switch direction {
+        case .up:
+            guard currentIndex > 0 else { return }
+            newIndex = currentIndex - 1
+        case .down:
+            guard currentIndex < tracks.count - 1 else { return }
+            newIndex = currentIndex + 1
+        }
+        
+        timeline.moveTrack(from: currentIndex, to: newIndex)
+        saveActiveTimeline()
+    }
+    
     // MARK: - Transition Management
     
     /// Add a manual transition after a specific clip
@@ -402,7 +555,7 @@ final class TimelineViewModel {
         }
         
         // Validate index
-        guard afterClipIndex >= 0 && afterClipIndex < timeline.clips.count - 1 else {
+        guard afterClipIndex >= 0 && afterClipIndex < timeline.allClips.count - 1 else {
             return
         }
         
@@ -443,16 +596,26 @@ final class TimelineViewModel {
 
         // Seek to clip start
         if let timeline = activeTimeline,
-           let index = timeline.clips.firstIndex(where: { $0.id == id }) {
-            playheadTime = timeline.startTime(forClipAt: index)
+           let clip = timeline.findClip(withID: id) {
+            // Find the clip's global start time
+            var currentTime = 0.0
+            for track in timeline.tracks {
+                for trackClip in track.clips {
+                    if trackClip.id == clip.id {
+                        playheadTime = currentTime
+                        return
+                    }
+                    currentTime += trackClip.trimmedDuration
+                }
+            }
         }
     }
 
     /// Select a clip by index
     func selectClip(at index: Int) {
         guard let timeline = activeTimeline,
-              index >= 0 && index < timeline.clips.count else { return }
-        selectClip(id: timeline.clips[index].id)
+              index >= 0 && index < timeline.allClips.count else { return }
+        selectClip(id: timeline.allClips[index].id)
     }
 
     /// Select a transition by ID
@@ -544,7 +707,7 @@ final class TimelineViewModel {
         
         // If we have an active timeline and player, seek the player to the corresponding clip
         if let timeline = activeTimeline, let player = videoPlayer {
-            if let (clip, clipIndex, timeInClip) = timeline.clip(at: clampedTime), let video = clip.videoItem {
+            if let (clip, _, timeInClip) = timeline.clip(at: clampedTime), let video = clip.videoItem {
                 // Update selected clip
                 selectedClipID = clip.id
                 
@@ -589,7 +752,7 @@ final class TimelineViewModel {
     func goToNextClip() {
         guard let timeline = timeline,
               let currentIndex = selectedClipIndex,
-              currentIndex < timeline.clips.count - 1 else { return }
+              currentIndex < timeline.allClips.count - 1 else { return }
 
         selectClip(at: currentIndex + 1)
     }
@@ -600,6 +763,98 @@ final class TimelineViewModel {
               currentIndex > 0 else { return }
 
         selectClip(at: currentIndex - 1)
+    }
+    
+    // MARK: - In/Out Points (Phase 6)
+    
+    /// Set in point at current playhead position
+    func setInPoint() {
+        guard let timeline = activeTimeline else { return }
+        timeline.inPoint = playheadTime
+        saveActiveTimeline()
+    }
+    
+    /// Set out point at current playhead position
+    func setOutPoint() {
+        guard let timeline = activeTimeline else { return }
+        timeline.outPoint = playheadTime
+        saveActiveTimeline()
+    }
+    
+    /// Clear in point
+    func clearInPoint() {
+        guard let timeline = activeTimeline else { return }
+        timeline.inPoint = nil
+        saveActiveTimeline()
+    }
+    
+    /// Clear out point
+    func clearOutPoint() {
+        guard let timeline = activeTimeline else { return }
+        timeline.outPoint = nil
+        saveActiveTimeline()
+    }
+    
+    /// Clear both in and out points
+    func clearInOutPoints() {
+        guard let timeline = activeTimeline else { return }
+        timeline.inPoint = nil
+        timeline.outPoint = nil
+        saveActiveTimeline()
+    }
+    
+    /// Get export duration (respects in/out points if set)
+    var exportDuration: Double {
+        guard let timeline = activeTimeline else { return 0 }
+        
+        if let inPoint = timeline.inPoint, let outPoint = timeline.outPoint {
+            return outPoint - inPoint
+        }
+        
+        return timeline.totalDuration
+    }
+
+    // MARK: - Magnetic Snapping (Phase 8)
+    
+    /// Apply magnetic snapping to a time position
+    /// Returns snapped time if within threshold, otherwise returns original time
+    func applyMagneticSnapping(to time: Double) -> Double {
+        guard magneticSnappingEnabled else { return time }
+        guard let timeline = activeTimeline else { return time }
+        
+        var snapCandidates: [Double] = []
+        
+        // Add clip boundaries
+        var currentTime: Double = 0
+        for clip in timeline.allClips {
+            snapCandidates.append(currentTime)  // Clip start
+            currentTime += clip.trimmedDuration
+            snapCandidates.append(currentTime)  // Clip end
+        }
+        
+        // Add playhead position
+        snapCandidates.append(playheadTime)
+        
+        // Add in/out points
+        if let inPoint = timeline.inPoint {
+            snapCandidates.append(inPoint)
+        }
+        if let outPoint = timeline.outPoint {
+            snapCandidates.append(outPoint)
+        }
+        
+        // Add timeline start/end
+        snapCandidates.append(0)
+        snapCandidates.append(timeline.totalDuration)
+        
+        // Find closest snap point
+        let closest = snapCandidates.min(by: { abs($0 - time) < abs($1 - time) })
+        
+        if let snapPoint = closest, abs(snapPoint - time) <= snapThreshold {
+            return snapPoint
+        }
+        
+        return time
     }
 
     // MARK: - Drag and Drop
@@ -623,5 +878,68 @@ final class TimelineViewModel {
         } else {
             addClip(from: video)
         }
+    }
+    
+    // MARK: - Advanced Editing (Phase 10)
+    
+    /// Blade/split clip at current playhead position
+    func bladeAtPlayhead() {
+        guard let timeline = activeTimeline else { return }
+        
+        // Find which clip is at the playhead
+        guard let (clip, _, timeInClip) = timeline.clip(at: playheadTime) else {
+            print("⚠️ No clip at playhead position")
+            return
+        }
+        
+        // Split the clip
+        if let newClip = TimelineEditingService.bladeClip(clip, at: timeInClip, in: timeline) {
+            // Select the new clip
+            selectClip(id: newClip.id)
+            
+            // Rebuild composition
+            rebuildComposition()
+            
+            // Auto-save
+            saveActiveTimeline()
+        }
+    }
+    
+    /// Ripple edit: Trim clip and shift subsequent clips
+    func rippleEdit(clip: TimelineClip, newDuration: Double) {
+        guard let timeline = activeTimeline else { return }
+        
+        TimelineEditingService.rippleEdit(clip: clip, newDuration: newDuration, in: timeline)
+        
+        rebuildComposition()
+        saveActiveTimeline()
+    }
+    
+    /// Roll edit: Trim two adjacent clips together
+    func rollEdit(leftClip: TimelineClip, rightClip: TimelineClip, deltaTime: Double) {
+        guard let timeline = activeTimeline else { return }
+        
+        TimelineEditingService.rollEdit(leftClip: leftClip, rightClip: rightClip, deltaTime: deltaTime, in: timeline)
+        
+        rebuildComposition()
+        saveActiveTimeline()
+    }
+    
+    /// Slip edit: Change source in/out without changing timeline duration
+    func slipEdit(clip: TimelineClip, deltaTime: Double) {
+        TimelineEditingService.slipEdit(clip: clip, deltaTime: deltaTime)
+        
+        rebuildComposition()
+        saveActiveTimeline()
+    }
+    
+    /// Slide edit: Move clip, adjacent clips adjust
+    func slideEdit(clip: TimelineClip, deltaTime: Double) {
+        guard let timeline = activeTimeline else { return }
+        
+        TimelineEditingService.slideEdit(clip: clip, deltaTime: deltaTime, in: timeline)
+        
+        rebuildComposition()
+        saveActiveTimeline()
     }
 }

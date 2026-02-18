@@ -44,7 +44,7 @@ struct CropToolbarView: View {
         HStack(spacing: 12) {
             cropModeButtons
             keyframeControls
-            timelineControls
+            // PHASE 7: Removed timeline toggle - timeline is always visible
 
             Spacer()
 
@@ -132,30 +132,7 @@ struct CropToolbarView: View {
         }
     }
     
-    // MARK: - Timeline Controls
-    
-    private var timelineControls: some View {
-        Button {
-            withAnimation(.snappy(duration: 0.2)) {
-                timelineVM.toggleTimelinePanel(startingWith: video)
-            }
-        } label: {
-            HStack(spacing: 5) {
-                Image(systemName: timelineVM.isTimelinePanelVisible ? "film.fill" : "film")
-                    .font(.system(size: 11))
-                    .contentTransition(.symbolEffect(.replace))
-                Text("Timeline")
-                    .font(.system(size: 11, weight: timelineVM.isTimelinePanelVisible ? .medium : .regular))
-            }
-            .foregroundStyle(timelineVM.isTimelinePanelVisible ? Color.white : Color.primary)
-            .padding(.horizontal, 10)
-            .frame(height: 32)
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.borderless)
-        .liquidGlassCapsule(isSelected: timelineVM.isTimelinePanelVisible)
-        .help("Toggle timeline panel (⌘5)")
-    }
+    // PHASE 7: Timeline controls removed - timeline is always visible in timeline-first UI
 
     // MARK: - Options Section
 

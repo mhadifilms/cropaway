@@ -28,7 +28,7 @@ final class VideoPlayerViewModel {
     // Timeline mode: when active, player represents entire sequence not just one clip
     weak var timelineViewModel: TimelineViewModel?
     var isTimelineMode: Bool {
-        timelineViewModel?.isTimelinePanelVisible ?? false && timelineViewModel?.activeTimeline != nil
+        timelineViewModel?.activeTimeline != nil
     }
     
     /// Effective duration accounts for timeline mode (entire sequence vs single clip)
@@ -43,7 +43,7 @@ final class VideoPlayerViewModel {
     var effectiveCurrentTime: Double {
         if isTimelineMode,
            let timeline = timelineViewModel?.activeTimeline,
-           let selectedClip = timelineViewModel?.selectedClip,
+           let _ = timelineViewModel?.selectedClip,
            let clipIndex = timelineViewModel?.selectedClipIndex {
             let clipStart = timeline.startTime(forClipAt: clipIndex)
             return clipStart + currentTime
@@ -61,8 +61,8 @@ final class VideoPlayerViewModel {
     @ObservationIgnored private var metadataCancellable: AnyCancellable?
 
     // Store weak references for cleanup in deinit
-    nonisolated(unsafe) private var playerForCleanup: AVPlayer?
-    nonisolated(unsafe) private var observerForCleanup: Any?
+    @ObservationIgnored private var playerForCleanup: AVPlayer?
+    @ObservationIgnored private var observerForCleanup: Any?
 
     func loadVideo(_ video: VideoItem) {
         // Store current video
@@ -195,6 +195,12 @@ final class VideoPlayerViewModel {
         if let videoComposition = videoComposition {
             playerItem.videoComposition = videoComposition
             print("✅ Applied video composition with \(timeline.transitions.count) transition(s)")
+        }
+        
+        // PHASE 9: Apply audio mix with per-clip volume
+        if let audioMix = TimelineCompositionBuilder.buildAudioMix(for: timeline, composition: composition) {
+            playerItem.audioMix = audioMix
+            print("✅ Applied audio mix with per-clip volume")
         }
 
         if player == nil {
@@ -428,7 +434,7 @@ final class VideoPlayerViewModel {
                         if let timelineVM = self.timelineViewModel,
                            let currentIndex = timelineVM.selectedClipIndex,
                            let timeline = timelineVM.activeTimeline,
-                           currentIndex < timeline.clips.count - 1 {
+                           currentIndex < timeline.allClips.count - 1 {
                             // Load next clip
                             timelineVM.goToNextClip()
                             

@@ -28,6 +28,23 @@ struct TimelineTrackView: View {
 
                 Spacer()
 
+                // PHASE 6: In/Out range indicator
+                if let timeline = timelineVM.activeTimeline,
+                   let inPoint = timeline.inPoint,
+                   let outPoint = timeline.outPoint {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.left.and.right")
+                            .font(.system(size: 9))
+                        Text("In/Out: \(formatTime(outPoint - inPoint))")
+                            .font(.system(size: 10, weight: .medium).monospacedDigit())
+                    }
+                    .foregroundStyle(.green)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.green.opacity(0.15))
+                    .clipShape(Capsule())
+                }
+                
                 // Clip count badge
                 if let timeline = timelineVM.activeTimeline, !timeline.isEmpty {
                     Text("\(timeline.clipCount) clips")
@@ -77,14 +94,16 @@ struct TimelineTrackView: View {
             }
             .frame(height: 22)
 
-            // Timeline track
+            // Timeline track (use allClips for multi-track support)
             TimelineTrackNSViewWrapper(
-                clips: timelineVM.activeTimeline?.clips ?? [],
+                clips: timelineVM.activeTimeline?.allClips ?? [],
                 transitions: timelineVM.activeTimeline?.transitions ?? [],
                 totalDuration: timelineVM.totalDuration,
                 selectedClipID: timelineVM.selectedClipID,
                 selectedTransitionID: timelineVM.selectedTransitionID,
                 playheadTime: timelineVM.playheadTime,
+                inPoint: timelineVM.activeTimeline?.inPoint,
+                outPoint: timelineVM.activeTimeline?.outPoint,
                 refreshTrigger: clipRefreshTrigger,
                 onSelectClip: { clipID in
                     timelineVM.selectClip(id: clipID)
@@ -100,7 +119,7 @@ struct TimelineTrackView: View {
                 },
                 onTrimClip: { clipID, inPoint, outPoint in
                     Task { @MainActor in
-                        if let clip = timelineVM.activeTimeline?.clips.first(where: { $0.id == clipID }) {
+                        if let clip = timelineVM.activeTimeline?.findClip(withID: clipID) {
                             clip.inPoint = inPoint
                             clip.outPoint = outPoint
                             // Rebuild composition with new trim points
@@ -122,7 +141,7 @@ struct TimelineTrackView: View {
             .onAppear {
                 setupClipObservers()
             }
-            .onChange(of: timelineVM.activeTimeline?.clips.map { $0.id }) { _, _ in
+            .onChange(of: timelineVM.activeTimeline?.allClips.map { $0.id }) { _, _ in
                 setupClipObservers()
             }
 
@@ -161,6 +180,14 @@ struct TimelineTrackView: View {
         }
     }
     
+    // MARK: - Helper Methods
+    
+    private func formatTime(_ seconds: Double) -> String {
+        let mins = Int(seconds) / 60
+        let secs = Int(seconds) % 60
+        return String(format: "%d:%02d", mins, secs)
+    }
+    
     // MARK: - Clip Observers
     
     /// Set up observers for clip thumbnail changes to trigger view updates
@@ -197,6 +224,8 @@ struct TimelineTrackNSViewWrapper: NSViewRepresentable {
     let selectedClipID: UUID?
     let selectedTransitionID: UUID?
     let playheadTime: Double
+    let inPoint: Double?  // PHASE 6: In/out points for export range
+    let outPoint: Double?
     let refreshTrigger: Int  // Forces view updates when clip properties change
 
     let onSelectClip: (UUID) -> Void
@@ -220,6 +249,8 @@ struct TimelineTrackNSViewWrapper: NSViewRepresentable {
         nsView.selectedClipID = selectedClipID
         nsView.selectedTransitionID = selectedTransitionID
         nsView.playheadTime = playheadTime
+        nsView.inPoint = inPoint
+        nsView.outPoint = outPoint
         nsView.needsDisplay = true
     }
 
@@ -287,6 +318,8 @@ class TimelineTrackNSView: NSView {
     var selectedClipID: UUID?
     var selectedTransitionID: UUID?
     var playheadTime: Double = 0
+    var inPoint: Double?  // PHASE 6: In/out points for export range
+    var outPoint: Double?
 
     // Interaction state
     private var isDraggingClip = false
@@ -371,6 +404,9 @@ class TimelineTrackNSView: NSView {
 
         // Draw add button at the end
         drawAddButton(at: currentX)
+
+        // Draw in/out point markers (PHASE 6)
+        drawInOutPoints(in: rect, availableWidth: availableWidth)
 
         // Draw playhead
         drawPlayhead(in: rect, availableWidth: availableWidth)
@@ -659,6 +695,66 @@ class TimelineTrackNSView: NSView {
         plusPath.stroke()
     }
 
+    private func drawInOutPoints(in rect: NSRect, availableWidth: CGFloat) {
+        guard totalDuration > 0 else { return }
+        
+        // Draw in point marker
+        if let inPoint = inPoint {
+            let inPointX = CGFloat(inPoint / totalDuration) * availableWidth
+            
+            NSColor.systemGreen.setFill()
+            NSColor.systemGreen.setStroke()
+            
+            // Triangle at top (pointing down)
+            let trianglePath = NSBezierPath()
+            trianglePath.move(to: NSPoint(x: inPointX - 4, y: 0))
+            trianglePath.line(to: NSPoint(x: inPointX + 4, y: 0))
+            trianglePath.line(to: NSPoint(x: inPointX, y: 5))
+            trianglePath.close()
+            trianglePath.fill()
+            
+            // Vertical line (thinner than playhead)
+            let linePath = NSBezierPath()
+            linePath.move(to: NSPoint(x: inPointX, y: 5))
+            linePath.line(to: NSPoint(x: inPointX, y: rect.height))
+            linePath.lineWidth = 1.5
+            linePath.stroke()
+        }
+        
+        // Draw out point marker
+        if let outPoint = outPoint {
+            let outPointX = CGFloat(outPoint / totalDuration) * availableWidth
+            
+            NSColor.systemRed.setFill()
+            NSColor.systemRed.setStroke()
+            
+            // Triangle at top (pointing down)
+            let trianglePath = NSBezierPath()
+            trianglePath.move(to: NSPoint(x: outPointX - 4, y: 0))
+            trianglePath.line(to: NSPoint(x: outPointX + 4, y: 0))
+            trianglePath.line(to: NSPoint(x: outPointX, y: 5))
+            trianglePath.close()
+            trianglePath.fill()
+            
+            // Vertical line (thinner than playhead)
+            let linePath = NSBezierPath()
+            linePath.move(to: NSPoint(x: outPointX, y: 5))
+            linePath.line(to: NSPoint(x: outPointX, y: rect.height))
+            linePath.lineWidth = 1.5
+            linePath.stroke()
+        }
+        
+        // Draw range highlight if both points are set
+        if let inPoint = inPoint, let outPoint = outPoint {
+            let inPointX = CGFloat(inPoint / totalDuration) * availableWidth
+            let outPointX = CGFloat(outPoint / totalDuration) * availableWidth
+            
+            let rangeRect = NSRect(x: inPointX, y: 0, width: outPointX - inPointX, height: rect.height)
+            NSColor.systemGreen.withAlphaComponent(0.1).setFill()
+            NSBezierPath(rect: rangeRect).fill()
+        }
+    }
+    
     private func drawPlayhead(in rect: NSRect, availableWidth: CGFloat) {
         guard totalDuration > 0 else { return }
 

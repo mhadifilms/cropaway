@@ -186,10 +186,7 @@ struct CropawayCommands: Commands {
             }
             .keyboardShortcut("4", modifiers: [.command, .control])
             
-            Button("Toggle Timeline") {
-                commands.send(.toggleTimeline)
-            }
-            .keyboardShortcut("5", modifiers: .command)
+            // PHASE 7: Removed "Toggle Timeline" - timeline is always visible now
 
             Divider()
 
@@ -199,27 +196,23 @@ struct CropawayCommands: Commands {
             .keyboardShortcut("f", modifiers: [.command, .control])
         }
 
-        // Crop menu
+        // PHASE 8: Crop menu - removed Cmd+1/2/3/4 shortcuts (use inspector instead)
         CommandMenu("Crop") {
             Button("Rectangle") {
                 commands.send(.setCropMode(.rectangle))
             }
-            .keyboardShortcut("1", modifiers: .command)
 
             Button("Circle") {
                 commands.send(.setCropMode(.circle))
             }
-            .keyboardShortcut("2", modifiers: .command)
 
             Button("Custom Mask") {
                 commands.send(.setCropMode(.freehand))
             }
-            .keyboardShortcut("3", modifiers: .command)
 
             Button("AI Track") {
                 commands.send(.setCropMode(.ai))
             }
-            .keyboardShortcut("4", modifiers: .command)
 
             Divider()
 
@@ -302,6 +295,19 @@ struct CropawayCommands: Commands {
 
         // Timeline menu
         CommandMenu("Timeline") {
+            // PHASE 10: Undo/Redo
+            Button("Undo") {
+                NotificationCenter.default.post(name: .timelineUndo, object: nil)
+            }
+            .keyboardShortcut("z", modifiers: .command)
+            
+            Button("Redo") {
+                NotificationCenter.default.post(name: .timelineRedo, object: nil)
+            }
+            .keyboardShortcut("z", modifiers: [.command, .shift])
+            
+            Divider()
+            
             Button("Split Clip at Playhead") {
                 commands.send(.splitClipAtPlayhead)
             }
@@ -358,6 +364,19 @@ struct CropawayCommands: Commands {
                 NotificationCenter.default.post(name: .previousClip, object: nil)
             }
             .keyboardShortcut("[", modifiers: [.command, .shift])
+
+            Divider()
+            
+            Button("Delete Selected Clip") {
+                NotificationCenter.default.post(name: .deleteSelectedClip, object: nil)
+            }
+            .keyboardShortcut(.delete, modifiers: [])
+            
+            // PHASE 10: Blade/Split at playhead
+            Button("Blade at Playhead") {
+                NotificationCenter.default.post(name: .bladeAtPlayhead, object: nil)
+            }
+            .keyboardShortcut("b", modifiers: [.command])
 
             Divider()
 
@@ -449,7 +468,12 @@ extension Notification.Name {
     static let splitClip = Notification.Name("splitClip")
     static let setInPoint = Notification.Name("setInPoint")
     static let setOutPoint = Notification.Name("setOutPoint")
+    static let clearInOutPoints = Notification.Name("clearInOutPoints")
     static let exportSequence = Notification.Name("exportSequence")
     static let nextClip = Notification.Name("nextClip")
     static let previousClip = Notification.Name("previousClip")
+    static let deleteSelectedClip = Notification.Name("deleteSelectedClip")  // PHASE 8: Delete clip with Delete/Backspace
+    static let bladeAtPlayhead = Notification.Name("bladeAtPlayhead")  // PHASE 10: Split clip at playhead with Cmd+B
+    static let timelineUndo = Notification.Name("timelineUndo")  // PHASE 10: Undo timeline operation
+    static let timelineRedo = Notification.Name("timelineRedo")  // PHASE 10: Redo timeline operation
 }

@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import CoreGraphics
 import Combine
 
 /// Represents a sequence of video clips with transitions between them
@@ -13,11 +14,26 @@ final class Timeline: Identifiable, ObservableObject, Codable {
     /// Name of this timeline/sequence
     @Published var name: String
 
-    /// Ordered list of clips in the timeline
+    /// Tracks in the timeline (NEW: multi-track support)
+    @Published var tracks: [Track]
+
+    /// Ordered list of clips in the timeline (DEPRECATED: kept for backward compatibility)
     @Published var clips: [TimelineClip]
 
     /// Transitions between clips (indexed by afterClipIndex)
     @Published var transitions: [ClipTransition]
+
+    /// In point for export range (nil = start of timeline)
+    @Published var inPoint: Double?
+
+    /// Out point for export range (nil = end of timeline)
+    @Published var outPoint: Double?
+
+    /// Timeline frame rate (default: 30fps)
+    @Published var frameRate: Double
+
+    /// Timeline resolution (default: .zero uses first clip's resolution)
+    @Published var resolution: CGSize
 
     /// Creation date
     let dateCreated: Date
@@ -30,13 +46,23 @@ final class Timeline: Identifiable, ObservableObject, Codable {
     init(
         id: UUID = UUID(),
         name: String = "Untitled Sequence",
+        tracks: [Track] = [],
         clips: [TimelineClip] = [],
-        transitions: [ClipTransition] = []
+        transitions: [ClipTransition] = [],
+        inPoint: Double? = nil,
+        outPoint: Double? = nil,
+        frameRate: Double = 30.0,
+        resolution: CGSize = .zero
     ) {
         self.id = id
         self.name = name
+        self.tracks = tracks
         self.clips = clips
         self.transitions = transitions
+        self.inPoint = inPoint
+        self.outPoint = outPoint
+        self.frameRate = frameRate
+        self.resolution = resolution
         self.dateCreated = Date()
         self.dateModified = Date()
 
@@ -46,17 +72,37 @@ final class Timeline: Identifiable, ObservableObject, Codable {
     // MARK: - Codable
 
     enum CodingKeys: String, CodingKey {
-        case id, name, clips, transitions, dateCreated, dateModified
+        case id, name, tracks, clips, transitions, dateCreated, dateModified
+        case inPoint, outPoint, frameRate, resolution
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
         name = try container.decode(String.self, forKey: .name)
+        
+        // Try to decode tracks first (new format)
+        tracks = try container.decodeIfPresent([Track].self, forKey: .tracks) ?? []
+        
+        // Decode clips (kept for backward compatibility)
         clips = try container.decode([TimelineClip].self, forKey: .clips)
+        
         transitions = try container.decode([ClipTransition].self, forKey: .transitions)
         dateCreated = try container.decode(Date.self, forKey: .dateCreated)
         dateModified = try container.decode(Date.self, forKey: .dateModified)
+        
+        // New properties with defaults for backward compatibility
+        inPoint = try container.decodeIfPresent(Double.self, forKey: .inPoint)
+        outPoint = try container.decodeIfPresent(Double.self, forKey: .outPoint)
+        frameRate = try container.decodeIfPresent(Double.self, forKey: .frameRate) ?? 30.0
+        
+        // Decode resolution if present
+        if let width = try? container.decodeIfPresent(Double.self, forKey: .resolution),
+           let height = try? container.decodeIfPresent(Double.self, forKey: .resolution) {
+            resolution = CGSize(width: width, height: height)
+        } else {
+            resolution = .zero
+        }
 
         setupObservers()
     }
@@ -65,19 +111,41 @@ final class Timeline: Identifiable, ObservableObject, Codable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(id, forKey: .id)
         try container.encode(name, forKey: .name)
+        try container.encode(tracks, forKey: .tracks)
         try container.encode(clips, forKey: .clips)
         try container.encode(transitions, forKey: .transitions)
         try container.encode(dateCreated, forKey: .dateCreated)
         try container.encode(dateModified, forKey: .dateModified)
+        try container.encodeIfPresent(inPoint, forKey: .inPoint)
+        try container.encodeIfPresent(outPoint, forKey: .outPoint)
+        try container.encode(frameRate, forKey: .frameRate)
+        
+        // Encode resolution as width/height
+        if resolution != .zero {
+            try container.encode(resolution.width, forKey: .resolution)
+            try container.encode(resolution.height, forKey: .resolution)
+        }
     }
 
     private func setupObservers() {
-        // Mark as modified when clips or transitions change
+        // Mark as modified when tracks, clips or transitions change
+        $tracks.sink { [weak self] _ in
+            self?.dateModified = Date()
+        }.store(in: &cancellables)
+        
         $clips.sink { [weak self] _ in
             self?.dateModified = Date()
         }.store(in: &cancellables)
 
         $transitions.sink { [weak self] _ in
+            self?.dateModified = Date()
+        }.store(in: &cancellables)
+        
+        $inPoint.sink { [weak self] _ in
+            self?.dateModified = Date()
+        }.store(in: &cancellables)
+        
+        $outPoint.sink { [weak self] _ in
             self?.dateModified = Date()
         }.store(in: &cancellables)
     }
@@ -112,6 +180,125 @@ final class Timeline: Identifiable, ObservableObject, Codable {
     /// Whether the timeline has multiple clips (can have transitions)
     var hasMultipleClips: Bool {
         clips.count > 1
+    }
+    
+    // MARK: - Multi-Track Computed Properties
+    
+    /// All clips across all tracks (for unified access)
+    var allClips: [TimelineClip] {
+        tracks.flatMap { $0.clips }
+    }
+    
+    /// Video tracks only, sorted by vertical order (top to bottom)
+    var videoTracks: [Track] {
+        tracks
+            .filter { $0.mediaType == .video }
+            .sorted { $0.verticalOrder > $1.verticalOrder }
+    }
+    
+    /// Audio tracks only
+    var audioTracks: [Track] {
+        tracks
+            .filter { $0.mediaType == .audio }
+            .sorted { $0.verticalOrder > $1.verticalOrder }
+    }
+    
+    /// Find a clip by ID across all tracks
+    func findClip(withID id: UUID) -> TimelineClip? {
+        for track in tracks {
+            if let clip = track.clips.first(where: { $0.id == id }) {
+                return clip
+            }
+        }
+        return nil
+    }
+    
+    /// Find track and index for a clip by ID
+    func findClipLocation(withID id: UUID) -> (track: Track, clipIndex: Int)? {
+        for track in tracks {
+            if let index = track.clips.firstIndex(where: { $0.id == id }) {
+                return (track, index)
+            }
+        }
+        return nil
+    }
+    
+    /// Export duration (respects in/out points)
+    var exportDuration: Double {
+        if let inPt = inPoint, let outPt = outPoint {
+            return max(0, outPt - inPt)
+        }
+        return totalDuration
+    }
+    
+    /// Whether in/out points are set
+    var hasInOutPoints: Bool {
+        inPoint != nil && outPoint != nil
+    }
+    
+    // MARK: - Track Management
+    
+    /// Add a new track to the timeline
+    func addTrack(_ track: Track) {
+        tracks.append(track)
+    }
+    
+    /// Create and add a new video track
+    @discardableResult
+    func createVideoTrack(name: String? = nil) -> Track {
+        let trackNumber = videoTracks.count + 1
+        let track = Track(
+            name: name ?? "Video \(trackNumber)",
+            mediaType: .video,
+            verticalOrder: tracks.count
+        )
+        addTrack(track)
+        return track
+    }
+    
+    /// Create and add a new audio track
+    @discardableResult
+    func createAudioTrack(name: String? = nil) -> Track {
+        let trackNumber = audioTracks.count + 1
+        let track = Track(
+            name: name ?? "Audio \(trackNumber)",
+            mediaType: .audio,
+            verticalOrder: tracks.count
+        )
+        addTrack(track)
+        return track
+    }
+    
+    /// Remove a track by ID
+    @discardableResult
+    func removeTrack(_ trackID: UUID) -> Track? {
+        guard let index = tracks.firstIndex(where: { $0.id == trackID }) else { return nil }
+        return tracks.remove(at: index)
+    }
+    
+    /// Find a track by ID
+    func track(withID id: UUID) -> Track? {
+        tracks.first { $0.id == id }
+    }
+    
+    /// Find the track containing a specific clip
+    func track(containing clipID: UUID) -> Track? {
+        tracks.first { track in
+            track.clips.contains { $0.id == clipID }
+        }
+    }
+    
+    /// Move a track to a new vertical order position
+    func moveTrack(from sourceIndex: Int, to destinationIndex: Int) {
+        guard sourceIndex >= 0, sourceIndex < tracks.count,
+              destinationIndex >= 0, destinationIndex < tracks.count else { return }
+        let track = tracks.remove(at: sourceIndex)
+        tracks.insert(track, at: destinationIndex)
+        
+        // Update vertical order for all tracks
+        for (index, track) in tracks.enumerated() {
+            track.verticalOrder = index
+        }
     }
 
     // MARK: - Clip Management
@@ -306,10 +493,21 @@ final class Timeline: Identifiable, ObservableObject, Codable {
 
     /// Resolve all clip video item references after loading from persistence
     func resolveVideoItems(from videos: [VideoItem]) {
+        // Resolve clips in deprecated clips array
         for clip in clips {
             clip.resolveVideoItem(from: videos)
         }
+        
+        // Resolve clips in all tracks
+        for track in tracks {
+            for clip in track.clips {
+                clip.resolveVideoItem(from: videos)
+            }
+        }
     }
+    
+    // MARK: - Helper Methods
+
 }
 
 // MARK: - Equatable

@@ -240,6 +240,163 @@ final class FFmpegExportService {
 
         return outputURL
     }
+    
+    /// Export video with trim support, per-clip crop configuration, and transforms
+    func exportWithTrim(
+        video: VideoItem,
+        clip: TimelineClip?,
+        clipCropConfig: CropConfiguration?,
+        exportConfig: ExportConfiguration,
+        startTime: Double,
+        duration: Double,
+        progressHandler: @escaping (Double) -> Void
+    ) async throws -> URL {
+        isCancelled = false
+        
+        guard let outputURL = exportConfig.outputURL else {
+            throw ExportError.noOutputURL
+        }
+        
+        guard let ffmpegPath = findFFmpeg() else {
+            throw ExportError.ffmpegNotFound
+        }
+        
+        // Delete existing file
+        try? FileManager.default.removeItem(at: outputURL)
+        
+        let metadata = video.metadata
+        let sourceURL = video.sourceURL
+        
+        // Use clip's crop config if provided, otherwise fall back to video's crop
+        let cropConfig = clipCropConfig ?? video.cropConfiguration
+        let preserveDimensions = cropConfig.preserveWidth
+        let enableAlpha = cropConfig.enableAlphaChannel
+        
+        // Build FFmpeg arguments with trim support
+        var args: [String] = ["-y"]
+        
+        // Add trim parameters BEFORE input
+        args += ["-ss", String(format: "%.3f", startTime)]
+        args += ["-t", String(format: "%.3f", duration)]
+        args += ["-i", sourceURL.path]
+        
+        // Calculate crop parameters
+        let cropX = Int(cropConfig.cropRect.origin.x * Double(metadata.width))
+        let cropY = Int(cropConfig.cropRect.origin.y * Double(metadata.height))
+        var cropW = Int(cropConfig.cropRect.width * Double(metadata.width))
+        var cropH = Int(cropConfig.cropRect.height * Double(metadata.height))
+        // Ensure even dimensions
+        cropW = cropW % 2 == 0 ? cropW : cropW - 1
+        cropH = cropH % 2 == 0 ? cropH : cropH - 1
+        
+        // Determine if actual cropping is needed
+        let needsCrop = cropW != metadata.width || cropH != metadata.height || cropX != 0 || cropY != 0
+        
+        // Build filter chain (crop + transforms)
+        var filterChain: [String] = []
+        
+        // Add crop/mask filter based on mode
+        switch cropConfig.mode {
+        case .rectangle:
+            if needsCrop {
+                if preserveDimensions {
+                    if enableAlpha {
+                        filterChain.append("crop=\(cropW):\(cropH):\(cropX):\(cropY),pad=\(metadata.width):\(metadata.height):\(cropX):\(cropY):color=black@0")
+                    } else {
+                        filterChain.append("crop=\(cropW):\(cropH):\(cropX):\(cropY),pad=\(metadata.width):\(metadata.height):\(cropX):\(cropY):black")
+                    }
+                } else {
+                    filterChain.append("crop=\(cropW):\(cropH):\(cropX):\(cropY)")
+                }
+            }
+            
+            // PHASE 3: Add transform filters if clip has transforms
+            if let clip = clip {
+                // Scale
+                if clip.scale != 1.0 {
+                    let scaleFilter = "scale=iw*\(clip.scale):ih*\(clip.scale)"
+                    filterChain.append(scaleFilter)
+                }
+                
+                // Rotation
+                if clip.rotation != 0.0 {
+                    let radians = clip.rotation * .pi / 180.0
+                    filterChain.append("rotate=\(radians):c=black:ow='hypot(iw,ih)':oh=ow")
+                }
+                
+                // Flip
+                if clip.flipHorizontal {
+                    filterChain.append("hflip")
+                }
+                if clip.flipVertical {
+                    filterChain.append("vflip")
+                }
+                
+                // Opacity (requires alpha channel)
+                if clip.opacity != 1.0 && enableAlpha {
+                    filterChain.append("format=yuva420p,colorchannelmixer=aa=\(clip.opacity)")
+                }
+            }
+            
+            // Apply filter chain if not empty
+            if !filterChain.isEmpty {
+                args += ["-vf", filterChain.joined(separator: ",")]
+            }
+            
+        case .circle, .freehand, .ai:
+            // Generate mask and use it
+            let maskURL = try await generateMaskImage(cropConfig: cropConfig, size: CGSize(width: metadata.width, height: metadata.height))
+            args = ["-y"]
+            args += ["-ss", String(format: "%.3f", startTime)]
+            args += ["-t", String(format: "%.3f", duration)]
+            args += ["-i", sourceURL.path, "-i", maskURL.path]
+            
+            if preserveDimensions {
+                if enableAlpha {
+                    args += ["-filter_complex", "[1:v]format=gray[mask];[0:v][mask]alphamerge"]
+                } else {
+                    args += ["-filter_complex", "[1:v]format=gray,negate[mask];[0:v][mask]blend=all_mode='multiply'"]
+                }
+            } else {
+                // Not implemented for masks - use full dimensions
+                if enableAlpha {
+                    args += ["-filter_complex", "[1:v]format=gray[mask];[0:v][mask]alphamerge"]
+                } else {
+                    args += ["-filter_complex", "[1:v]format=gray,negate[mask];[0:v][mask]blend=all_mode='multiply'"]
+                }
+            }
+        }
+        
+        // Codec selection (match source format)
+        let codec = metadata.codecType.lowercased()
+        if codec.contains("h264") || codec.contains("avc") {
+            args += ["-c:v", "h264_videotoolbox", "-b:v", "10000k"]
+        } else if codec.contains("hevc") || codec.contains("h265") {
+            args += ["-c:v", "hevc_videotoolbox", "-b:v", "15000k"]
+        } else if codec.contains("prores") {
+            args += ["-c:v", "prores_videotoolbox"]
+            if enableAlpha {
+                args += ["-profile:v", "4"]  // ProRes 4444
+            }
+        } else {
+            // Default to H.264
+            args += ["-c:v", "h264_videotoolbox", "-b:v", "10000k"]
+        }
+        
+        // Copy audio
+        args += ["-c:a", "copy"]
+        
+        // Output
+        args += [outputURL.path]
+        
+        print("FFmpeg (with trim): \(ffmpegPath) \(args.joined(separator: " "))")
+        
+        // Run FFmpeg
+        defer { cleanupTempFiles() }
+        try await runFFmpeg(path: ffmpegPath, arguments: args, duration: duration, progressHandler: progressHandler)
+        
+        return outputURL
+    }
 
     private func findFFmpeg() -> String? {
         // First check if FFmpeg is bundled with the app

@@ -231,9 +231,10 @@ final class ExportViewModel {
     }
 
     /// Export a timeline (multiple trimmed clips) as a single video
+    /// PHASE 6: Now respects in/out points if set
     func exportTimeline(_ timeline: Timeline, suggestedName: String = "timeline") async {
         guard !isExporting else { return }
-        guard !timeline.clips.isEmpty else {
+        guard !timeline.allClips.isEmpty else {
             self.error = "Timeline is empty"
             return
         }
@@ -250,6 +251,7 @@ final class ExportViewModel {
         do {
             timelineService = TimelineExportService()
             
+            // PHASE 6: Export respects in/out points automatically via getClipsInRange()
             let videoURL = try await timelineService!.exportTimeline(
                 timeline,
                 to: outputURL

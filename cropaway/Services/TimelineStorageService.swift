@@ -11,7 +11,7 @@ final class TimelineStorageService {
     static let shared = TimelineStorageService()
     
     private let fileManager = FileManager.default
-    private let storageVersion = "1.0"
+    private let storageVersion = "2.0"  // Updated for multi-track support
     
     /// Serial queue for thread-safe file operations
     private let fileQueue = DispatchQueue(label: "com.cropaway.timeline-storage", qos: .userInitiated)
@@ -73,8 +73,20 @@ final class TimelineStorageService {
                 let decoder = JSONDecoder()
                 decoder.dateDecodingStrategy = .iso8601
                 let document = try decoder.decode(TimelineDocument.self, from: data)
-                print("✅ Timeline loaded: \(document.timeline.name)")
-                return document.timeline
+                
+                // Migrate timeline if needed (old format to multi-track)
+                let timeline = document.timeline
+                if timeline.needsMigration {
+                    print("🔄 Migrating timeline '\(timeline.name)' to multi-track format...")
+                    Task { @MainActor in
+                        DataMigrationService.migrateTimeline(timeline)
+                        // Auto-save migrated timeline
+                        try? self.save(timeline)
+                    }
+                }
+                
+                print("✅ Timeline loaded: \(timeline.name)")
+                return timeline
             } catch {
                 print("⚠️ Failed to load timeline \(id): \(error)")
                 return nil
@@ -99,7 +111,20 @@ final class TimelineStorageService {
                         let decoder = JSONDecoder()
                         decoder.dateDecodingStrategy = .iso8601
                         let document = try decoder.decode(TimelineDocument.self, from: data)
-                        timelines.append(document.timeline)
+                        
+                        let timeline = document.timeline
+                        
+                        // Migrate timeline if needed (old format to multi-track)
+                        if timeline.needsMigration {
+                            print("🔄 Migrating timeline '\(timeline.name)' to multi-track format...")
+                            Task { @MainActor in
+                                DataMigrationService.migrateTimeline(timeline)
+                                // Auto-save migrated timeline
+                                try? self.save(timeline)
+                            }
+                        }
+                        
+                        timelines.append(timeline)
                     } catch {
                         print("⚠️ Failed to load timeline from \(fileURL.lastPathComponent): \(error)")
                     }
@@ -157,11 +182,21 @@ final class TimelineStorageService {
         decoder.dateDecodingStrategy = .iso8601
         let document = try decoder.decode(TimelineDocument.self, from: data)
         
-        // Save to Application Support
-        try save(document.timeline)
+        let timeline = document.timeline
         
-        print("✅ Timeline imported: \(document.timeline.name)")
-        return document.timeline
+        // Migrate timeline if needed (old format to multi-track)
+        if timeline.needsMigration {
+            print("🔄 Migrating imported timeline '\(timeline.name)' to multi-track format...")
+            Task { @MainActor in
+                DataMigrationService.migrateTimeline(timeline)
+            }
+        }
+        
+        // Save to Application Support
+        try save(timeline)
+        
+        print("✅ Timeline imported: \(timeline.name)")
+        return timeline
     }
     
     // MARK: - Private Helpers
@@ -186,7 +221,7 @@ struct TimelineDocument: Codable {
     let timeline: Timeline
     let savedAt: Date
     
-    init(timeline: Timeline, version: String = "1.0") {
+    init(timeline: Timeline, version: String = "2.0") {
         self.version = version
         self.timeline = timeline
         self.savedAt = Date()

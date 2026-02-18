@@ -4,12 +4,13 @@
 //
 
 import Foundation
-import AVFoundation
+@preconcurrency import AVFoundation
 import CoreVideo
 import Accelerate
 
 /// Custom video compositor for rendering transitions in real-time
 /// Implements AVVideoCompositing protocol to blend frames during playback
+@preconcurrency
 final class TransitionVideoCompositor: NSObject, AVVideoCompositing {
     
     private let renderQueue = DispatchQueue(label: "com.cropaway.transitionCompositor", qos: .userInteractive)
@@ -17,18 +18,20 @@ final class TransitionVideoCompositor: NSObject, AVVideoCompositing {
     
     // MARK: - AVVideoCompositing Protocol
     
-    var sourcePixelBufferAttributes: [String : Any]? {
-        return [
+    nonisolated var sourcePixelBufferAttributes: [String : Any]? {
+        let attrs: [String: Any] = [
             String(kCVPixelBufferPixelFormatTypeKey): kCVPixelFormatType_32BGRA,
             String(kCVPixelBufferOpenGLCompatibilityKey): true
         ]
+        return attrs
     }
     
-    var requiredPixelBufferAttributesForRenderContext: [String : Any] {
-        return [
+    nonisolated var requiredPixelBufferAttributesForRenderContext: [String : Any] {
+        let attrs: [String: Any] = [
             String(kCVPixelBufferPixelFormatTypeKey): kCVPixelFormatType_32BGRA,
             String(kCVPixelBufferOpenGLCompatibilityKey): true
         ]
+        return attrs
     }
     
     func renderContextChanged(_ newRenderContext: AVVideoCompositionRenderContext) {

@@ -13,21 +13,42 @@ import Observation
 final class KeyframeViewModel {
     var keyframes: [Keyframe] = [] {
         didSet {
-            currentVideo?.cropConfiguration.keyframes = keyframes
+            syncKeyframesToConfig()
         }
     }
     
     var keyframesEnabled: Bool = false {
         didSet {
-            currentVideo?.cropConfiguration.keyframesEnabled = keyframesEnabled
+            syncKeyframesEnabledToConfig()
         }
     }
     
     var selectedKeyframeIDs: Set<UUID> = []
 
+    // NEW: Support for per-clip keyframes
+    @ObservationIgnored private var currentClip: TimelineClip?
+    // LEGACY: Support for per-video keyframes
     @ObservationIgnored private var currentVideo: VideoItem?
     @ObservationIgnored private var cropEditor: CropEditorViewModel?
     @ObservationIgnored private var cancellables = Set<AnyCancellable>()
+    
+    /// Helper to sync keyframes to the appropriate configuration
+    private func syncKeyframesToConfig() {
+        if let clip = currentClip {
+            clip.cropConfiguration?.keyframes = keyframes
+        } else {
+            currentVideo?.cropConfiguration.keyframes = keyframes
+        }
+    }
+    
+    /// Helper to sync keyframesEnabled to the appropriate configuration
+    private func syncKeyframesEnabledToConfig() {
+        if let clip = currentClip {
+            clip.cropConfiguration?.keyframesEnabled = keyframesEnabled
+        } else {
+            currentVideo?.cropConfiguration.keyframesEnabled = keyframesEnabled
+        }
+    }
 
     // Convenience for single selection (primary selected keyframe)
     var selectedKeyframe: Keyframe? {
@@ -48,9 +69,31 @@ final class KeyframeViewModel {
         keyframes.filter { selectedKeyframeIDs.contains($0.id) }
     }
 
+    /// Bind to a timeline clip's crop configuration (NEW: per-clip keyframes)
+    func bind(to clip: TimelineClip, cropEditor: CropEditorViewModel) {
+        cancellables.removeAll()
+        currentClip = clip
+        currentVideo = nil
+        self.cropEditor = cropEditor
+
+        guard let config = clip.cropConfiguration else {
+            // Create default config if missing
+            clip.cropConfiguration = CropConfiguration()
+            bind(to: clip, cropEditor: cropEditor)
+            return
+        }
+
+        // Sync from config
+        keyframes = config.keyframes
+        keyframesEnabled = config.keyframesEnabled
+        selectedKeyframeIDs.removeAll()
+    }
+
+    /// Bind to a video item's crop configuration (LEGACY: for backward compatibility)
     func bind(to video: VideoItem, cropEditor: CropEditorViewModel) {
         cancellables.removeAll()
         currentVideo = video
+        currentClip = nil
         self.cropEditor = cropEditor
 
         let config = video.cropConfiguration
@@ -128,13 +171,13 @@ final class KeyframeViewModel {
             keyframes.append(keyframe)
         }
 
-        currentVideo?.cropConfiguration.keyframes = keyframes
+        // didSet will sync to config
         selectedKeyframeIDs = [keyframe.id]
     }
 
     func removeKeyframe(_ keyframe: Keyframe) {
         keyframes.removeAll { $0.id == keyframe.id }
-        currentVideo?.cropConfiguration.keyframes = keyframes
+        // didSet will sync to config
         selectedKeyframeIDs.remove(keyframe.id)
     }
 
@@ -147,7 +190,7 @@ final class KeyframeViewModel {
     func deleteSelected() {
         let idsToRemove = selectedKeyframeIDs
         keyframes.removeAll { idsToRemove.contains($0.id) }
-        currentVideo?.cropConfiguration.keyframes = keyframes
+        // didSet will sync to config
         selectedKeyframeIDs.removeAll()
     }
 
@@ -167,7 +210,7 @@ final class KeyframeViewModel {
 
     func sortKeyframes() {
         keyframes.sort { $0.timestamp < $1.timestamp }
-        currentVideo?.cropConfiguration.keyframes = keyframes
+        // didSet will sync to config
     }
 
     // MARK: - Update
@@ -190,7 +233,7 @@ final class KeyframeViewModel {
             keyframe.aiBoundingBox = cropEditor.aiBoundingBox.width > 0 ? cropEditor.aiBoundingBox : nil
         }
 
-        currentVideo?.cropConfiguration.keyframes = keyframes
+        // didSet will sync to config
     }
 
     func applyKeyframeState(at timestamp: Double) {

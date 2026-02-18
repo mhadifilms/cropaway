@@ -15,7 +15,11 @@ final class CropEditorViewModel {
     var mode: CropMode = .rectangle {
         didSet {
             guard !isSyncing else { return }
-            currentVideo?.cropConfiguration.mode = mode
+            if let clip = currentClip {
+                clip.cropConfiguration?.mode = mode
+            } else {
+                currentVideo?.cropConfiguration.mode = mode
+            }
         }
     }
 
@@ -25,7 +29,7 @@ final class CropEditorViewModel {
     var cropRect: CGRect = CGRect(x: 0, y: 0, width: 1, height: 1) {
         didSet {
             guard !isSyncing else { return }
-            currentVideo?.cropConfiguration.cropRect = cropRect
+            syncToConfig { $0.cropRect = cropRect }
         }
     }
 
@@ -33,7 +37,7 @@ final class CropEditorViewModel {
     var edgeInsets: EdgeInsets = EdgeInsets() {
         didSet {
             guard !isSyncing else { return }
-            currentVideo?.cropConfiguration.edgeInsets = edgeInsets
+            syncToConfig { $0.edgeInsets = edgeInsets }
         }
     }
 
@@ -41,14 +45,14 @@ final class CropEditorViewModel {
     var circleCenter: CGPoint = CGPoint(x: 0.5, y: 0.5) {
         didSet {
             guard !isSyncing else { return }
-            currentVideo?.cropConfiguration.circleCenter = circleCenter
+            syncToConfig { $0.circleCenter = circleCenter }
         }
     }
 
     var circleRadius: Double = 0.4 {
         didSet {
             guard !isSyncing else { return }
-            currentVideo?.cropConfiguration.circleRadius = circleRadius
+            syncToConfig { $0.circleRadius = circleRadius }
         }
     }
 
@@ -56,14 +60,14 @@ final class CropEditorViewModel {
     var freehandPoints: [CGPoint] = [] {
         didSet {
             guard !isSyncing else { return }
-            currentVideo?.cropConfiguration.freehandPoints = freehandPoints
+            syncToConfig { $0.freehandPoints = freehandPoints }
         }
     }
 
     var freehandPathData: Data? = nil {
         didSet {
             guard !isSyncing else { return }
-            currentVideo?.cropConfiguration.freehandPathData = freehandPathData
+            syncToConfig { $0.freehandPathData = freehandPathData }
         }
     }
 
@@ -73,35 +77,44 @@ final class CropEditorViewModel {
     var aiMaskData: Data? {
         didSet {
             guard !isSyncing else { return }
-            currentVideo?.cropConfiguration.aiMaskData = aiMaskData
+            syncToConfig { $0.aiMaskData = aiMaskData }
         }
     }
 
     var aiPromptPoints: [AIPromptPoint] = [] {
         didSet {
             guard !isSyncing else { return }
-            currentVideo?.cropConfiguration.aiPromptPoints = aiPromptPoints
+            syncToConfig { $0.aiPromptPoints = aiPromptPoints }
         }
     }
 
     var aiTextPrompt: String? {
         didSet {
             guard !isSyncing else { return }
-            currentVideo?.cropConfiguration.aiTextPrompt = aiTextPrompt
+            syncToConfig { $0.aiTextPrompt = aiTextPrompt }
         }
     }
 
     var aiBoundingBox: CGRect = .zero {
         didSet {
             guard !isSyncing else { return }
-            currentVideo?.cropConfiguration.aiBoundingBox = aiBoundingBox
+            syncToConfig { $0.aiBoundingBox = aiBoundingBox }
         }
     }
 
     var aiInteractionMode: AIInteractionMode = .point {
         didSet {
             guard !isSyncing else { return }
-            currentVideo?.cropConfiguration.aiInteractionMode = aiInteractionMode
+            syncToConfig { $0.aiInteractionMode = aiInteractionMode }
+        }
+    }
+    
+    /// Helper to sync property changes to the appropriate crop configuration
+    private func syncToConfig(_ update: (CropConfiguration) -> Void) {
+        if let clip = currentClip, let config = clip.cropConfiguration {
+            update(config)
+        } else if let video = currentVideo {
+            update(video.cropConfiguration)
         }
     }
 
@@ -109,14 +122,48 @@ final class CropEditorViewModel {
     // Used for auto-keyframe creation
     var onCropEditEnded: (() -> Void)?
 
-    // Active video
+    // Active clip (NEW: bind to clip instead of video)
+    @ObservationIgnored private var currentClip: TimelineClip?
+    // Legacy support: Active video (for backward compatibility)
     @ObservationIgnored private var currentVideo: VideoItem?
     @ObservationIgnored private var cancellables = Set<AnyCancellable>()
     @ObservationIgnored private var isSyncing = false
 
+    /// Bind to a timeline clip's crop configuration (NEW: per-clip cropping)
+    func bind(to clip: TimelineClip) {
+        cancellables.removeAll()
+        currentClip = clip
+        currentVideo = nil
+        
+        guard let config = clip.cropConfiguration else {
+            // Create default config if missing
+            clip.cropConfiguration = CropConfiguration()
+            bind(to: clip)
+            return
+        }
+
+        // Sync from config (disable didSet syncing during load)
+        isSyncing = true
+        mode = config.mode
+        cropRect = config.cropRect
+        edgeInsets = config.edgeInsets
+        circleCenter = config.circleCenter
+        circleRadius = config.circleRadius
+        freehandPoints = config.freehandPoints
+        freehandPathData = config.freehandPathData
+        aiMaskData = config.aiMaskData
+        aiPromptPoints = config.aiPromptPoints
+        aiTextPrompt = config.aiTextPrompt
+        aiBoundingBox = config.aiBoundingBox
+        aiInteractionMode = config.aiInteractionMode
+        isSyncing = false
+    }
+
+    /// Bind to a video item's crop configuration (LEGACY: for backward compatibility)
     func bind(to video: VideoItem) {
         cancellables.removeAll()
         currentVideo = video
+        currentClip = nil
 
         let config = video.cropConfiguration
 

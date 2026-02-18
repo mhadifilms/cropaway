@@ -185,7 +185,7 @@ struct AppCommandHandler: ViewModifier {
         savePanel.nameFieldStringValue = video.fileName.replacingOccurrences(of: ".mp4", with: "_cropped.mp4")
         
         savePanel.begin { response in
-            if response == .OK, let url = savePanel.url {
+            if response == .OK, let _ = savePanel.url {
                 Task { @MainActor in
                     // Export logic handled by ExportViewModel
                 }

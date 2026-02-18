@@ -130,7 +130,7 @@ final class TransitionCompositionBuilder {
         var currentTime = CMTime.zero
         
         // Build clip layouts
-        for (index, clip) in timeline.clips.enumerated() {
+        for (index, clip) in timeline.allClips.enumerated() {
             let duration = CMTime(seconds: clip.trimmedDuration, preferredTimescale: 600)
             
             let clipLayout = ClipLayout(
@@ -150,7 +150,7 @@ final class TransitionCompositionBuilder {
                 let nextClipLayout = ClipLayout(
                     clipIndex: index + 1,
                     startTime: CMTimeAdd(currentTime, duration),
-                    duration: CMTime(seconds: timeline.clips[index + 1].trimmedDuration, preferredTimescale: 600),
+                    duration: CMTime(seconds: timeline.allClips[index + 1].trimmedDuration, preferredTimescale: 600),
                     trackID: videoTrack.trackID
                 )
                 

@@ -42,6 +42,13 @@ final class Keyframe: Identifiable, ObservableObject {
     @Published var aiMaskData: Data?
     @Published var aiPromptPoints: [AIPromptPoint]?
     @Published var aiBoundingBox: CGRect?
+    
+    // PHASE 2/3: Transform properties at this keyframe
+    @Published var scale: CGFloat?
+    @Published var positionX: Double?
+    @Published var positionY: Double?
+    @Published var rotation: Double?
+    @Published var opacity: Double?
 
     // Interpolation to next keyframe
     @Published var interpolation: KeyframeInterpolation
@@ -76,6 +83,14 @@ final class Keyframe: Identifiable, ObservableObject {
         kf.aiMaskData = aiMaskData
         kf.aiPromptPoints = aiPromptPoints
         kf.aiBoundingBox = aiBoundingBox
+        
+        // PHASE 2/3: Copy transform properties
+        kf.scale = scale
+        kf.positionX = positionX
+        kf.positionY = positionY
+        kf.rotation = rotation
+        kf.opacity = opacity
+        
         return kf
     }
 }

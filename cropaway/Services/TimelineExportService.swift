@@ -25,7 +25,14 @@ final class TimelineExportService {
         to outputURL: URL,
         progressHandler: @escaping (Double) -> Void
     ) async throws -> URL {
-        guard !timeline.clips.isEmpty else {
+        // Check if timeline has any clips across all tracks
+        guard !timeline.allClips.isEmpty else {
+            throw TimelineExportError.emptyTimeline
+        }
+
+        // PHASE 6: Filter clips based on in/out points if set
+        let clipsToExport = getClipsInRange(timeline)
+        guard !clipsToExport.isEmpty else {
             throw TimelineExportError.emptyTimeline
         }
 
@@ -34,12 +41,12 @@ final class TimelineExportService {
         defer { cleanupTempDirectory() }
 
         var exportedClipURLs: [URL] = []
-        let totalClips = timeline.clips.count
+        let totalClips = clipsToExport.count
         let clipProgressWeight = 0.8 / Double(totalClips)  // 80% for clip exports
         let _ = 0.2  // 20% for concatenation (reserved for future use)
 
         // Export each clip with its crop settings
-        for (index, clip) in timeline.clips.enumerated() {
+        for (index, clip) in clipsToExport.enumerated() {
             let clipStartProgress = Double(index) * clipProgressWeight
 
             guard let videoItem = clip.videoItem else {
@@ -60,11 +67,11 @@ final class TimelineExportService {
             exportedClipURLs.append(clipURL)
 
             // Generate transition frames if needed (macOS 26+ only)
-            if index < timeline.clips.count - 1 {
+            if index < timeline.allClips.count - 1 {
                 if let transition = timeline.transition(afterClipIndex: index),
                    transition.type == .opticalFlow {
                     if #available(macOS 26.0, *) {
-                        let nextClip = timeline.clips[index + 1]
+                        let nextClip = timeline.allClips[index + 1]
                         if let nextVideoItem = nextClip.videoItem {
                             let transitionURL = try await generateTransitionVideo(
                                 from: clipURL,
@@ -90,6 +97,32 @@ final class TimelineExportService {
     }
 
     // MARK: - Private Methods
+    
+    /// PHASE 6: Get clips that fall within the in/out range
+    private func getClipsInRange(_ timeline: Timeline) -> [TimelineClip] {
+        // If no in/out points set, export all clips
+        guard let inPoint = timeline.inPoint, let outPoint = timeline.outPoint else {
+            return timeline.allClips
+        }
+        
+        // Filter clips that intersect with the in/out range
+        var clipsInRange: [TimelineClip] = []
+        var currentTime: Double = 0
+        
+        for clip in timeline.allClips {
+            let clipStart = currentTime
+            let clipEnd = currentTime + clip.trimmedDuration
+            
+            // Check if clip intersects with in/out range
+            if clipEnd > inPoint && clipStart < outPoint {
+                clipsInRange.append(clip)
+            }
+            
+            currentTime = clipEnd
+        }
+        
+        return clipsInRange
+    }
 
     private func createTempDirectory() throws -> URL {
         let tempDir = FileManager.default.temporaryDirectory
@@ -117,26 +150,32 @@ final class TimelineExportService {
 
         let outputURL = tempDir.appendingPathComponent("clip_\(index).mov")
 
-        // Create export configuration from the video item's crop settings
+        // Create export configuration from the CLIP's crop settings (per-clip, not per-video)
         let config = ExportConfiguration()
-        config.preserveWidth = videoItem.cropConfiguration.preserveWidth
-        config.enableAlphaChannel = videoItem.cropConfiguration.enableAlphaChannel
+        
+        // Use clip's crop configuration if available, otherwise fall back to video's crop
+        let cropConfig = clip.cropConfiguration ?? videoItem.cropConfiguration
+        config.preserveWidth = cropConfig.preserveWidth
+        config.enableAlphaChannel = cropConfig.enableAlphaChannel
         config.outputURL = outputURL
 
         // Apply trim points
         let startTime = clip.sourceStartTime
         let duration = clip.trimmedDuration
 
-        // Use FFmpeg to export with trim and crop
-        try await ffmpegService.exportWithTrim(
+        // Use FFmpeg to export with trim, crop, and transforms
+        // PHASE 3: Pass the clip itself for transform application
+        let exportedURL = try await ffmpegService.exportWithTrim(
             video: videoItem,
+            clip: clip,  // PHASE 3: pass clip for transforms
+            clipCropConfig: clip.cropConfiguration,  // PHASE 2: per-clip crop
             exportConfig: config,
             startTime: startTime,
             duration: duration,
             progressHandler: progressHandler
         )
 
-        return outputURL
+        return exportedURL
     }
 
     /// Generate optical flow transition video between two clips

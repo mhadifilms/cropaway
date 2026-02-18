@@ -9,12 +9,16 @@
 /* Begin PBXBuildFile section */
 		AFDBD6B92F252A6800B896FD /* cropaway.icon in Resources */ = {isa = PBXBuildFile; fileRef = AFDBD6B82F252A6800B896FD /* cropaway.icon */; };
 		BE260B6D2F37138200087E65 /* MODERNIZATION_SUMMARY.md in Resources */ = {isa = PBXBuildFile; fileRef = BE260B6C2F37138200087E65 /* MODERNIZATION_SUMMARY.md */; };
+		BE367E062F43F9A000A209C1 /* PHASE_9_10_COMPLETION_SUMMARY.md in Resources */ = {isa = PBXBuildFile; fileRef = BE367E052F43F9A000A209C1 /* PHASE_9_10_COMPLETION_SUMMARY.md */; };
+		BE367E082F43FF4300A209C1 /* CRITICAL_BUGFIXES_SUMMARY.md in Resources */ = {isa = PBXBuildFile; fileRef = BE367E072F43FF4300A209C1 /* CRITICAL_BUGFIXES_SUMMARY.md */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		AF3164AC2F224F0200D55C04 /* Cropaway.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Cropaway.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AFDBD6B82F252A6800B896FD /* cropaway.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = cropaway.icon; sourceTree = "<group>"; };
 		BE260B6C2F37138200087E65 /* MODERNIZATION_SUMMARY.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = MODERNIZATION_SUMMARY.md; sourceTree = "<group>"; };
+		BE367E052F43F9A000A209C1 /* PHASE_9_10_COMPLETION_SUMMARY.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = PHASE_9_10_COMPLETION_SUMMARY.md; sourceTree = "<group>"; };
+		BE367E072F43FF4300A209C1 /* CRITICAL_BUGFIXES_SUMMARY.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = CRITICAL_BUGFIXES_SUMMARY.md; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -43,6 +47,8 @@
 				AF3164AD2F224F0200D55C04 /* Products */,
 				AFDBD6B82F252A6800B896FD /* cropaway.icon */,
 				BE260B6C2F37138200087E65 /* MODERNIZATION_SUMMARY.md */,
+				BE367E052F43F9A000A209C1 /* PHASE_9_10_COMPLETION_SUMMARY.md */,
+				BE367E072F43FF4300A209C1 /* CRITICAL_BUGFIXES_SUMMARY.md */,
 			);
 			sourceTree = "<group>";
 		};
@@ -120,6 +126,8 @@
 			files = (
 				AFDBD6B92F252A6800B896FD /* cropaway.icon in Resources */,
 				BE260B6D2F37138200087E65 /* MODERNIZATION_SUMMARY.md in Resources */,
+				BE367E062F43F9A000A209C1 /* PHASE_9_10_COMPLETION_SUMMARY.md in Resources */,
+				BE367E082F43FF4300A209C1 /* CRITICAL_BUGFIXES_SUMMARY.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

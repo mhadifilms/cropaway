@@ -67,8 +67,8 @@ struct VideoDetailView: View {
                             .toolbarGlassBackground()
                     }
                     
-                    // Sequence timeline (when panel is visible)
-                    if timelineVM.isTimelinePanelVisible && timelineVM.activeTimeline != nil {
+                    // PHASE 7: Timeline always visible (timeline-first UI)
+                    if timelineVM.activeTimeline != nil {
                         Divider()
                         TimelineTrackView()
                             .frame(height: 80)

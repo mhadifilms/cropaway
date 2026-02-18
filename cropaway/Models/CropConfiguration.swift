@@ -43,6 +43,36 @@ final class CropConfiguration: ObservableObject {
     @Published var enableAlphaChannel: Bool = false
 
     init() {}
+    
+    /// Create a deep copy of another CropConfiguration
+    init(from other: CropConfiguration) {
+        self.mode = other.mode
+        self.isEnabled = other.isEnabled
+        
+        self.cropRect = other.cropRect
+        self.edgeInsets = other.edgeInsets
+        
+        self.circleCenter = other.circleCenter
+        self.circleRadius = other.circleRadius
+        
+        self.freehandPathData = other.freehandPathData
+        self.freehandPoints = other.freehandPoints
+        
+        self.aiMaskData = other.aiMaskData
+        self.aiPromptPoints = other.aiPromptPoints
+        self.aiTextPrompt = other.aiTextPrompt
+        self.aiObjectId = other.aiObjectId
+        self.aiBoundingBox = other.aiBoundingBox
+        self.aiConfidence = other.aiConfidence
+        self.aiInteractionMode = other.aiInteractionMode
+        
+        // Deep copy keyframes
+        self.keyframes = other.keyframes.map { $0.copy() }
+        self.keyframesEnabled = other.keyframesEnabled
+        
+        self.preserveWidth = other.preserveWidth
+        self.enableAlphaChannel = other.enableAlphaChannel
+    }
 
     var hasKeyframes: Bool {
         keyframesEnabled && keyframes.count > 1
