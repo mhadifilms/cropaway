@@ -32,12 +32,13 @@
                 <MenuItem Header="_Open Videos..." Command="{Binding Project.OpenVideosCommand}" InputGestureText="Ctrl+O" />
                 <MenuItem Header="_Add Videos..." Command="{Binding Project.OpenVideosCommand}" InputGestureText="Ctrl+N" />
                 <Separator />
-                <MenuItem Header="_Export..." Command="{Binding ExportCurrentVideoCommand}" InputGestureText="Ctrl+E" />
+                <MenuItem Header="Export _Video..." Command="{Binding ExportCurrentVideoCommand}" InputGestureText="Ctrl+E" />
                 <MenuItem Header="Export _All..." Command="{Binding ExportAllCommand}" InputGestureText="Ctrl+Shift+E" />
-                <MenuItem Header="Export Crop _JSON..." Command="{Binding ExportCropJsonCommand}" InputGestureText="Ctrl+Shift+J" />
                 <Separator />
-                <MenuItem Header="Export _Bounding Box JSON..." Command="{Binding ExportBoundingBoxJsonCommand}" />
-                <MenuItem Header="Export Bounding Box _Pickle..." Command="{Binding ExportBoundingBoxPickleCommand}" />
+                <MenuItem Header="Export Crop _Data (JSON)..." Command="{Binding ExportCropJsonCommand}" InputGestureText="Ctrl+Shift+J" />
+                <Separator />
+                <MenuItem Header="Export _Bounding Boxes (JSON)..." Command="{Binding ExportBoundingBoxJsonCommand}" />
+                <MenuItem Header="Export Bounding Boxes (_Pickle)..." Command="{Binding ExportBoundingBoxPickleCommand}" />
                 <Separator />
                 <MenuItem Header="_Reveal in Explorer" Command="{Binding RevealInExplorerCommand}" />
                 <Separator />
@@ -198,23 +199,83 @@
                     <CheckBox Content="Alpha Channel" IsChecked="{Binding CropEditor.EnableAlphaChannel}"
                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,12,0" VerticalAlignment="Center" />
 
-                    <Button Command="{Binding ExportCurrentVideoCommand}"
-                            ToolTipService.ShowOnDisabled="True"
-                            ToolTip="Export Video (Ctrl+E)">
-                        <Button.Style>
-                            <Style TargetType="Button" BasedOn="{StaticResource AccentButton}">
-                                <Style.Triggers>
-                                    <Trigger Property="IsEnabled" Value="False">
-                                        <Setter Property="ToolTip" Value="Make crop changes to enable export" />
-                                    </Trigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Button.Style>
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xEDE1;" FontSize="14" Margin="0,0,6,0" />
-                            <TextBlock Text="Export" />
-                        </StackPanel>
-                    </Button>
+                    <!-- Export dropdown (matches macOS: click exports video, dropdown shows all export options) -->
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Primary export button -->
+                        <Button Grid.Column="0"
+                                Command="{Binding ExportCurrentVideoCommand}"
+                                ToolTipService.ShowOnDisabled="True"
+                                ToolTip="Export Video (Ctrl+E)">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource AccentButton}">
+                                    <Setter Property="Padding" Value="10,5,6,5" />
+                                    <Style.Triggers>
+                                        <Trigger Property="IsEnabled" Value="False">
+                                            <Setter Property="ToolTip" Value="Make crop changes to enable export" />
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xEDE1;" FontSize="14" Margin="0,0,6,0" />
+                                <TextBlock Text="Export" />
+                            </StackPanel>
+                        </Button>
+
+                        <!-- Dropdown arrow with export options menu -->
+                        <Button Grid.Column="1" x:Name="ExportDropdownButton"
+                                Click="OnExportDropdownClick"
+                                ToolTip="More export options">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource AccentButton}">
+                                    <Setter Property="Padding" Value="4,5" />
+                                    <Setter Property="Margin" Value="-1,0,0,0" />
+                                </Style>
+                            </Button.Style>
+                            <TextBlock Text="&#x25BC;" FontSize="8" Opacity="0.8" />
+                            <Button.ContextMenu>
+                                <ContextMenu Background="{StaticResource SurfaceBrush}"
+                                             Foreground="{StaticResource TextPrimaryBrush}"
+                                             BorderBrush="{StaticResource BorderBrush}">
+                                    <MenuItem Header="Export Video..." Command="{Binding ExportCurrentVideoCommand}"
+                                              InputGestureText="Ctrl+E">
+                                        <MenuItem.Icon>
+                                            <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE8B7;" FontSize="12" />
+                                        </MenuItem.Icon>
+                                    </MenuItem>
+                                    <MenuItem Header="Export All..." Command="{Binding ExportAllCommand}"
+                                              InputGestureText="Ctrl+Shift+E">
+                                        <MenuItem.Icon>
+                                            <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xEDE1;" FontSize="12" />
+                                        </MenuItem.Icon>
+                                    </MenuItem>
+                                    <Separator Background="{StaticResource BorderBrush}" />
+                                    <MenuItem Header="Export Crop Data (JSON)..." Command="{Binding ExportCropJsonCommand}"
+                                              InputGestureText="Ctrl+Shift+J">
+                                        <MenuItem.Icon>
+                                            <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE8A5;" FontSize="12" />
+                                        </MenuItem.Icon>
+                                    </MenuItem>
+                                    <Separator Background="{StaticResource BorderBrush}" />
+                                    <MenuItem Header="Export Bounding Boxes (JSON)..." Command="{Binding ExportBoundingBoxJsonCommand}">
+                                        <MenuItem.Icon>
+                                            <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xED5C;" FontSize="12" />
+                                        </MenuItem.Icon>
+                                    </MenuItem>
+                                    <MenuItem Header="Export Bounding Boxes (Pickle)..." Command="{Binding ExportBoundingBoxPickleCommand}">
+                                        <MenuItem.Icon>
+                                            <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xED5C;" FontSize="12" />
+                                        </MenuItem.Icon>
+                                    </MenuItem>
+                                </ContextMenu>
+                            </Button.ContextMenu>
+                        </Button>
+                    </Grid>
                 </StackPanel>
 
                 <!-- Spacer -->
