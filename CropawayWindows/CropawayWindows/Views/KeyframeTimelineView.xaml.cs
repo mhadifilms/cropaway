@@ -66,7 +66,6 @@ public partial class KeyframeTimelineView : UserControl
                 break;
             case nameof(KeyframeViewModel.SelectedKeyframe):
                 UpdateKeyframeSelection();
-                UpdateInterpolationCombo();
                 break;
         }
     }
@@ -197,32 +196,6 @@ public partial class KeyframeTimelineView : UserControl
     }
 
     /// <summary>
-    /// Syncs the interpolation ComboBox to reflect the selected keyframe's interpolation type.
-    /// </summary>
-    private void UpdateInterpolationCombo()
-    {
-        bool hasSelection = ViewModel?.SelectedKeyframe != null;
-        InterpolationCombo.IsEnabled = hasSelection;
-
-        if (!hasSelection) return;
-
-        int index = ViewModel!.SelectedKeyframe!.Interpolation switch
-        {
-            KeyframeInterpolation.Linear => 0,
-            KeyframeInterpolation.EaseIn => 1,
-            KeyframeInterpolation.EaseOut => 2,
-            KeyframeInterpolation.EaseInOut => 3,
-            KeyframeInterpolation.Hold => 4,
-            _ => 0
-        };
-
-        if (InterpolationCombo.SelectedIndex != index)
-        {
-            InterpolationCombo.SelectedIndex = index;
-        }
-    }
-
-    /// <summary>
     /// When the user clicks on the timeline area (not a keyframe), seek to that time.
     /// </summary>
     private void OnTimelineCanvasClick(object sender, MouseButtonEventArgs e)
@@ -257,21 +230,6 @@ public partial class KeyframeTimelineView : UserControl
         var mainWindow = Window.GetWindow(this);
         var mainVM = mainWindow?.DataContext as MainViewModel;
         mainVM?.Player.Seek(keyframe.Timestamp);
-    }
-
-    /// <summary>
-    /// When the interpolation dropdown changes, apply the selected interpolation to the keyframe.
-    /// </summary>
-    private void OnInterpolationChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (ViewModel?.SelectedKeyframe == null) return;
-        if (InterpolationCombo.SelectedItem is not ComboBoxItem item) return;
-
-        var tag = item.Tag?.ToString();
-        if (tag != null && Enum.TryParse<KeyframeInterpolation>(tag, out var interpolation))
-        {
-            ViewModel.SetInterpolation(ViewModel.SelectedKeyframe, interpolation);
-        }
     }
 
     /// <summary>

@@ -195,6 +195,67 @@ public partial class VideoPlayerViewModel : ObservableObject
 
     // MARK: Shuttle Controls (J/K/L)
 
+    /// <summary>
+    /// Starts simulated reverse playback by stepping backward at regular intervals.
+    /// WPF MediaElement doesn't support negative playback rates, so we pause and
+    /// use a timer to step backward by one frame interval at the requested speed.
+    /// </summary>
+    private void StartReversePlayback(float speed)
+    {
+        StopReversePlayback();
+        _isReversePlayback = true;
+
+        // Pause the media element (we control position manually)
+        _mediaElement?.Pause();
+        _positionTimer?.Stop();
+
+        double frameInterval = FrameRate > 0 ? 1.0 / FrameRate : 1.0 / 30.0;
+        double timerInterval = frameInterval / speed;
+
+        _reverseTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(Math.Max(0.016, timerInterval))
+        };
+        _reverseTimer.Tick += (_, _) =>
+        {
+            double step = frameInterval * speed;
+            double newTime = CurrentTime - step;
+            if (newTime <= 0)
+            {
+                Seek(0);
+                StopReversePlayback();
+                CurrentRate = 0;
+                _shuttleSpeed = 0;
+                return;
+            }
+            Seek(newTime);
+        };
+        _reverseTimer.Start();
+        IsPlaying = true;
+    }
+
+    /// <summary>
+    /// Stops reverse playback simulation.
+    /// </summary>
+    private void StopReversePlayback()
+    {
+        _reverseTimer?.Stop();
+        _reverseTimer = null;
+        _isReversePlayback = false;
+    }
+
+    /// <summary>
+    /// Updates the speed of the reverse playback timer.
+    /// </summary>
+    private void UpdateReversePlaybackSpeed(float speed)
+    {
+        if (_reverseTimer == null || !_isReversePlayback) return;
+
+        double frameInterval = FrameRate > 0 ? 1.0 / FrameRate : 1.0 / 30.0;
+        double timerInterval = frameInterval / speed;
+        _reverseTimer.Interval = TimeSpan.FromSeconds(Math.Max(0.016, timerInterval));
+    }
+
     [RelayCommand]
     public void ShuttleReverse()
     {
@@ -227,6 +288,7 @@ public partial class VideoPlayerViewModel : ObservableObject
     public void ShuttleStop()
     {
         _shuttleSpeed = 0;
+        StopReversePlayback();
         Pause();
         CurrentRate = 0;
     }
@@ -237,6 +299,7 @@ public partial class VideoPlayerViewModel : ObservableObject
         if (_shuttleSpeed < 0)
         {
             _shuttleSpeed = 0;
+            StopReversePlayback();
             Pause();
         }
         else if (_shuttleSpeed == 0)
