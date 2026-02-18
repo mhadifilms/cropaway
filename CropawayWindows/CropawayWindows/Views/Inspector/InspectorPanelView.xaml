@@ -37,7 +37,7 @@
                                                            VerticalAlignment="Center" Margin="0,0,6,0"
                                                            RenderTransformOrigin="0.5,0.5">
                                                     <TextBlock.RenderTransform>
-                                                        <RotateTransform x:Name="ArrowRotation" Angle="0" />
+                                                        <RotateTransform Angle="0" />
                                                     </TextBlock.RenderTransform>
                                                 </TextBlock>
                                                 <ContentPresenter VerticalAlignment="Center" />
@@ -49,7 +49,11 @@
                                                         Value="{StaticResource HoverBrush}" />
                                             </Trigger>
                                             <Trigger Property="IsChecked" Value="False">
-                                                <Setter TargetName="ArrowRotation" Property="Angle" Value="-90" />
+                                                <Setter TargetName="Arrow" Property="RenderTransform">
+                                                    <Setter.Value>
+                                                        <RotateTransform Angle="-90" />
+                                                    </Setter.Value>
+                                                </Setter>
                                             </Trigger>
                                         </ControlTemplate.Triggers>
                                     </ControlTemplate>
