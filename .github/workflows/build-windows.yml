@@ -2,8 +2,11 @@ name: Build Windows Installer
 
 on:
   push:
-    branches: [windows]
+    branches: [main]
     tags: ['v*']
+    paths:
+      - 'CropawayWindows/**'
+      - '.github/workflows/build-windows.yml'
   workflow_dispatch:
     inputs:
       version:
