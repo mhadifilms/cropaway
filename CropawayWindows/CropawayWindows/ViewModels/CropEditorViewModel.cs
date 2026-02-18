@@ -61,10 +61,6 @@ public partial class CropEditorViewModel : ObservableObject
     [ObservableProperty]
     private bool _enableAlphaChannel;
 
-    // Preview mode
-    [ObservableProperty]
-    private bool _isPreviewMode;
-
     // Active video
     private VideoItem? _currentVideo;
     private bool _isSyncing;
@@ -324,6 +320,4 @@ public partial class CropEditorViewModel : ObservableObject
     [RelayCommand]
     private void SetAIMode() => Mode = CropMode.AI;
 
-    [RelayCommand]
-    private void TogglePreviewMode() => IsPreviewMode = !IsPreviewMode;
 }

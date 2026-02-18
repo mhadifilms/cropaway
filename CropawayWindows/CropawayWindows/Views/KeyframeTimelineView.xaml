@@ -48,28 +48,9 @@
                     </Button>
                 </StackPanel>
 
-                <!-- Right: Add/Remove + Interpolation selector -->
+                <!-- Right: Add/Remove -->
                 <StackPanel Orientation="Horizontal" DockPanel.Dock="Right"
                             HorizontalAlignment="Right" VerticalAlignment="Center">
-
-                    <!-- Interpolation type dropdown -->
-                    <ComboBox x:Name="InterpolationCombo"
-                              Width="100" Height="24"
-                              FontSize="11"
-                              Background="{StaticResource PanelBrush}"
-                              Foreground="{StaticResource TextPrimaryBrush}"
-                              BorderBrush="{StaticResource BorderBrush}"
-                              IsEnabled="False"
-                              SelectedIndex="0"
-                              SelectionChanged="OnInterpolationChanged"
-                              ToolTip="Interpolation Type"
-                              Margin="0,0,8,0">
-                        <ComboBoxItem Content="Linear" Tag="Linear" />
-                        <ComboBoxItem Content="Ease In" Tag="EaseIn" />
-                        <ComboBoxItem Content="Ease Out" Tag="EaseOut" />
-                        <ComboBoxItem Content="Ease In/Out" Tag="EaseInOut" />
-                        <ComboBoxItem Content="Hold" Tag="Hold" />
-                    </ComboBox>
 
                     <!-- Add keyframe -->
                     <Button Style="{StaticResource ToolbarButton}"

@@ -1,7 +1,9 @@
 using System.Diagnostics;
 using System.IO;
+using System.Reflection;
 using System.Windows;
 using System.Windows.Media;
+using System.Windows.Navigation;
 using CropawayWindows.Services;
 
 namespace CropawayWindows.Views;
@@ -19,6 +21,14 @@ public partial class AboutWindow : Window
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
+        // Set version from assembly metadata
+        var assembly = Assembly.GetExecutingAssembly();
+        var version = assembly.GetName().Version;
+        if (version != null)
+        {
+            VersionText.Text = $"Version {version.Major}.{version.Minor}.{version.Build}";
+        }
+
         // Set copyright year
         CopyrightText.Text = $"\u00a9 {DateTime.Now.Year} Cropaway. All rights reserved.";
 
@@ -39,23 +49,33 @@ public partial class AboutWindow : Window
             FFmpegStatusIcon.Text = "\uE73E"; // Check icon
             FFmpegStatusIcon.Foreground = (Brush)FindResource("ExportProgressBrush");
 
+            // Determine if this is the bundled copy or an external one
+            string appDir = AppDomain.CurrentDomain.BaseDirectory;
+            bool isBundled = ffmpegPath.StartsWith(appDir, StringComparison.OrdinalIgnoreCase);
+            string locationHint = isBundled ? " (bundled)" : " (system)";
+
             if (!string.IsNullOrEmpty(version))
             {
-                FFmpegStatusText.Text = version;
+                FFmpegStatusText.Text = version + locationHint;
                 FFmpegStatusText.Foreground = (Brush)FindResource("TextPrimaryBrush");
             }
             else
             {
-                FFmpegStatusText.Text = $"Found at {ffmpegPath}";
+                FFmpegStatusText.Text = $"Found{locationHint}";
                 FFmpegStatusText.Foreground = (Brush)FindResource("TextPrimaryBrush");
             }
+
+            // Show the actual path where FFmpeg was found
+            FFmpegPathText.Text = ffmpegPath;
+            FFmpegPathText.Visibility = Visibility.Visible;
         }
         else
         {
             FFmpegStatusIcon.Text = "\uE783"; // Error icon
             FFmpegStatusIcon.Foreground = (Brush)FindResource("ErrorBrush");
-            FFmpegStatusText.Text = "Not found";
+            FFmpegStatusText.Text = "Not found \u2014 install FFmpeg or reinstall the app";
             FFmpegStatusText.Foreground = (Brush)FindResource("ErrorBrush");
+            FFmpegPathText.Visibility = Visibility.Collapsed;
         }
     }
 
@@ -195,6 +215,16 @@ public partial class AboutWindow : Window
         {
             return "";
         }
+    }
+
+    private void OnHyperlinkRequestNavigate(object sender, RequestNavigateEventArgs e)
+    {
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = e.Uri.AbsoluteUri,
+            UseShellExecute = true
+        });
+        e.Handled = true;
     }
 
     private void OnCloseClick(object sender, RoutedEventArgs e)

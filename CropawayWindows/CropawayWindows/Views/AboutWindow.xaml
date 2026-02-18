@@ -6,13 +6,14 @@
         xmlns:vm="clr-namespace:CropawayWindows.ViewModels"
         mc:Ignorable="d"
         Title="About Cropaway"
-        Width="450" Height="400"
+        Width="450" Height="480"
         ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner"
         Background="{StaticResource BackgroundBrush}"
         Foreground="{StaticResource TextPrimaryBrush}"
         ShowInTaskbar="False"
-        WindowStyle="ToolWindow">
+        WindowStyle="ToolWindow"
+        Icon="/Resources/cropaway.ico">
 
     <Border Padding="24,20">
         <Grid>
@@ -24,30 +25,28 @@
 
             <!-- App Icon and Title -->
             <StackPanel Grid.Row="0" HorizontalAlignment="Center" Margin="0,8,0,20">
-                <!-- App icon area -->
-                <Border Width="64" Height="64"
-                        CornerRadius="12"
+                <!-- App icon (real icon from Resources) -->
+                <Border Width="72" Height="72"
+                        CornerRadius="14"
                         Background="{StaticResource SurfaceBrush}"
                         BorderBrush="{StaticResource BorderBrush}"
                         BorderThickness="1"
                         HorizontalAlignment="Center"
                         Margin="0,0,0,12">
-                    <TextBlock FontFamily="Segoe Fluent Icons"
-                               Text="{StaticResource IconVideo}"
-                               FontSize="32"
-                               Foreground="{StaticResource AccentBrush}"
-                               HorizontalAlignment="Center"
-                               VerticalAlignment="Center" />
+                    <Image Source="/Resources/cropaway.ico"
+                           Width="56" Height="56"
+                           RenderOptions.BitmapScalingMode="HighQuality" />
                 </Border>
 
                 <!-- App name -->
-                <TextBlock Text="Cropaway for Windows"
-                           FontSize="20" FontWeight="Bold"
+                <TextBlock Text="Cropaway"
+                           FontSize="22" FontWeight="Bold"
                            Foreground="{StaticResource TextPrimaryBrush}"
                            HorizontalAlignment="Center" />
 
-                <!-- Version -->
-                <TextBlock Text="Version 1.0.0"
+                <!-- Version (set dynamically from assembly) -->
+                <TextBlock x:Name="VersionText"
+                           Text="Version 1.0.0"
                            FontSize="12"
                            Foreground="{StaticResource TextSecondaryBrush}"
                            HorizontalAlignment="Center"
@@ -72,7 +71,7 @@
                     Padding="16,12">
                 <StackPanel>
                     <!-- FFmpeg status -->
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
                         <TextBlock FontFamily="Segoe Fluent Icons"
                                    x:Name="FFmpegStatusIcon"
                                    FontSize="12"
@@ -86,6 +85,14 @@
                                    FontSize="12"
                                    VerticalAlignment="Center" />
                     </StackPanel>
+
+                    <!-- FFmpeg path (shown when found) -->
+                    <TextBlock x:Name="FFmpegPathText"
+                               FontSize="10"
+                               Foreground="{StaticResource TextTertiaryBrush}"
+                               TextWrapping="Wrap"
+                               Margin="20,0,0,8"
+                               Visibility="Collapsed" />
 
                     <Separator Background="{StaticResource BorderBrush}" Height="1" Margin="0,4,0,8" />
 
@@ -105,8 +112,19 @@
                 </StackPanel>
             </Border>
 
-            <!-- Footer: Copyright and Close -->
+            <!-- Footer: GitHub link, Copyright, and Close -->
             <StackPanel Grid.Row="2" Margin="0,16,0,0">
+                <!-- GitHub link -->
+                <TextBlock HorizontalAlignment="Center" Margin="0,0,0,8">
+                    <Hyperlink x:Name="GitHubLink"
+                               NavigateUri="https://github.com/mhadifilms/cropaway"
+                               RequestNavigate="OnHyperlinkRequestNavigate"
+                               Foreground="{StaticResource AccentBrush}"
+                               TextDecorations="None">
+                        github.com/mhadifilms/cropaway
+                    </Hyperlink>
+                </TextBlock>
+
                 <!-- Copyright -->
                 <TextBlock x:Name="CopyrightText"
                            FontSize="11"

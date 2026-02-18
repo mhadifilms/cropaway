@@ -43,29 +43,54 @@ public partial class ExportViewModel : ObservableObject
     {
         var config = video.CropConfig;
 
+        // When alpha channel is enabled, force .mov for ProRes 4444 compatibility
+        string defaultExt;
+        string filter;
+        if (config.EnableAlphaChannel)
+        {
+            defaultExt = ".mov";
+            filter = "QuickTime Movie (*.mov)|*.mov|All Files (*.*)|*.*";
+        }
+        else
+        {
+            defaultExt = ".mov";
+            filter = "QuickTime Movie (*.mov)|*.mov|MP4 Video (*.mp4)|*.mp4|All Files (*.*)|*.*";
+        }
+
         // Show save dialog
         var dialog = new SaveFileDialog
         {
             Title = "Export Video",
             FileName = $"{video.FileName}_cropped",
-            DefaultExt = ".mov",
-            Filter = "QuickTime Movie (*.mov)|*.mov|MP4 Video (*.mp4)|*.mp4|All Files (*.*)|*.*"
+            DefaultExt = defaultExt,
+            Filter = filter
         };
 
         if (dialog.ShowDialog() != true) return;
+
+        // If alpha is enabled but user chose a non-.mov extension, force .mov
+        string outputPath = dialog.FileName;
+        if (config.EnableAlphaChannel)
+        {
+            string ext = Path.GetExtension(outputPath).ToLowerInvariant();
+            if (ext != ".mov")
+            {
+                outputPath = Path.ChangeExtension(outputPath, ".mov");
+            }
+        }
 
         var exportConfig = new ExportConfiguration
         {
             PreserveWidth = config.PreserveWidth,
             EnableAlphaChannel = config.EnableAlphaChannel,
-            OutputPath = dialog.FileName
+            OutputPath = outputPath
         };
 
         var job = new ExportJob
         {
             Id = Guid.NewGuid(),
             Video = video,
-            OutputPath = dialog.FileName,
+            OutputPath = outputPath,
             Status = ExportStatus.Queued
         };
 
@@ -102,7 +127,9 @@ public partial class ExportViewModel : ObservableObject
         {
             if (_cancellationSource?.Token.IsCancellationRequested == true) break;
 
-            var outputPath = Path.Combine(folder, $"{video.FileName}_cropped.mov");
+            // Use .mov for alpha channel exports (ProRes 4444 required)
+            string ext = video.CropConfig.EnableAlphaChannel ? ".mov" : ".mov";
+            var outputPath = Path.Combine(folder, $"{video.FileName}_cropped{ext}");
             var config = new ExportConfiguration
             {
                 PreserveWidth = video.CropConfig.PreserveWidth,

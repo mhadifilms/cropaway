@@ -66,8 +66,6 @@
                 <MenuItem Header="Toggle _Keyframes" Command="{Binding ToggleKeyframePanelCommand}" />
                 <MenuItem Header="Toggle _Timeline" Command="{Binding ToggleTimelinePanelCommand}" />
                 <MenuItem Header="Toggle _Inspector" Command="{Binding ToggleInspectorCommand}" InputGestureText="Ctrl+Alt+I" />
-                <Separator />
-                <MenuItem Header="Toggle _Preview Mode" Command="{Binding TogglePreviewModeCommand}" InputGestureText="Ctrl+Shift+P" />
             </MenuItem>
 
             <MenuItem Header="_Crop">
@@ -190,22 +188,6 @@
                     <Button Style="{StaticResource ToolbarButton}" Command="{Binding ToggleKeyframePanelCommand}" ToolTip="Toggle Keyframe Timeline" Margin="4,0,0,0">
                         <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE9D5;" FontSize="14" />
                     </Button>
-                </StackPanel>
-
-                <!-- Separator -->
-                <Rectangle Width="1" Fill="{StaticResource BorderBrush}" DockPanel.Dock="Left" Margin="8,2" />
-
-                <!-- Preview mode toggle -->
-                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" Margin="8,0">
-                    <ToggleButton Style="{StaticResource CropModeToggle}"
-                                  IsChecked="{Binding CropEditor.IsPreviewMode}"
-                                  Command="{Binding TogglePreviewModeCommand}"
-                                  ToolTip="Toggle Preview Mode (Ctrl+Shift+P)">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE7B3;" FontSize="14" Margin="0,0,4,0" />
-                            <TextBlock Text="Preview" />
-                        </StackPanel>
-                    </ToggleButton>
                 </StackPanel>
 
                 <!-- Right-side tools -->
@@ -435,19 +417,18 @@
                     <!-- Video Preview with Crop Overlay (zoomable) -->
                     <Grid Grid.Row="0" Background="#000000" x:Name="VideoPreviewArea"
                           PreviewMouseWheel="OnVideoPreviewMouseWheel">
-                        <!-- Video player (always rendered; CropPreviewControl overlays on top in preview mode) -->
+                        <!-- Video player -->
                         <MediaElement x:Name="VideoPlayer"
                                       Source="{Binding Player.MediaSource}"
                                       LoadedBehavior="Manual" UnloadedBehavior="Manual"
                                       ScrubbingEnabled="True"
                                       Stretch="Uniform" />
 
-                        <!-- Crop overlay (drawn on top of video, hidden in preview mode) -->
+                        <!-- Crop overlay (drawn on top of video) -->
                         <controls:CropOverlayControl
                             DataContext="{Binding CropEditor}"
                             VideoWidth="{Binding DataContext.Player.VideoSize.Width, RelativeSource={RelativeSource AncestorType=Window}}"
-                            VideoHeight="{Binding DataContext.Player.VideoSize.Height, RelativeSource={RelativeSource AncestorType=Window}}"
-                            Visibility="{Binding IsPreviewMode, Converter={StaticResource InverseBoolToVisConverter}}">
+                            VideoHeight="{Binding DataContext.Player.VideoSize.Height, RelativeSource={RelativeSource AncestorType=Window}}">
                             <controls:CropOverlayControl.ContextMenu>
                                 <ContextMenu Background="{StaticResource SurfaceBrush}"
                                              Foreground="{StaticResource TextPrimaryBrush}"
@@ -516,28 +497,6 @@
                                 </ContextMenu>
                             </controls:CropOverlayControl.ContextMenu>
                         </controls:CropOverlayControl>
-
-                        <!-- Crop preview (shown in preview mode, renders only the cropped region) -->
-                        <controls:CropPreviewControl
-                            x:Name="CropPreview"
-                            DataContext="{Binding CropEditor}"
-                            VideoSource="{Binding ElementName=VideoPlayer}"
-                            VideoWidth="{Binding DataContext.Player.VideoSize.Width, RelativeSource={RelativeSource AncestorType=Window}}"
-                            VideoHeight="{Binding DataContext.Player.VideoSize.Height, RelativeSource={RelativeSource AncestorType=Window}}"
-                            Visibility="{Binding IsPreviewMode, Converter={StaticResource BoolToVisConverter}}" />
-
-                        <!-- "PREVIEW" indicator badge (top-left corner when preview mode is active) -->
-                        <Border Background="#CC0078D4" CornerRadius="0,0,6,0" Padding="10,4"
-                                HorizontalAlignment="Left" VerticalAlignment="Top"
-                                Visibility="{Binding CropEditor.IsPreviewMode, Converter={StaticResource BoolToVisConverter}}">
-                            <TextBlock Text="PREVIEW" FontSize="11" FontWeight="Bold"
-                                       Foreground="White" />
-                        </Border>
-
-                        <!-- Preview mode border indicator -->
-                        <Border BorderThickness="2" CornerRadius="0" IsHitTestVisible="False"
-                                BorderBrush="#800078D4"
-                                Visibility="{Binding CropEditor.IsPreviewMode, Converter={StaticResource BoolToVisConverter}}" />
 
                         <!-- Drop hint when no video -->
                         <Border Background="#80000000"

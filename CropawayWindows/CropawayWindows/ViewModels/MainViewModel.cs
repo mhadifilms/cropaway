@@ -266,13 +266,6 @@ public partial class MainViewModel : ObservableObject
     private void ToggleInspector() => Inspector.IsVisible = !Inspector.IsVisible;
 
     [RelayCommand]
-    private void TogglePreviewMode()
-    {
-        CropEditor.IsPreviewMode = !CropEditor.IsPreviewMode;
-        StatusBarText = CropEditor.IsPreviewMode ? "Preview Mode - Showing cropped output" : "Edit Mode";
-    }
-
-    [RelayCommand]
     private void Undo()
     {
         UndoManager.Undo();
@@ -883,12 +876,6 @@ public partial class MainViewModel : ObservableObject
             // Inspector panel
             case Key.I when ctrl && alt:
                 ToggleInspector();
-                e.Handled = true;
-                break;
-
-            // Preview mode
-            case Key.P when ctrl && shift:
-                TogglePreviewMode();
                 e.Handled = true;
                 break;
 

@@ -309,60 +309,91 @@ public sealed class FFmpegExportService : IDisposable
     #region FFmpeg Location
 
     /// <summary>
-    /// Searches for FFmpeg in bundled location, Program Files, and PATH.
+    /// Searches for an FFmpeg binary (ffmpeg or ffprobe) by name across all
+    /// known locations: bundled, development, PATH, and common install paths.
     /// </summary>
-    public static string? FindFFmpeg()
+    private static string? FindBinary(string binaryName)
     {
-        // 1. Check bundled location (next to executable)
-        string? appDir = Path.GetDirectoryName(Environment.ProcessPath);
-        if (appDir != null)
-        {
-            string bundledPath = Path.Combine(appDir, "ffmpeg.exe");
-            if (File.Exists(bundledPath))
-                return bundledPath;
+        // On Windows, ensure .exe extension
+        if (!binaryName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            binaryName += ".exe";
 
-            // Check ffmpeg subdirectory
-            bundledPath = Path.Combine(appDir, "ffmpeg", "ffmpeg.exe");
-            if (File.Exists(bundledPath))
-                return bundledPath;
+        // 1. Bundled location: <app>/ffmpeg/<binary> (CI puts FFmpeg here)
+        string appDir = AppDomain.CurrentDomain.BaseDirectory;
+        string bundledPath = Path.Combine(appDir, "ffmpeg", binaryName);
+        if (File.Exists(bundledPath))
+            return bundledPath;
+
+        // Also check directly next to executable (flat layout)
+        bundledPath = Path.Combine(appDir, binaryName);
+        if (File.Exists(bundledPath))
+            return bundledPath;
+
+        // 2. Development: ffmpeg-bin/ folder relative to the solution directory.
+        //    Walk up from BaseDirectory looking for a folder that contains ffmpeg-bin/.
+        //    This covers running from bin/Debug/net8.0-windows/ during development.
+        try
+        {
+            string? searchDir = appDir;
+            for (int i = 0; i < 6 && searchDir != null; i++)
+            {
+                string devPath = Path.Combine(searchDir, "ffmpeg-bin", binaryName);
+                if (File.Exists(devPath))
+                    return devPath;
+                searchDir = Path.GetDirectoryName(searchDir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            }
         }
+        catch { /* Ignore directory traversal errors */ }
 
-        // 2. Check Program Files locations
-        string[] programFilesPaths =
-        {
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "ffmpeg", "bin", "ffmpeg.exe"),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "ffmpeg", "bin", "ffmpeg.exe"),
-            @"C:\ffmpeg\bin\ffmpeg.exe",
-            @"C:\ffmpeg\ffmpeg.exe"
-        };
-
-        foreach (string path in programFilesPaths)
-        {
-            if (File.Exists(path))
-                return path;
-        }
-
-        // 3. Check PATH
+        // 3. PATH environment variable
         string? pathEnv = Environment.GetEnvironmentVariable("PATH");
         if (pathEnv != null)
         {
             foreach (string dir in pathEnv.Split(Path.PathSeparator))
             {
-                string candidate = Path.Combine(dir.Trim(), "ffmpeg.exe");
+                string trimmed = dir.Trim();
+                if (trimmed.Length == 0) continue;
+                string candidate = Path.Combine(trimmed, binaryName);
                 if (File.Exists(candidate))
                     return candidate;
             }
+        }
+
+        // 4. Common install locations on Windows
+        string[] commonPaths =
+        {
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "ffmpeg", "bin", binaryName),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "ffmpeg", "bin", binaryName),
+            Path.Combine(@"C:\ffmpeg\bin", binaryName),
+            Path.Combine(@"C:\ffmpeg", binaryName)
+        };
+
+        foreach (string path in commonPaths)
+        {
+            if (File.Exists(path))
+                return path;
         }
 
         return null;
     }
 
     /// <summary>
-    /// Searches for ffprobe in the same locations as FFmpeg.
+    /// Searches for FFmpeg in bundled location, development folders, PATH,
+    /// and common install paths. Priority order:
+    /// 1. Bundled: {app}/ffmpeg/ffmpeg.exe (published/installed app)
+    /// 2. Development: ffmpeg-bin/ffmpeg.exe (relative to solution)
+    /// 3. PATH environment variable
+    /// 4. Common Windows install locations (Program Files, C:\ffmpeg)
+    /// </summary>
+    public static string? FindFFmpeg() => FindBinary("ffmpeg");
+
+    /// <summary>
+    /// Searches for ffprobe using the same strategy as FindFFmpeg.
+    /// If FFmpeg was already found, checks its directory first for ffprobe.
     /// </summary>
     public static string? FindFFprobe()
     {
-        // If we know FFmpeg's location, ffprobe is likely next to it
+        // Fast path: if FFmpeg was found, ffprobe is almost certainly next to it
         string? ffmpegPath = FindFFmpeg();
         if (ffmpegPath != null)
         {
@@ -375,19 +406,8 @@ public sealed class FFmpegExportService : IDisposable
             }
         }
 
-        // Fallback: search PATH
-        string? pathEnv = Environment.GetEnvironmentVariable("PATH");
-        if (pathEnv != null)
-        {
-            foreach (string dir in pathEnv.Split(Path.PathSeparator))
-            {
-                string candidate = Path.Combine(dir.Trim(), "ffprobe.exe");
-                if (File.Exists(candidate))
-                    return candidate;
-            }
-        }
-
-        return null;
+        // Full search as fallback
+        return FindBinary("ffprobe");
     }
 
     #endregion
@@ -490,6 +510,8 @@ public sealed class FFmpegExportService : IDisposable
 
     /// <summary>
     /// Adds the appropriate video codec arguments based on source metadata and available encoders.
+    /// When alpha channel is enabled, forces ProRes 4444 (prores_ks) or VP9 (libvpx-vp9) since
+    /// H.264 and HEVC do not support alpha channels.
     /// Preserves color metadata (HDR, BT.2020, etc.).
     /// </summary>
     private async Task AddVideoCodecArgs(
@@ -500,6 +522,26 @@ public sealed class FFmpegExportService : IDisposable
 
         string codec = metadata.CodecType?.ToLowerInvariant() ?? "";
 
+        if (enableAlpha)
+        {
+            // Alpha channel requires a codec that supports it.
+            // H.264 and HEVC do NOT support alpha. Use ProRes 4444 (.mov) or VP9 (.webm).
+            // Determine format from output file extension (set by caller / save dialog).
+            // Default to ProRes 4444 which is the most compatible alpha-capable codec.
+            args.AddRange(new[] { "-c:v", "prores_ks", "-profile:v", "4444" });
+
+            // ProRes 4444 with alpha needs yuva444p10le pixel format
+            args.AddRange(new[] { "-pix_fmt", "yuva444p10le" });
+
+            // Preserve color metadata (HDR/SDR)
+            AddColorMetadataArgs(args, metadata);
+
+            // Mark encoders as cached
+            _encodersCached = true;
+            return;
+        }
+
+        // Non-alpha path: match source codec with hardware acceleration
         if (codec.Contains("h264") || codec.Contains("h.264") || codec.Contains("avc"))
         {
             string encoder = await DetectBestH264EncoderAsync(ffmpegPath);
@@ -532,20 +574,23 @@ public sealed class FFmpegExportService : IDisposable
         }
         else if (codec.Contains("prores") || codec.StartsWith("ap"))
         {
-            // ProRes is uncommon on Windows; use high-quality H.264 as fallback
-            string encoder = await DetectBestH264EncoderAsync(ffmpegPath);
-            args.AddRange(new[] { "-c:v", encoder });
+            // ProRes source: use prores_ks encoder, match source profile
+            args.AddRange(new[] { "-c:v", "prores_ks" });
 
-            if (encoder == "libx264")
-            {
-                args.AddRange(new[] { "-crf", "14", "-preset", "slow" });
-            }
+            if (codec == "ap4x")
+                args.AddRange(new[] { "-profile:v", "5" }); // XQ
+            else if (codec is "ap4h" or "ap4c")
+                args.AddRange(new[] { "-profile:v", "4" }); // 4444
+            else if (codec == "apch")
+                args.AddRange(new[] { "-profile:v", "3" }); // HQ
+            else if (codec == "apcn")
+                args.AddRange(new[] { "-profile:v", "2" }); // Standard
+            else if (codec == "apcs")
+                args.AddRange(new[] { "-profile:v", "1" }); // LT
+            else if (codec == "apco")
+                args.AddRange(new[] { "-profile:v", "0" }); // Proxy
             else
-            {
-                // Use high bitrate for ProRes-like quality
-                string highBitrate = $"{Math.Max(sourceBitrate, 50_000_000) / 1000}k";
-                args.AddRange(new[] { "-b:v", highBitrate });
-            }
+                args.AddRange(new[] { "-profile:v", "3" }); // Default to HQ
         }
         else
         {
@@ -563,15 +608,27 @@ public sealed class FFmpegExportService : IDisposable
             }
         }
 
-        // Pixel format
-        if (enableAlpha)
-        {
-            args.AddRange(new[] { "-pix_fmt", "yuva420p" });
-        }
-        else if (metadata.BitDepth > 8 &&
-                 (codec.Contains("hevc") || codec.Contains("h.265") || codec.Contains("h265")))
+        // Pixel format for non-alpha
+        if (metadata.BitDepth > 8 &&
+            (codec.Contains("hevc") || codec.Contains("h.265") || codec.Contains("h265")))
         {
             args.AddRange(new[] { "-pix_fmt", "yuv420p10le" });
+        }
+        else if (codec.Contains("prores") || codec.StartsWith("ap"))
+        {
+            // ProRes: preserve bit depth
+            bool isProRes4444 = codec is "ap4x" or "ap4h" or "ap4c";
+            if (isProRes4444)
+            {
+                if (metadata.BitDepth >= 12)
+                    args.AddRange(new[] { "-pix_fmt", "yuv444p12le" });
+                else if (metadata.BitDepth > 8)
+                    args.AddRange(new[] { "-pix_fmt", "yuv444p10le" });
+            }
+            else if (metadata.BitDepth > 8)
+            {
+                args.AddRange(new[] { "-pix_fmt", "yuv422p10le" });
+            }
         }
 
         // Preserve color metadata (HDR/SDR)

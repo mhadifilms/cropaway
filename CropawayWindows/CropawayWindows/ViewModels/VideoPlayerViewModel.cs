@@ -49,6 +49,10 @@ public partial class VideoPlayerViewModel : ObservableObject
     private float _shuttleSpeed;
     private static readonly float[] ShuttleSpeeds = { 0.5f, 1.0f, 2.0f, 4.0f, 8.0f };
 
+    // Reverse playback simulation timer (WPF MediaElement doesn't support negative rates)
+    private DispatcherTimer? _reverseTimer;
+    private bool _isReversePlayback;
+
     public void SetMediaElement(MediaElement element)
     {
         _mediaElement = element;
@@ -196,23 +200,25 @@ public partial class VideoPlayerViewModel : ObservableObject
     {
         if (_shuttleSpeed > 0)
         {
+            // Was going forward, stop first
             _shuttleSpeed = 0;
+            StopReversePlayback();
             Pause();
         }
         else if (_shuttleSpeed == 0)
         {
+            // Start reverse at 1x speed
             _shuttleSpeed = -1.0f;
-            SetPlaybackRate(_shuttleSpeed);
-            // For reverse, step backward in a timer
-            Play();
+            StartReversePlayback(1.0f);
         }
         else
         {
+            // Increase reverse speed
             var currentIndex = Array.IndexOf(ShuttleSpeeds, -_shuttleSpeed);
             if (currentIndex < 0) currentIndex = 0;
             var nextIndex = Math.Min(currentIndex + 1, ShuttleSpeeds.Length - 1);
             _shuttleSpeed = -ShuttleSpeeds[nextIndex];
-            SetPlaybackRate(Math.Abs(_shuttleSpeed));
+            UpdateReversePlaybackSpeed(-_shuttleSpeed);
         }
         CurrentRate = _shuttleSpeed;
     }
