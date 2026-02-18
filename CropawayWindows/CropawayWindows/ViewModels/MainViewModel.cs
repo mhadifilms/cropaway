@@ -412,21 +412,47 @@ public partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task ExportBoundingBoxJson()
+    private void ExportBoundingBoxJson()
     {
-        if (Project.SelectedVideo != null)
-        {
-            await Export.ExportBoundingBoxJson(Project.SelectedVideo);
-        }
+        if (Project.SelectedVideo == null) return;
+
+        // Ensure current crop state is synced to config before export
+        SyncCropEditorToConfig();
+        Export.ExportBoundingBoxJson(Project.SelectedVideo);
     }
 
     [RelayCommand]
-    private async Task ExportBoundingBoxPickle()
+    private void ExportBoundingBoxPickle()
     {
-        if (Project.SelectedVideo != null)
-        {
-            await Export.ExportBoundingBoxPickle(Project.SelectedVideo);
-        }
+        if (Project.SelectedVideo == null) return;
+
+        SyncCropEditorToConfig();
+        Export.ExportBoundingBoxPickle(Project.SelectedVideo);
+    }
+
+    /// <summary>
+    /// Explicitly sync current CropEditor state back to the video's CropConfiguration.
+    /// Normally this happens via On*Changed partial methods, but calling this ensures
+    /// all values are current before an export.
+    /// </summary>
+    private void SyncCropEditorToConfig()
+    {
+        var video = Project.SelectedVideo;
+        if (video == null) return;
+
+        var config = video.CropConfig;
+        config.Mode = CropEditor.Mode;
+        config.CropRect = CropEditor.CropRect;
+        config.EdgeInsets = CropEditor.EdgeInsets;
+        config.CircleCenter = CropEditor.CircleCenter;
+        config.CircleRadius = CropEditor.CircleRadius;
+        config.FreehandPoints = CropEditor.FreehandPoints.ToList();
+        config.FreehandPathData = CropEditor.FreehandPathData;
+        config.AiMaskData = CropEditor.AiMaskData;
+        config.AiBoundingBox = CropEditor.AiBoundingBox;
+        config.AiTextPrompt = CropEditor.AiTextPrompt;
+        config.PreserveWidth = CropEditor.PreserveWidth;
+        config.EnableAlphaChannel = CropEditor.EnableAlphaChannel;
     }
 
     [RelayCommand]

@@ -19,12 +19,16 @@ public partial class VideoMetadata : ObservableObject
     /// Video width in pixels.
     /// </summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DimensionsDisplay))]
+    [NotifyPropertyChangedFor(nameof(AspectRatio))]
     private int _width;
 
     /// <summary>
     /// Video height in pixels.
     /// </summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DimensionsDisplay))]
+    [NotifyPropertyChangedFor(nameof(AspectRatio))]
     private int _height;
 
     // -- Temporal --
@@ -33,12 +37,15 @@ public partial class VideoMetadata : ObservableObject
     /// Video duration in seconds.
     /// </summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DurationDisplay))]
+    [NotifyPropertyChangedFor(nameof(TotalFrameCount))]
     private double _duration;
 
     /// <summary>
     /// Video frame rate (frames per second).
     /// </summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TotalFrameCount))]
     private double _frameRate;
 
     // -- Codec and Format --
@@ -53,6 +60,7 @@ public partial class VideoMetadata : ObservableObject
     /// Whether the video contains HDR content.
     /// </summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HdrDescription))]
     private bool _isHDR;
 
     // -- Color Space --
@@ -61,6 +69,7 @@ public partial class VideoMetadata : ObservableObject
     /// Color primaries (e.g., "bt709", "bt2020").
     /// </summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ColorSpaceDescription))]
     private string? _colorPrimaries;
 
     /// <summary>
@@ -73,6 +82,7 @@ public partial class VideoMetadata : ObservableObject
     /// Transfer function / OETF (e.g., "bt709", "smpte2084" for PQ, "arib-std-b67" for HLG).
     /// </summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HdrDescription))]
     private string? _transferFunction;
 
     /// <summary>
@@ -85,6 +95,7 @@ public partial class VideoMetadata : ObservableObject
     /// Video bit rate in bits per second.
     /// </summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(BitRateDisplay))]
     private long _bitRate;
 
     // -- Additional properties for export pipeline --

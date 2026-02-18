@@ -239,8 +239,7 @@ public partial class ExportViewModel : ObservableObject
         }
     }
 
-    [RelayCommand]
-    public async Task ExportBoundingBoxJson(VideoItem video)
+    public void ExportBoundingBoxJson(VideoItem video)
     {
         var dialog = new SaveFileDialog
         {
@@ -254,23 +253,16 @@ public partial class ExportViewModel : ObservableObject
 
         try
         {
-            if (!video.CropConfig.HasCropChanges)
-            {
-                StatusMessage = "No crop data to export";
-                return;
-            }
-
             _boundingBoxExportService.ExportAsJson(video.CropConfig, video.Metadata, dialog.FileName);
             StatusMessage = $"Bounding box JSON exported to {Path.GetFileName(dialog.FileName)}";
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Export failed: {ex.Message}";
+            StatusMessage = $"Bounding box export failed: {ex.Message}";
         }
     }
 
-    [RelayCommand]
-    public async Task ExportBoundingBoxPickle(VideoItem video)
+    public void ExportBoundingBoxPickle(VideoItem video)
     {
         var dialog = new SaveFileDialog
         {
@@ -284,18 +276,12 @@ public partial class ExportViewModel : ObservableObject
 
         try
         {
-            if (!video.CropConfig.HasCropChanges)
-            {
-                StatusMessage = "No crop data to export";
-                return;
-            }
-
             _boundingBoxExportService.ExportAsPickle(video.CropConfig, video.Metadata, dialog.FileName);
             StatusMessage = $"Bounding box pickle exported to {Path.GetFileName(dialog.FileName)}";
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Export failed: {ex.Message}";
+            StatusMessage = $"Bounding box export failed: {ex.Message}";
         }
     }
 }

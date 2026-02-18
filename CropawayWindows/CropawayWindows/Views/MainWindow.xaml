@@ -27,11 +27,6 @@
     <!-- Menu Bar -->
     <DockPanel>
         <Menu DockPanel.Dock="Top" Background="{StaticResource SurfaceBrush}" Foreground="{StaticResource TextPrimaryBrush}">
-            <Menu.ItemContainerStyle>
-                <Style TargetType="MenuItem">
-                    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
-                </Style>
-            </Menu.ItemContainerStyle>
 
             <MenuItem Header="_File">
                 <MenuItem Header="_Open Videos..." Command="{Binding Project.OpenVideosCommand}" InputGestureText="Ctrl+O" />
@@ -400,20 +395,20 @@
             <!-- Primary layout -->
             <Grid>
                 <Grid.ColumnDefinitions>
-                    <!-- Sidebar -->
-                    <ColumnDefinition Width="220" x:Name="SidebarColumn" />
+                    <!-- Sidebar (Auto so it collapses when hidden) -->
+                    <ColumnDefinition Width="Auto" />
                     <!-- Splitter -->
                     <ColumnDefinition Width="Auto" />
                     <!-- Main editor -->
-                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" MinWidth="400" />
                     <!-- AI Editor panel (collapsible) -->
                     <ColumnDefinition Width="Auto" />
                     <!-- Inspector panel (collapsible) -->
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <!-- Project Sidebar (tabbed: Media + Sequences) -->
-                <Border Grid.Column="0" Background="{StaticResource SidebarBrush}"
+                <!-- Project Sidebar -->
+                <Border Grid.Column="0" Width="220" Background="{StaticResource SidebarBrush}"
                         BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0"
                         Visibility="{Binding IsSidebarVisible, Converter={StaticResource BoolToVisConverter}}">
                     <views:VideoSidebarView DataContext="{Binding}" />
