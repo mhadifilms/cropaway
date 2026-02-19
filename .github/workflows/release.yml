@@ -8,34 +8,7 @@ permissions:
   contents: write
 
 jobs:
-  # ── macOS ──────────────────────────────────────────────────────────
-  build-macos:
-    runs-on: macos-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Determine version
-        id: version
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
-
-      - name: Install FFmpeg
-        run: brew install ffmpeg
-
-      - name: Build DMG
-        run: ./scripts/build-dmg.sh ${{ steps.version.outputs.VERSION }}
-
-      - name: Upload DMG artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-dmg
-          path: build/Cropaway-${{ steps.version.outputs.VERSION }}.dmg
-          if-no-files-found: error
-
-  # ── Windows ────────────────────────────────────────────────────────
+  # ── Windows (built by CI) ──────────────────────────────────────────
   build-windows:
     runs-on: windows-latest
     steps:
@@ -153,25 +126,20 @@ jobs:
           path: CropawayWindows/output/Cropaway-Windows-Portable-*.zip
           if-no-files-found: error
 
-  # ── Publish unified release ────────────────────────────────────────
+  # ── Create release with Windows artifacts ──────────────────────────
+  # macOS DMG is built locally and uploaded by scripts/release.sh
   release:
-    needs: [build-macos, build-windows]
+    needs: [build-windows]
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
       - name: Determine version
         id: version
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-      - name: Download all artifacts
+      - name: Download Windows artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
-
-      - name: List artifacts
-        run: find artifacts -type f
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -183,7 +151,7 @@ jobs:
             ### macOS
             | File | Description |
             |------|-------------|
-            | `Cropaway-${{ steps.version.outputs.VERSION }}.dmg` | macOS installer (drag to Applications) |
+            | `Cropaway-${{ steps.version.outputs.VERSION }}.dmg` | macOS app (drag to Applications) |
 
             **Requirements:** macOS 13 Ventura or later. FFmpeg is bundled.
 
@@ -195,7 +163,6 @@ jobs:
 
             **Requirements:** Windows 10 or later (64-bit). FFmpeg is bundled.
           files: |
-            artifacts/macos-dmg/Cropaway-${{ steps.version.outputs.VERSION }}.dmg
             artifacts/windows-installer/CropawaySetup-${{ steps.version.outputs.VERSION }}.exe
             artifacts/windows-portable/Cropaway-Windows-Portable-${{ steps.version.outputs.VERSION }}.zip
           draft: false
