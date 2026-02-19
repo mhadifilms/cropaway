@@ -99,27 +99,61 @@ struct LiveCropPreviewView: View {
 
                     // Video layer - behavior depends on preserveSize and enableAlpha
                     if !preserveSize {
-                        // Preserve Size OFF: Show only cropped area filling the frame
-                        // Use ClippedVideoPlayerView which uses AVPlayerLayer with proper CALayer clipping
-                        let _ = print("[VideoDetailView] preserveSize=OFF, cropRect=\(cropRect), frameSize=\(displayConfig.frameSize), frameAspect=\(displayConfig.frameSize.width/displayConfig.frameSize.height)")
-                        ClippedVideoPlayerView(
-                            cropRect: cropRect,
-                            frameSize: displayConfig.frameSize
-                        )
-                        .frame(width: displayConfig.frameSize.width, height: displayConfig.frameSize.height)
+                        // Preserve Size OFF: show cropped framing, but keep a dimmed outside-mask cue.
+                        ZStack {
+                            ClippedVideoPlayerView(
+                                cropRect: cropRect,
+                                frameSize: displayConfig.frameSize
+                            )
+                            .frame(width: displayConfig.frameSize.width, height: displayConfig.frameSize.height)
+
+                            DimmedCropOverlay(
+                                mode: cropEditorVM.mode,
+                                cropRect: cropRect,
+                                circleCenter: cropEditorVM.circleCenter,
+                                circleRadius: cropEditorVM.circleRadius,
+                                freehandPoints: cropEditorVM.freehandPoints,
+                                freehandPathData: cropEditorVM.freehandPathData,
+                                aiMaskData: cropEditorVM.aiMaskData,
+                                maskSmoothness: cropEditorVM.maskSmoothness,
+                                maskRadius: cropEditorVM.maskRadius,
+                                maskDenoise: cropEditorVM.maskDenoise,
+                                videoSize: displayConfig.videoDisplaySize
+                            )
+                            .offset(x: displayConfig.videoOffset.width, y: displayConfig.videoOffset.height)
+                        }
                     } else if enableAlpha {
-                        // Preserve Size ON + Alpha ON: Show full video with mask (transparency outside crop)
-                        MaskedVideoPlayerView(
-                            maskMode: cropEditorVM.mode,
-                            cropRect: cropRect,
-                            circleCenter: cropEditorVM.circleCenter,
-                            circleRadius: cropEditorVM.circleRadius,
-                            freehandPoints: cropEditorVM.freehandPoints,
-                            freehandPathData: cropEditorVM.freehandPathData,
-                            aiMaskData: cropEditorVM.aiMaskData,
-                            videoDisplaySize: displayConfig.videoDisplaySize
-                        )
-                        .frame(width: displayConfig.videoDisplaySize.width, height: displayConfig.videoDisplaySize.height)
+                        // Preserve Size ON + Alpha ON: keep alpha preview plus dimmed outside-mask cue.
+                        ZStack {
+                            MaskedVideoPlayerView(
+                                maskMode: cropEditorVM.mode,
+                                cropRect: cropRect,
+                                circleCenter: cropEditorVM.circleCenter,
+                                circleRadius: cropEditorVM.circleRadius,
+                                freehandPoints: cropEditorVM.freehandPoints,
+                                freehandPathData: cropEditorVM.freehandPathData,
+                                aiMaskData: cropEditorVM.aiMaskData,
+                                maskSmoothness: cropEditorVM.maskSmoothness,
+                                maskRadius: cropEditorVM.maskRadius,
+                                maskDenoise: cropEditorVM.maskDenoise,
+                                videoDisplaySize: displayConfig.videoDisplaySize
+                            )
+                            .frame(width: displayConfig.videoDisplaySize.width, height: displayConfig.videoDisplaySize.height)
+
+                            DimmedCropOverlay(
+                                mode: cropEditorVM.mode,
+                                cropRect: cropRect,
+                                circleCenter: cropEditorVM.circleCenter,
+                                circleRadius: cropEditorVM.circleRadius,
+                                freehandPoints: cropEditorVM.freehandPoints,
+                                freehandPathData: cropEditorVM.freehandPathData,
+                                aiMaskData: cropEditorVM.aiMaskData,
+                                maskSmoothness: cropEditorVM.maskSmoothness,
+                                maskRadius: cropEditorVM.maskRadius,
+                                maskDenoise: cropEditorVM.maskDenoise,
+                                videoSize: displayConfig.videoDisplaySize
+                            )
+                        }
                         .offset(x: displayConfig.videoOffset.width, y: displayConfig.videoOffset.height)
                     } else {
                         // Preserve Size ON + Alpha OFF: Show full video with dimmed overlay outside crop
@@ -136,6 +170,9 @@ struct LiveCropPreviewView: View {
                                 freehandPoints: cropEditorVM.freehandPoints,
                                 freehandPathData: cropEditorVM.freehandPathData,
                                 aiMaskData: cropEditorVM.aiMaskData,
+                                maskSmoothness: cropEditorVM.maskSmoothness,
+                                maskRadius: cropEditorVM.maskRadius,
+                                maskDenoise: cropEditorVM.maskDenoise,
                                 videoSize: displayConfig.videoDisplaySize
                             )
                         }
@@ -152,7 +189,7 @@ struct LiveCropPreviewView: View {
                 .frame(width: displayConfig.frameSize.width, height: displayConfig.frameSize.height)
                 .clipped()  // Clip to frame bounds (important for preserveSize OFF)
                 // Force view recreation when switching modes to avoid stale state
-                .id("preview-\(preserveSize)-\(enableAlpha)-\(cropEditorVM.mode)-\(cropEditorVM.aiMaskData?.count ?? 0)")
+                .id("preview-\(preserveSize)-\(enableAlpha)-\(cropEditorVM.mode)-\(cropEditorVM.aiMaskData?.count ?? 0)-\(Int(cropEditorVM.maskSmoothness * 100))-\(Int(cropEditorVM.maskRadius * 100))-\(Int(cropEditorVM.maskDenoise * 100))")
                 .scaleEffect(viewScale * magnifyBy)
                 .position(x: containerSize.width / 2, y: containerSize.height / 2)
                 .gesture(magnifyGesture)
@@ -399,180 +436,63 @@ struct DimmedCropOverlay: View {
     let freehandPoints: [CGPoint]
     var freehandPathData: Data? = nil
     var aiMaskData: Data? = nil
+    let maskSmoothness: Double
+    let maskRadius: Double
+    let maskDenoise: Double
     let videoSize: CGSize
 
-    // Computed property to decode vertices once per render
-    private var freehandVertices: [MaskVertex]? {
-        guard let data = freehandPathData,
-              let vertices = try? JSONDecoder().decode([MaskVertex].self, from: data),
-              vertices.count >= 3 else {
-            return nil
-        }
-        return vertices
-    }
+    private static let previewMaskRenderer = CropMaskRenderer()
 
     // Use data hash to force Canvas re-render when data changes
     private var dataHash: Int {
         var hasher = Hasher()
         hasher.combine(freehandPathData?.hashValue ?? 0)
         hasher.combine(aiMaskData?.hashValue ?? 0)
+        hasher.combine(Int(maskSmoothness * 100))
+        hasher.combine(Int(maskRadius * 100))
+        hasher.combine(Int(maskDenoise * 100))
         return hasher.finalize()
     }
 
     var body: some View {
-        let _ = print("[DimmedCropOverlay] mode=\(mode), aiMaskData=\(aiMaskData?.count ?? 0) bytes")
-
         ZStack {
-            if mode == .ai {
-                // AI mode: use RLE mask if available, otherwise show nothing (full video visible)
-                if let maskData = aiMaskData {
-                    let _ = print("[DimmedCropOverlay] Using AIDimmedMaskView")
-                    AIDimmedMaskView(maskData: maskData, size: videoSize)
-                } else {
-                    // No mask data yet - don't dim anything, show full video
-                    let _ = print("[DimmedCropOverlay] AI mode with no mask - showing full video")
-                    Color.clear
-                        .frame(width: videoSize.width, height: videoSize.height)
-                }
-            } else {
-                // Other modes: use canvas-based overlay
-                let _ = print("[DimmedCropOverlay] Using Canvas overlay (mode=\(mode))")
-                Canvas { context, canvasSize in
-                    // Fill entire area with dim color
-                    context.fill(
-                        Path(CGRect(origin: .zero, size: canvasSize)),
-                        with: .color(.black.opacity(0.5))
-                    )
+            Color.black.opacity(0.5)
 
-                    // Cut out crop area (make it transparent to show video underneath)
-                    context.blendMode = .destinationOut
-
-                    switch mode {
-                    case .rectangle:
-                        let pixelRect = cropRect.denormalized(to: canvasSize)
-                        context.fill(Path(pixelRect), with: .color(.white))
-
-                    case .circle:
-                        let pixelCenter = circleCenter.denormalized(to: canvasSize)
-                        let pixelRadius = circleRadius * min(canvasSize.width, canvasSize.height)
-                        let circleRect = CGRect(
-                            x: pixelCenter.x - pixelRadius,
-                            y: pixelCenter.y - pixelRadius,
-                            width: pixelRadius * 2,
-                            height: pixelRadius * 2
-                        )
-                        context.fill(Path(ellipseIn: circleRect), with: .color(.white))
-
-                    case .freehand:
-                        if let vertices = freehandVertices {
-                            let path = buildBezierPath(vertices: vertices, size: canvasSize)
-                            context.fill(path, with: .color(.white))
-                        } else if freehandPoints.count >= 3 {
-                            var path = Path()
-                            let first = freehandPoints[0].denormalized(to: canvasSize)
-                            path.move(to: first)
-                            for point in freehandPoints.dropFirst() {
-                                path.addLine(to: point.denormalized(to: canvasSize))
-                            }
-                            path.closeSubpath()
-                            context.fill(path, with: .color(.white))
-                        }
-
-                    case .ai:
-                        // AI mode is handled above - this case should not be reached
-                        break
-                    }
-                }
-                .frame(width: videoSize.width, height: videoSize.height)
+            if let maskImage = renderedMaskImage {
+                Image(decorative: maskImage, scale: 1.0)
+                    .resizable()
+                    .interpolation(.none)
+                    .frame(width: videoSize.width, height: videoSize.height)
+                    .blendMode(.destinationOut)
             }
         }
+        .compositingGroup()
+        .frame(width: videoSize.width, height: videoSize.height)
         .id(dataHash)
         .allowsHitTesting(false)
     }
 
-    /// Build a SwiftUI Path with bezier curves from MaskVertex array
-    private func buildBezierPath(vertices: [MaskVertex], size: CGSize) -> Path {
-        Path { path in
-            guard vertices.count >= 3 else { return }
+    private var renderedMaskImage: CGImage? {
+        guard videoSize.isValid else { return nil }
+        let state = InterpolatedCropState(
+            cropRect: cropRect,
+            edgeInsets: EdgeInsets(),
+            circleCenter: circleCenter,
+            circleRadius: circleRadius,
+            freehandPoints: freehandPoints,
+            freehandPathData: freehandPathData,
+            aiMaskData: aiMaskData,
+            aiBoundingBox: .zero
+        )
 
-            path.move(to: vertices[0].position.denormalized(to: size))
-
-            for i in 1..<vertices.count {
-                addBezierSegment(to: &path, from: vertices[i-1], to: vertices[i], size: size)
-            }
-
-            // Close the path
-            addBezierSegment(to: &path, from: vertices[vertices.count - 1], to: vertices[0], size: size)
-            path.closeSubpath()
-        }
-    }
-
-    /// Add a bezier curve segment between two vertices
-    private func addBezierSegment(to path: inout Path, from: MaskVertex, to: MaskVertex, size: CGSize) {
-        let fromPx = from.position.denormalized(to: size)
-        let toPx = to.position.denormalized(to: size)
-
-        let hasFromHandle = from.controlOut != nil
-        let hasToHandle = to.controlIn != nil
-
-        if hasFromHandle && hasToHandle {
-            let ctrl1 = CGPoint(
-                x: fromPx.x + from.controlOut!.x * size.width,
-                y: fromPx.y + from.controlOut!.y * size.height
-            )
-            let ctrl2 = CGPoint(
-                x: toPx.x + to.controlIn!.x * size.width,
-                y: toPx.y + to.controlIn!.y * size.height
-            )
-            path.addCurve(to: toPx, control1: ctrl1, control2: ctrl2)
-        } else if hasFromHandle {
-            let ctrl = CGPoint(
-                x: fromPx.x + from.controlOut!.x * size.width,
-                y: fromPx.y + from.controlOut!.y * size.height
-            )
-            path.addQuadCurve(to: toPx, control: ctrl)
-        } else if hasToHandle {
-            let ctrl = CGPoint(
-                x: toPx.x + to.controlIn!.x * size.width,
-                y: toPx.y + to.controlIn!.y * size.height
-            )
-            path.addQuadCurve(to: toPx, control: ctrl)
-        } else {
-            path.addLine(to: toPx)
-        }
-    }
-}
-
-/// Dimmed overlay for AI mode using RLE mask
-struct AIDimmedMaskView: View {
-    let maskData: Data
-    let size: CGSize
-
-    var body: some View {
-        let _ = print("[AIDimmedMaskView] Rendering with \(maskData.count) bytes, size: \(size)")
-
-        // Decode mask once for the view
-        let decoded = AIMaskResult.decodeMaskToImage(maskData)
-
-        ZStack {
-            // Always show dim overlay
-            Color.black.opacity(0.5)
-
-            // If mask decoded successfully, cut it out
-            if let (cgImage, w, h) = decoded {
-                let _ = print("[AIDimmedMaskView] Mask decoded: \(w)x\(h)")
-                Image(decorative: cgImage, scale: 1.0)
-                    .resizable()
-                    .interpolation(.high)
-                    .blendMode(.destinationOut)
-            } else {
-                // Show red overlay to indicate decode failure
-                let _ = print("[AIDimmedMaskView] FAILED to decode mask - showing red indicator")
-                Color.red.opacity(0.3)
-            }
-        }
-        .compositingGroup()
-        .frame(width: size.width, height: size.height)
+        return Self.previewMaskRenderer.generateMaskImage(
+            mode: mode,
+            state: state,
+            size: videoSize,
+            smoothness: maskSmoothness,
+            radius: maskRadius,
+            denoise: maskDenoise
+        )
     }
 }
 
@@ -610,6 +530,9 @@ struct CropHandlesView: View {
                         maskData: $cropEditorVM.aiMaskData,
                         boundingBox: $cropEditorVM.aiBoundingBox,
                         interactionMode: $cropEditorVM.aiInteractionMode,
+                        maskSmoothness: cropEditorVM.maskSmoothness,
+                        maskRadius: cropEditorVM.maskRadius,
+                        maskDenoise: cropEditorVM.maskDenoise,
                         videoSize: videoDisplaySize,
                         onEditEnded: cropEditorVM.notifyCropEditEnded
                     )

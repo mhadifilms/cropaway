@@ -67,28 +67,41 @@ final class CropMaskRenderer: @unchecked Sendable {
     func generateMask(
         mode: CropMode,
         state: InterpolatedCropState,
-        size: CGSize
+        size: CGSize,
+        smoothness: Double = 0,
+        radius: Double = 0,
+        denoise: Double = 0
     ) -> CIImage {
+        let baseMask: CIImage
         switch mode {
         case .rectangle:
-            return generateRectangleMask(rect: state.cropRect, size: size)
+            baseMask = generateRectangleMask(rect: state.cropRect, size: size)
         case .circle:
-            return generateCircleMask(
+            baseMask = generateCircleMask(
                 center: state.circleCenter,
                 radius: state.circleRadius,
                 size: size
             )
         case .freehand:
             // Try bezier path data first, fall back to simple points
-            return generateFreehandMask(pathData: state.freehandPathData, points: state.freehandPoints, size: size)
+            baseMask = generateFreehandMask(pathData: state.freehandPathData, points: state.freehandPoints, size: size)
         case .ai:
             // AI mode uses RLE mask data for pixel-perfect segmentation
             if let maskData = state.aiMaskData {
-                return generateAIMask(maskData: maskData, size: size)
+                baseMask = generateAIMask(maskData: maskData, size: size)
+            } else {
+                // No mask data yet - return full white (show everything until tracking completes)
+                baseMask = CIImage(color: .white).cropped(to: CGRect(origin: .zero, size: size))
             }
-            // No mask data yet - return full white (show everything until tracking completes)
-            return CIImage(color: .white).cropped(to: CGRect(origin: .zero, size: size))
         }
+
+        return applyMaskAdjustments(
+            to: baseMask,
+            size: size,
+            smoothness: smoothness,
+            radius: radius,
+            denoise: denoise
+        )
     }
 
     private func generateRectangleMask(rect: CGRect, size: CGSize) -> CIImage {
@@ -248,6 +261,71 @@ final class CropMaskRenderer: @unchecked Sendable {
         }
 
         return maskImage
+    }
+
+    func generateMaskImage(
+        mode: CropMode,
+        state: InterpolatedCropState,
+        size: CGSize,
+        smoothness: Double = 0,
+        radius: Double = 0,
+        denoise: Double = 0
+    ) -> CGImage? {
+        let mask = generateMask(
+            mode: mode,
+            state: state,
+            size: size,
+            smoothness: smoothness,
+            radius: radius,
+            denoise: denoise
+        ).cropped(to: CGRect(origin: .zero, size: size))
+        return ciContext.createCGImage(mask, from: CGRect(origin: .zero, size: size))
+    }
+
+    private func applyMaskAdjustments(
+        to mask: CIImage,
+        size: CGSize,
+        smoothness: Double,
+        radius: Double,
+        denoise: Double
+    ) -> CIImage {
+        let extent = CGRect(origin: .zero, size: size)
+
+        let smoothness = max(CropConfiguration.maskSmoothnessRange.lowerBound, min(CropConfiguration.maskSmoothnessRange.upperBound, smoothness))
+        let radius = max(CropConfiguration.maskRadiusRange.lowerBound, min(CropConfiguration.maskRadiusRange.upperBound, radius))
+        let denoise = max(CropConfiguration.maskDenoiseRange.lowerBound, min(CropConfiguration.maskDenoiseRange.upperBound, denoise))
+
+        if smoothness < 0.0001, radius < 0.0001, denoise < 0.0001 {
+            return mask.cropped(to: extent)
+        }
+
+        var output = mask.cropped(to: extent)
+
+        // Smooth contour detail a little (helps AI jagged edges) without changing source data.
+        if smoothness > 0.0001 {
+            let smoothRadius = CGFloat(smoothness * 1.6)
+            output = output.applyingFilter("CIMorphologyMaximum", parameters: [kCIInputRadiusKey: smoothRadius])
+            output = output.applyingFilter("CIMorphologyMinimum", parameters: [kCIInputRadiusKey: smoothRadius])
+        }
+
+        // Expand mask outward.
+        if radius > 0.0001 {
+            output = output.applyingFilter("CIMorphologyMaximum", parameters: [kCIInputRadiusKey: CGFloat(radius)])
+        }
+
+        // Blend outward blur while preserving the original interior (mostly outward denoise/feather).
+        if denoise > 0.0001 {
+            let blurred = output
+                .clampedToExtent()
+                .applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: CGFloat(denoise)])
+                .cropped(to: extent)
+
+            output = output
+                .applyingFilter("CIMaximumCompositing", parameters: [kCIInputBackgroundImageKey: blurred])
+                .cropped(to: extent)
+        }
+
+        return output.cropped(to: extent)
     }
 
     // Thread-safe mask rendering using reusable Core Graphics context

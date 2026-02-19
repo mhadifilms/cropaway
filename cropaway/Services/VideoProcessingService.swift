@@ -314,7 +314,10 @@ final class VideoProcessingService {
                     let mask = maskRenderer.generateMask(
                         mode: cropConfig.mode,
                         state: cropState,
-                        size: videoSize
+                        size: videoSize,
+                        smoothness: cropConfig.maskSmoothness,
+                        radius: cropConfig.maskRadius,
+                        denoise: cropConfig.maskDenoise
                     )
 
                     // Apply mask

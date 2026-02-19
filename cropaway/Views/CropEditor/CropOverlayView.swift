@@ -94,6 +94,9 @@ struct CropOverlayView: View {
                                 get: { cropEditorVM.aiInteractionMode },
                                 set: { cropEditorVM.aiInteractionMode = $0 }
                             ),
+                            maskSmoothness: cropEditorVM.maskSmoothness,
+                            maskRadius: cropEditorVM.maskRadius,
+                            maskDenoise: cropEditorVM.maskDenoise,
                             videoSize: fittedSize,
                             onEditEnded: cropEditorVM.notifyCropEditEnded
                         )
