@@ -8,7 +8,31 @@ permissions:
   contents: write
 
 jobs:
-  # ── Windows (built by CI) ──────────────────────────────────────────
+  # ── macOS (requires Xcode 26 for Liquid Glass) ─────────────────────
+  build-macos:
+    runs-on: macos-26
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Determine version
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Install FFmpeg
+        run: brew install ffmpeg
+
+      - name: Build DMG
+        run: ./scripts/build-dmg.sh ${{ steps.version.outputs.VERSION }}
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: build/Cropaway-${{ steps.version.outputs.VERSION }}.dmg
+          if-no-files-found: error
+
+  # ── Windows ────────────────────────────────────────────────────────
   build-windows:
     runs-on: windows-latest
     steps:
@@ -126,20 +150,22 @@ jobs:
           path: CropawayWindows/output/Cropaway-Windows-Portable-*.zip
           if-no-files-found: error
 
-  # ── Create release with Windows artifacts ──────────────────────────
-  # macOS DMG is built locally and uploaded by scripts/release.sh
+  # ── Publish unified release ────────────────────────────────────────
   release:
-    needs: [build-windows]
+    needs: [build-macos, build-windows]
     runs-on: ubuntu-latest
     steps:
       - name: Determine version
         id: version
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-      - name: Download Windows artifacts
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+
+      - name: List artifacts
+        run: find artifacts -type f
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -163,6 +189,7 @@ jobs:
 
             **Requirements:** Windows 10 or later (64-bit). FFmpeg is bundled.
           files: |
+            artifacts/macos-dmg/Cropaway-${{ steps.version.outputs.VERSION }}.dmg
             artifacts/windows-installer/CropawaySetup-${{ steps.version.outputs.VERSION }}.exe
             artifacts/windows-portable/Cropaway-Windows-Portable-${{ steps.version.outputs.VERSION }}.zip
           draft: false
