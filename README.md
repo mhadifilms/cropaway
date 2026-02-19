@@ -1,6 +1,6 @@
 # Cropaway
 
-A fast, native macOS app for cropping videos and saving crop data.
+A fast, native macOS and Windows app for cropping videos and saving crop data.
 
 ![macOS](https://img.shields.io/badge/macOS-14.0+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
