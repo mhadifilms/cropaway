@@ -358,6 +358,7 @@ private struct MaskAdjustmentSlider: View {
 extension View {
     @ViewBuilder
     func liquidGlassButton(isSelected: Bool = false) -> some View {
+        #if compiler(>=6.2)
         if #available(macOS 26.0, *) {
             self.glassEffect(
                 isSelected ? .regular.tint(.accentColor).interactive() : .regular.interactive(),
@@ -370,10 +371,18 @@ extension View {
             )
             .contentShape(RoundedRectangle(cornerRadius: 8))
         }
+        #else
+        self.background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(isSelected ? Color.accentColor.opacity(0.2) : Color.primary.opacity(0.05))
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 8))
+        #endif
     }
 
     @ViewBuilder
     func liquidGlassCapsule(isSelected: Bool = false, tint: Color = .accentColor) -> some View {
+        #if compiler(>=6.2)
         if #available(macOS 26.0, *) {
             self.glassEffect(
                 isSelected ? .regular.tint(tint).interactive() : .regular.interactive(),
@@ -386,10 +395,18 @@ extension View {
             )
             .contentShape(Capsule())
         }
+        #else
+        self.background(
+            Capsule()
+                .fill(isSelected ? tint.opacity(0.2) : Color.primary.opacity(0.05))
+        )
+        .contentShape(Capsule())
+        #endif
     }
 
     @ViewBuilder
     func liquidGlassCircle() -> some View {
+        #if compiler(>=6.2)
         if #available(macOS 26.0, *) {
             self.glassEffect(.regular.interactive(), in: .circle)
         } else {
@@ -399,6 +416,13 @@ extension View {
             )
             .contentShape(Circle())
         }
+        #else
+        self.background(
+            Circle()
+                .fill(Color.primary.opacity(0.05))
+        )
+        .contentShape(Circle())
+        #endif
     }
 
 }

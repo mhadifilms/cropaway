@@ -18,6 +18,7 @@ extension View {
     /// Applies a glass background effect for toolbar areas.
     @ViewBuilder
     func toolbarGlassBackground() -> some View {
+        #if compiler(>=6.2)
         if #available(macOS 26.0, *) {
             self
                 .background(.regularMaterial)
@@ -25,11 +26,15 @@ extension View {
         } else {
             self.background(Color(NSColor.windowBackgroundColor))
         }
+        #else
+        self.background(Color(NSColor.windowBackgroundColor))
+        #endif
     }
 
     /// Applies a glass background effect for control containers.
     @ViewBuilder
     func controlContainerGlassBackground(cornerRadius: CGFloat = 8) -> some View {
+        #if compiler(>=6.2)
         if #available(macOS 26.0, *) {
             self
                 .glassEffect(.regular, in: RoundedRectangle(cornerRadius: cornerRadius))
@@ -37,22 +42,31 @@ extension View {
             self.background(Color(NSColor.controlBackgroundColor))
                 .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
         }
+        #else
+        self.background(Color(NSColor.controlBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+        #endif
     }
 
     /// Applies a clear glass background (more transparent for media-rich contexts).
     @ViewBuilder
     func clearGlassBackground() -> some View {
+        #if compiler(>=6.2)
         if #available(macOS 26.0, *) {
             self
                 .glassEffect(.clear, in: .rect)
         } else {
             self.background(Color(NSColor.controlBackgroundColor).opacity(0.6))
         }
+        #else
+        self.background(Color(NSColor.controlBackgroundColor).opacity(0.6))
+        #endif
     }
 
     /// Applies interactive glass effect to a button with scaling, bounce, and shimmer.
     @ViewBuilder
     func interactiveGlassButton(isSelected: Bool = false, cornerRadius: CGFloat = 6) -> some View {
+        #if compiler(>=6.2)
         if #available(macOS 26.0, *) {
             self
                 .glassEffect(
@@ -65,11 +79,18 @@ extension View {
                     .fill(isSelected ? Color.accentColor.opacity(0.2) : Color(NSColor.controlBackgroundColor).opacity(0.3))
             )
         }
+        #else
+        self.background(
+            RoundedRectangle(cornerRadius: cornerRadius)
+                .fill(isSelected ? Color.accentColor.opacity(0.2) : Color(NSColor.controlBackgroundColor).opacity(0.3))
+        )
+        #endif
     }
 
     /// Applies circular interactive glass effect.
     @ViewBuilder
     func circularGlassButton(isSelected: Bool = false) -> some View {
+        #if compiler(>=6.2)
         if #available(macOS 26.0, *) {
             self
                 .glassEffect(
@@ -80,11 +101,16 @@ extension View {
             self
                 .background(Circle().fill(isSelected ? Color.accentColor.opacity(0.2) : Color(NSColor.controlBackgroundColor).opacity(0.3)))
         }
+        #else
+        self
+            .background(Circle().fill(isSelected ? Color.accentColor.opacity(0.2) : Color(NSColor.controlBackgroundColor).opacity(0.3)))
+        #endif
     }
 
     /// Applies capsule-shaped interactive glass effect.
     @ViewBuilder
     func capsuleGlassButton(isSelected: Bool = false) -> some View {
+        #if compiler(>=6.2)
         if #available(macOS 26.0, *) {
             self
                 .glassEffect(
@@ -95,11 +121,16 @@ extension View {
             self
                 .background(Capsule().fill(isSelected ? Color.accentColor.opacity(0.2) : Color(NSColor.controlBackgroundColor).opacity(0.3)))
         }
+        #else
+        self
+            .background(Capsule().fill(isSelected ? Color.accentColor.opacity(0.2) : Color(NSColor.controlBackgroundColor).opacity(0.3)))
+        #endif
     }
 
     /// Applies tinted glass effect with a custom color.
     @ViewBuilder
     func tintedGlassEffect(_ color: Color, cornerRadius: CGFloat = 8) -> some View {
+        #if compiler(>=6.2)
         if #available(macOS 26.0, *) {
             self
                 .glassEffect(.regular.tint(color), in: RoundedRectangle(cornerRadius: cornerRadius))
@@ -107,6 +138,10 @@ extension View {
             self
                 .background(RoundedRectangle(cornerRadius: cornerRadius).fill(color.opacity(0.2)))
         }
+        #else
+        self
+            .background(RoundedRectangle(cornerRadius: cornerRadius).fill(color.opacity(0.2)))
+        #endif
     }
 
     // MARK: - Sidebar Glass Effects
@@ -114,16 +149,21 @@ extension View {
     /// Applies glass background to sidebar list.
     @ViewBuilder
     func sidebarGlassBackground() -> some View {
+        #if compiler(>=6.2)
         if #available(macOS 26.0, *) {
             self.background(.regularMaterial)
         } else {
             self.background(Color(NSColor.windowBackgroundColor))
         }
+        #else
+        self.background(Color(NSColor.windowBackgroundColor))
+        #endif
     }
 
     /// Applies circular glass button style for sidebar.
     @ViewBuilder
     func sidebarGlassButton() -> some View {
+        #if compiler(>=6.2)
         if #available(macOS 26.0, *) {
             self.glassEffect(.regular.interactive(), in: .circle)
         } else {
@@ -131,17 +171,27 @@ extension View {
                 .background(Circle().fill(Color.primary.opacity(0.06)))
                 .contentShape(Circle())
         }
+        #else
+        self
+            .background(Circle().fill(Color.primary.opacity(0.06)))
+            .contentShape(Circle())
+        #endif
     }
 
     /// Applies capsule glass style for sidebar elements.
     @ViewBuilder
     func sidebarGlassCapsule() -> some View {
+        #if compiler(>=6.2)
         if #available(macOS 26.0, *) {
             self.glassEffect(.regular, in: .capsule)
         } else {
             self
                 .background(Capsule().fill(Color.primary.opacity(0.04)))
         }
+        #else
+        self
+            .background(Capsule().fill(Color.primary.opacity(0.04)))
+        #endif
     }
 
     // MARK: - Sheet/Modal Glass Effects
@@ -149,6 +199,7 @@ extension View {
     /// Applies glass background for modal sheets.
     @ViewBuilder
     func sheetGlassBackground() -> some View {
+        #if compiler(>=6.2)
         if #available(macOS 26.0, *) {
             self
                 .background(.regularMaterial)
@@ -156,11 +207,15 @@ extension View {
         } else {
             self.background(Color(NSColor.windowBackgroundColor))
         }
+        #else
+        self.background(Color(NSColor.windowBackgroundColor))
+        #endif
     }
 
     /// Applies glass effect to empty state containers.
     @ViewBuilder
     func emptyStateGlassBackground() -> some View {
+        #if compiler(>=6.2)
         if #available(macOS 26.0, *) {
             self
                 .background(.ultraThinMaterial)
@@ -170,6 +225,11 @@ extension View {
                 .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
                 .clipShape(RoundedRectangle(cornerRadius: 16))
         }
+        #else
+        self
+            .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+        #endif
     }
 
     // MARK: - Content Area Glass Effects
@@ -177,11 +237,15 @@ extension View {
     /// Applies glass background for main content areas (like detail view backgrounds).
     @ViewBuilder
     func contentAreaGlassBackground() -> some View {
+        #if compiler(>=6.2)
         if #available(macOS 26.0, *) {
             self.background(.regularMaterial)
         } else {
             self.background(Color(NSColor.windowBackgroundColor))
         }
+        #else
+        self.background(Color(NSColor.windowBackgroundColor))
+        #endif
     }
 }
 
@@ -201,8 +265,8 @@ struct GlassEffectContainer<Content: View>: View {
     }
 
     var body: some View {
+        #if compiler(>=6.2)
         if #available(macOS 26.0, *) {
-            // Native GlassEffectContainer enables morphing between glass elements
             SwiftUI.GlassEffectContainer(spacing: spacing) {
                 content()
                     .glassEffect(.regular, in: RoundedRectangle(cornerRadius: cornerRadius))
@@ -212,6 +276,11 @@ struct GlassEffectContainer<Content: View>: View {
                 .background(Color(NSColor.controlBackgroundColor))
                 .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
         }
+        #else
+        content()
+            .background(Color(NSColor.controlBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+        #endif
     }
 }
 
@@ -228,6 +297,7 @@ struct GlassButtonGroup<Content: View>: View {
     }
 
     var body: some View {
+        #if compiler(>=6.2)
         if #available(macOS 26.0, *) {
             SwiftUI.GlassEffectContainer(spacing: spacing) {
                 content()
@@ -242,6 +312,14 @@ struct GlassButtonGroup<Content: View>: View {
             .background(Color(NSColor.controlBackgroundColor))
             .clipShape(RoundedRectangle(cornerRadius: 10))
         }
+        #else
+        HStack(spacing: spacing) {
+            content()
+        }
+        .padding(4)
+        .background(Color(NSColor.controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        #endif
     }
 }
 
@@ -276,6 +354,7 @@ struct GlassSegmentedStyle: View {
     @Binding var selection: Int
 
     var body: some View {
+        #if compiler(>=6.2)
         if #available(macOS 26.0, *) {
             SwiftUI.GlassEffectContainer(spacing: 2) {
                 HStack(spacing: 2) {
@@ -306,12 +385,19 @@ struct GlassSegmentedStyle: View {
                 }
             }
         } else {
-            Picker("", selection: $selection) {
-                ForEach(Array(options.enumerated()), id: \.offset) { index, option in
-                    Text(option).tag(index)
-                }
-            }
-            .pickerStyle(.segmented)
+            segmentedFallback
         }
+        #else
+        segmentedFallback
+        #endif
+    }
+
+    private var segmentedFallback: some View {
+        Picker("", selection: $selection) {
+            ForEach(Array(options.enumerated()), id: \.offset) { index, option in
+                Text(option).tag(index)
+            }
+        }
+        .pickerStyle(.segmented)
     }
 }

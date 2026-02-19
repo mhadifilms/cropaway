@@ -193,7 +193,7 @@ public partial class VideoSidebarView : UserControl
         if (videoItem == null || MainVM == null) return;
 
         MainVM.Project.SelectedVideo = videoItem;
-        MainVM.ExportCropJsonCommand.Execute(null);
+        MainVM.ExportBoundingBoxJsonCommand.Execute(null);
     }
 
     private void OnCopyCropSettingsClick(object sender, RoutedEventArgs e)

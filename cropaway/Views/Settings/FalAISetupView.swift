@@ -415,6 +415,7 @@ private struct FeatureCard: View {
 extension View {
     @ViewBuilder
     func featureCardGlassBackground() -> some View {
+        #if compiler(>=6.2)
         if #available(macOS 26.0, *) {
             self.glassEffect(.regular, in: RoundedRectangle(cornerRadius: 8))
         } else {
@@ -422,6 +423,11 @@ extension View {
                 .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
                 .clipShape(RoundedRectangle(cornerRadius: 8))
         }
+        #else
+        self
+            .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        #endif
     }
 }
 
