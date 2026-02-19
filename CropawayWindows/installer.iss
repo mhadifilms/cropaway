@@ -2,7 +2,9 @@
 ; Built with Inno Setup 6 - https://jrsoftware.org/isinfo.php
 
 #define MyAppName "Cropaway"
+#ifndef MyAppVersion
 #define MyAppVersion "1.0.0"
+#endif
 #define MyAppPublisher "Cropaway"
 #define MyAppURL "https://github.com/mhadifilms/cropaway"
 #define MyAppExeName "Cropaway.exe"
