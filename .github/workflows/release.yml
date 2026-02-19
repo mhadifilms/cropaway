@@ -1,0 +1,202 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  # ── macOS ──────────────────────────────────────────────────────────
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Determine version
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
+      - name: Install FFmpeg
+        run: brew install ffmpeg
+
+      - name: Build DMG
+        run: ./scripts/build-dmg.sh ${{ steps.version.outputs.VERSION }}
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: build/Cropaway-${{ steps.version.outputs.VERSION }}.dmg
+          if-no-files-found: error
+
+  # ── Windows ────────────────────────────────────────────────────────
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Determine version
+        id: version
+        shell: pwsh
+        run: |
+          $ver = "${{ github.ref_name }}" -replace '^v', ''
+          Write-Host "Version: $ver"
+          "VERSION=$ver" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Install Inno Setup
+        run: choco install innosetup --yes --no-progress
+        shell: pwsh
+
+      - name: Download FFmpeg
+        working-directory: CropawayWindows
+        shell: pwsh
+        run: |
+          $FFmpegDir = "ffmpeg-bin"
+          New-Item -ItemType Directory -Path $FFmpegDir -Force | Out-Null
+
+          $url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+          $zip = "ffmpeg-download.zip"
+
+          Write-Host "Downloading FFmpeg..."
+          Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
+
+          Write-Host "Extracting..."
+          $extractDir = "ffmpeg-extract"
+          Expand-Archive -Path $zip -DestinationPath $extractDir
+
+          $binDir = Get-ChildItem -Path $extractDir -Recurse -Directory -Filter "bin" | Select-Object -First 1
+          if ($binDir) {
+              Copy-Item (Join-Path $binDir.FullName "ffmpeg.exe") (Join-Path $FFmpegDir "ffmpeg.exe")
+              Copy-Item (Join-Path $binDir.FullName "ffprobe.exe") (Join-Path $FFmpegDir "ffprobe.exe")
+              Write-Host "FFmpeg ready."
+          } else {
+              Write-Error "Could not find FFmpeg binaries."
+              exit 1
+          }
+
+          Remove-Item -Force $zip -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force $extractDir -ErrorAction SilentlyContinue
+
+      - name: Build application
+        working-directory: CropawayWindows
+        shell: pwsh
+        run: |
+          dotnet publish CropawayWindows/CropawayWindows.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=false `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:Version=${{ steps.version.outputs.VERSION }} `
+            -o publish
+
+      - name: Bundle FFmpeg
+        working-directory: CropawayWindows
+        shell: pwsh
+        run: |
+          $dest = "publish/ffmpeg"
+          New-Item -ItemType Directory -Path $dest -Force | Out-Null
+          Copy-Item "ffmpeg-bin/ffmpeg.exe" "$dest/ffmpeg.exe" -Force
+          Copy-Item "ffmpeg-bin/ffprobe.exe" "$dest/ffprobe.exe" -Force
+          Write-Host "FFmpeg bundled into publish/ffmpeg/"
+
+      - name: Create installer
+        working-directory: CropawayWindows
+        shell: pwsh
+        run: |
+          $inno = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $inno)) {
+              $inno = (Get-Command ISCC.exe -ErrorAction SilentlyContinue).Source
+          }
+          if (-not $inno) {
+              Write-Error "Inno Setup not found"
+              exit 1
+          }
+
+          New-Item -ItemType Directory -Path output -Force | Out-Null
+          & $inno "/DMyAppVersion=${{ steps.version.outputs.VERSION }}" installer.iss
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+          Write-Host "Installer created:"
+          Get-ChildItem output/
+
+      - name: Create portable ZIP
+        working-directory: CropawayWindows
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "publish\*" -DestinationPath "output\Cropaway-Windows-Portable-${{ steps.version.outputs.VERSION }}.zip"
+          Write-Host "Portable ZIP created"
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: CropawayWindows/output/CropawaySetup-*.exe
+          if-no-files-found: error
+
+      - name: Upload portable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-portable
+          path: CropawayWindows/output/Cropaway-Windows-Portable-*.zip
+          if-no-files-found: error
+
+  # ── Publish unified release ────────────────────────────────────────
+  release:
+    needs: [build-macos, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Determine version
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List artifacts
+        run: find artifacts -type f
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Cropaway ${{ steps.version.outputs.VERSION }}
+          body: |
+            ## Cropaway ${{ steps.version.outputs.VERSION }}
+
+            ### macOS
+            | File | Description |
+            |------|-------------|
+            | `Cropaway-${{ steps.version.outputs.VERSION }}.dmg` | macOS installer (drag to Applications) |
+
+            **Requirements:** macOS 13 Ventura or later. FFmpeg is bundled.
+
+            ### Windows
+            | File | Description |
+            |------|-------------|
+            | `CropawaySetup-${{ steps.version.outputs.VERSION }}.exe` | Windows installer with Start Menu shortcuts |
+            | `Cropaway-Windows-Portable-${{ steps.version.outputs.VERSION }}.zip` | Portable build, no install needed |
+
+            **Requirements:** Windows 10 or later (64-bit). FFmpeg is bundled.
+          files: |
+            artifacts/macos-dmg/Cropaway-${{ steps.version.outputs.VERSION }}.dmg
+            artifacts/windows-installer/CropawaySetup-${{ steps.version.outputs.VERSION }}.exe
+            artifacts/windows-portable/Cropaway-Windows-Portable-${{ steps.version.outputs.VERSION }}.zip
+          draft: false
+          prerelease: false
