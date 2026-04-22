@@ -211,6 +211,12 @@ final class CropDataStorageService {
             }
         }
 
+        if let adjustments = document.crop.maskAdjustments {
+            config.maskSmoothness = max(CropConfiguration.maskSmoothnessRange.lowerBound, min(CropConfiguration.maskSmoothnessRange.upperBound, adjustments.smoothness))
+            config.maskRadius = max(CropConfiguration.maskRadiusRange.lowerBound, min(CropConfiguration.maskRadiusRange.upperBound, adjustments.radius))
+            config.maskDenoise = max(CropConfiguration.maskDenoiseRange.lowerBound, min(CropConfiguration.maskDenoiseRange.upperBound, adjustments.denoise))
+        }
+
         // Keyframes
         if let keyframes = document.crop.keyframes, !keyframes.isEmpty {
             config.keyframesEnabled = true
@@ -685,6 +691,14 @@ final class CropDataStorageService {
             )
         }
 
+        if config.hasMaskAdjustments {
+            cropData.maskAdjustments = CropStorageDocument.MaskAdjustmentsData(
+                smoothness: config.maskSmoothness,
+                radius: config.maskRadius,
+                denoise: config.maskDenoise
+            )
+        }
+
         // Keyframes
         if config.hasKeyframes {
             cropData.keyframes = config.keyframes.map { kf in
@@ -810,6 +824,7 @@ struct CropStorageDocument: Codable {
         var circle: CircleData?
         var freehand: FreehandData?
         var ai: AIData?
+        var maskAdjustments: MaskAdjustmentsData?
         var keyframes: [KeyframeData]?
         var absenceRanges: [AbsenceRangeData]?
 
@@ -850,6 +865,12 @@ struct CropStorageDocument: Codable {
             let y: Double
             let isPositive: Bool
         }
+    }
+
+    struct MaskAdjustmentsData: Codable {
+        let smoothness: Double
+        let radius: Double
+        let denoise: Double
     }
 
     struct VertexData: Codable {

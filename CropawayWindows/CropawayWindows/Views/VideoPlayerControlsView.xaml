@@ -1,0 +1,146 @@
+<UserControl x:Class="CropawayWindows.Views.VideoPlayerControlsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:CropawayWindows.ViewModels"
+             mc:Ignorable="d"
+             d:DataContext="{d:DesignInstance vm:MainViewModel}"
+             Background="{StaticResource SurfaceBrush}">
+
+    <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0"
+            Padding="12,6">
+        <Grid>
+            <Grid.RowDefinitions>
+                <!-- Scrubber / position slider -->
+                <RowDefinition Height="Auto" />
+                <!-- Transport controls -->
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- Scrubber Bar -->
+            <Grid Grid.Row="0" Margin="0,0,0,4">
+                <Slider x:Name="PositionSlider"
+                        Style="{StaticResource TimelineSlider}"
+                        Minimum="0"
+                        Maximum="{Binding Player.Duration}"
+                        Value="{Binding Player.CurrentTime, Mode=TwoWay}"
+                        IsSnapToTickEnabled="False"
+                        IsMoveToPointEnabled="True"
+                        Thumb.DragStarted="OnScrubberDragStarted"
+                        Thumb.DragCompleted="OnScrubberDragCompleted"
+                        ValueChanged="OnScrubberValueChanged"
+                        ToolTip="{Binding Player.TimecodeDisplayString}" />
+            </Grid>
+
+            <!-- Transport Controls Row -->
+            <DockPanel Grid.Row="1">
+
+                <!-- Left: Time display -->
+                <Border DockPanel.Dock="Left" Cursor="Hand"
+                        MouseLeftButtonDown="OnTimeDisplayClick"
+                        Background="Transparent"
+                        ToolTip="Click to toggle timecode / frame display">
+                    <TextBlock x:Name="TimeDisplay"
+                               Text="{Binding Player.TimeDisplayString}"
+                               Foreground="{StaticResource TextPrimaryBrush}"
+                               FontFamily="Consolas"
+                               FontSize="12"
+                               VerticalAlignment="Center"
+                               MinWidth="130" />
+                </Border>
+
+                <!-- Right: Rate display + Loop toggle -->
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"
+                            HorizontalAlignment="Right" VerticalAlignment="Center">
+
+                    <!-- Playback rate indicator -->
+                    <TextBlock Text="{Binding Player.RateDisplayString}"
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               FontSize="11" VerticalAlignment="Center"
+                               Margin="0,0,8,0" />
+
+                    <!-- Loop toggle -->
+                    <ToggleButton x:Name="LoopToggle"
+                                  Style="{StaticResource CropModeToggle}"
+                                  IsChecked="{Binding Player.IsLooping, Mode=TwoWay}"
+                                  ToolTip="Loop Playback (Ctrl+L)"
+                                  Padding="6,4">
+                        <TextBlock FontFamily="Segoe Fluent Icons"
+                                   Text="{StaticResource IconLoop}"
+                                   FontSize="14" />
+                    </ToggleButton>
+                </StackPanel>
+
+                <!-- Center: Transport buttons -->
+                <StackPanel Orientation="Horizontal"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center">
+
+                    <!-- Shuttle Reverse (J) -->
+                    <Button Style="{StaticResource ToolbarButton}"
+                            Command="{Binding Player.ShuttleReverseCommand}"
+                            ToolTip="Shuttle Reverse (J)"
+                            Padding="6,4">
+                        <TextBlock FontFamily="Segoe Fluent Icons"
+                                   Text="{StaticResource IconShuttleBack}"
+                                   FontSize="14" />
+                    </Button>
+
+                    <!-- Step Backward -->
+                    <Button Style="{StaticResource ToolbarButton}"
+                            Command="{Binding Player.StepBackwardCommand}"
+                            ToolTip="Step Backward (Left Arrow)"
+                            Padding="6,4" Margin="2,0">
+                        <TextBlock FontFamily="Segoe Fluent Icons"
+                                   Text="{StaticResource IconStepBackward}"
+                                   FontSize="16" />
+                    </Button>
+
+                    <!-- Play / Pause toggle -->
+                    <Button x:Name="PlayPauseButton"
+                            Style="{StaticResource ToolbarButton}"
+                            Command="{Binding Player.TogglePlayPauseCommand}"
+                            ToolTip="Play / Pause (Space)"
+                            Padding="10,6" Margin="4,0">
+                        <TextBlock FontFamily="Segoe Fluent Icons"
+                                   FontSize="20">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Text" Value="{StaticResource IconPlay}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Player.IsPlaying}" Value="True">
+                                            <Setter Property="Text" Value="{StaticResource IconPause}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Button>
+
+                    <!-- Step Forward -->
+                    <Button Style="{StaticResource ToolbarButton}"
+                            Command="{Binding Player.StepForwardCommand}"
+                            ToolTip="Step Forward (Right Arrow)"
+                            Padding="6,4" Margin="2,0">
+                        <TextBlock FontFamily="Segoe Fluent Icons"
+                                   Text="{StaticResource IconStepForward}"
+                                   FontSize="16" />
+                    </Button>
+
+                    <!-- Shuttle Forward (L) -->
+                    <Button Style="{StaticResource ToolbarButton}"
+                            Command="{Binding Player.ShuttleForwardCommand}"
+                            ToolTip="Shuttle Forward (L)"
+                            Padding="6,4">
+                        <TextBlock FontFamily="Segoe Fluent Icons"
+                                   Text="{StaticResource IconShuttleForward}"
+                                   FontSize="14" />
+                    </Button>
+
+                    <!-- Shuttle Stop (K) - hidden but functional via keyboard -->
+                </StackPanel>
+            </DockPanel>
+        </Grid>
+    </Border>
+</UserControl>

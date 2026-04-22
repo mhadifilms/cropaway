@@ -1,0 +1,116 @@
+<UserControl x:Class="CropawayWindows.Views.CropInputPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d"
+             d:DesignHeight="32" d:DesignWidth="900">
+
+    <Border Background="{StaticResource PanelBrush}"
+            BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1"
+            Padding="8,3">
+        <Grid>
+            <!-- Rectangle mode inputs -->
+            <StackPanel x:Name="RectangleInputs" Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="X:" Foreground="{StaticResource TextSecondaryBrush}"
+                           FontSize="11" VerticalAlignment="Center" Margin="0,0,4,0" />
+                <TextBox x:Name="RectX" Style="{StaticResource DarkTextBox}" Width="60" FontSize="11"
+                         Padding="4,2" VerticalAlignment="Center"
+                         KeyDown="OnTextBoxKeyDown" LostFocus="OnRectValueChanged" />
+
+                <TextBlock Text="Y:" Foreground="{StaticResource TextSecondaryBrush}"
+                           FontSize="11" VerticalAlignment="Center" Margin="12,0,4,0" />
+                <TextBox x:Name="RectY" Style="{StaticResource DarkTextBox}" Width="60" FontSize="11"
+                         Padding="4,2" VerticalAlignment="Center"
+                         KeyDown="OnTextBoxKeyDown" LostFocus="OnRectValueChanged" />
+
+                <TextBlock Text="W:" Foreground="{StaticResource TextSecondaryBrush}"
+                           FontSize="11" VerticalAlignment="Center" Margin="12,0,4,0" />
+                <TextBox x:Name="RectW" Style="{StaticResource DarkTextBox}" Width="60" FontSize="11"
+                         Padding="4,2" VerticalAlignment="Center"
+                         KeyDown="OnTextBoxKeyDown" LostFocus="OnRectValueChanged" />
+
+                <TextBlock Text="H:" Foreground="{StaticResource TextSecondaryBrush}"
+                           FontSize="11" VerticalAlignment="Center" Margin="12,0,4,0" />
+                <TextBox x:Name="RectH" Style="{StaticResource DarkTextBox}" Width="60" FontSize="11"
+                         Padding="4,2" VerticalAlignment="Center"
+                         KeyDown="OnTextBoxKeyDown" LostFocus="OnRectValueChanged" />
+
+                <TextBlock Text="px" Foreground="{StaticResource TextTertiaryBrush}"
+                           FontSize="10" VerticalAlignment="Center" Margin="4,0,0,0" />
+
+                <!-- Aspect ratio lock -->
+                <Rectangle Width="1" Fill="{StaticResource BorderBrush}" Margin="12,2" />
+                <ToggleButton x:Name="AspectLockToggle"
+                              Style="{StaticResource CropModeToggle}"
+                              ToolTip="Lock Aspect Ratio"
+                              Padding="4,2" Margin="0,0,0,0"
+                              Checked="OnAspectLockChanged" Unchecked="OnAspectLockChanged">
+                    <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE72E;" FontSize="12" />
+                </ToggleButton>
+
+                <!-- Preset sizes -->
+                <Rectangle Width="1" Fill="{StaticResource BorderBrush}" Margin="8,2" />
+                <ComboBox x:Name="PresetCombo" Style="{StaticResource DarkComboBox}"
+                          Width="110" FontSize="11" VerticalAlignment="Center"
+                          SelectionChanged="OnPresetChanged">
+                    <ComboBoxItem Content="Custom" IsSelected="True" />
+                    <ComboBoxItem Content="16:9" />
+                    <ComboBoxItem Content="4:3" />
+                    <ComboBoxItem Content="1:1" />
+                    <ComboBoxItem Content="9:16" />
+                    <ComboBoxItem Content="21:9" />
+                    <ComboBoxItem Content="2.35:1" />
+                </ComboBox>
+            </StackPanel>
+
+            <!-- Circle mode inputs -->
+            <StackPanel x:Name="CircleInputs" Orientation="Horizontal" VerticalAlignment="Center"
+                        Visibility="Collapsed">
+                <TextBlock Text="Center X:" Foreground="{StaticResource TextSecondaryBrush}"
+                           FontSize="11" VerticalAlignment="Center" Margin="0,0,4,0" />
+                <TextBox x:Name="CircleCX" Style="{StaticResource DarkTextBox}" Width="60" FontSize="11"
+                         Padding="4,2" VerticalAlignment="Center"
+                         KeyDown="OnTextBoxKeyDown" LostFocus="OnCircleValueChanged" />
+
+                <TextBlock Text="Center Y:" Foreground="{StaticResource TextSecondaryBrush}"
+                           FontSize="11" VerticalAlignment="Center" Margin="12,0,4,0" />
+                <TextBox x:Name="CircleCY" Style="{StaticResource DarkTextBox}" Width="60" FontSize="11"
+                         Padding="4,2" VerticalAlignment="Center"
+                         KeyDown="OnTextBoxKeyDown" LostFocus="OnCircleValueChanged" />
+
+                <TextBlock Text="Radius:" Foreground="{StaticResource TextSecondaryBrush}"
+                           FontSize="11" VerticalAlignment="Center" Margin="12,0,4,0" />
+                <TextBox x:Name="CircleR" Style="{StaticResource DarkTextBox}" Width="60" FontSize="11"
+                         Padding="4,2" VerticalAlignment="Center"
+                         KeyDown="OnTextBoxKeyDown" LostFocus="OnCircleValueChanged" />
+
+                <TextBlock Text="px" Foreground="{StaticResource TextTertiaryBrush}"
+                           FontSize="10" VerticalAlignment="Center" Margin="4,0,0,0" />
+            </StackPanel>
+
+            <!-- AI mode inputs (read-only bbox) -->
+            <StackPanel x:Name="AIInputs" Orientation="Horizontal" VerticalAlignment="Center"
+                        Visibility="Collapsed">
+                <TextBlock Text="AI Bbox:" Foreground="{StaticResource TextSecondaryBrush}"
+                           FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <TextBlock x:Name="AIBboxText" Text="No tracking data"
+                           Foreground="{StaticResource TextPrimaryBrush}"
+                           FontSize="11" VerticalAlignment="Center" />
+            </StackPanel>
+
+            <!-- Freehand mode (read-only bounds) -->
+            <StackPanel x:Name="FreehandInputs" Orientation="Horizontal" VerticalAlignment="Center"
+                        Visibility="Collapsed">
+                <TextBlock Text="Mask Bounds:" Foreground="{StaticResource TextSecondaryBrush}"
+                           FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <TextBlock x:Name="FreehandBoundsText" Text="No mask drawn"
+                           Foreground="{StaticResource TextPrimaryBrush}"
+                           FontSize="11" VerticalAlignment="Center" />
+                <TextBlock x:Name="FreehandPointCount" Text=""
+                           Foreground="{StaticResource TextTertiaryBrush}"
+                           FontSize="10" VerticalAlignment="Center" Margin="12,0,0,0" />
+            </StackPanel>
+        </Grid>
+    </Border>
+</UserControl>

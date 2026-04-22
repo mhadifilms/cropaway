@@ -1,0 +1,55 @@
+<UserControl x:Class="CropawayWindows.Views.Inspector.TransformInspectorSection"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d"
+             d:DesignWidth="250">
+
+    <StackPanel>
+        <!-- Preserve Width Toggle -->
+        <CheckBox Content="Preserve Width"
+                  IsChecked="{Binding PreserveWidth}"
+                  Foreground="{StaticResource TextPrimaryBrush}"
+                  FontSize="11" Margin="0,0,0,8" />
+
+        <!-- Enable Alpha Channel Toggle -->
+        <CheckBox Content="Enable Alpha Channel"
+                  IsChecked="{Binding EnableAlphaChannel}"
+                  Foreground="{StaticResource TextPrimaryBrush}"
+                  FontSize="11" Margin="0,0,0,8" />
+
+        <Separator Background="{StaticResource BorderBrush}" Margin="0,4" />
+
+        <!-- Output Dimensions -->
+        <TextBlock Text="Output Dimensions" Foreground="{StaticResource TextSecondaryBrush}"
+                   FontSize="10" FontWeight="SemiBold" Margin="0,4,0,6" />
+
+        <DockPanel Margin="0,0,0,4">
+            <TextBlock Text="Width:" Foreground="{StaticResource TextSecondaryBrush}"
+                       FontSize="11" Width="50" />
+            <TextBlock Foreground="{StaticResource TextPrimaryBrush}" FontSize="11">
+                <TextBlock.Text>
+                    <Binding Path="OutputWidth" StringFormat="{}{0} px" />
+                </TextBlock.Text>
+            </TextBlock>
+        </DockPanel>
+
+        <DockPanel Margin="0,0,0,4">
+            <TextBlock Text="Height:" Foreground="{StaticResource TextSecondaryBrush}"
+                       FontSize="11" Width="50" />
+            <TextBlock Foreground="{StaticResource TextPrimaryBrush}" FontSize="11">
+                <TextBlock.Text>
+                    <Binding Path="OutputHeight" StringFormat="{}{0} px" />
+                </TextBlock.Text>
+            </TextBlock>
+        </DockPanel>
+
+        <DockPanel Margin="0,4,0,0">
+            <TextBlock Text="Output:" Foreground="{StaticResource TextSecondaryBrush}"
+                       FontSize="11" Width="50" />
+            <TextBlock Text="{Binding OutputDimensionsDisplay}" Foreground="{StaticResource AccentBrush}"
+                       FontSize="11" FontWeight="SemiBold" />
+        </DockPanel>
+    </StackPanel>
+</UserControl>

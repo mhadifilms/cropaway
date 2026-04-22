@@ -1,23 +1,46 @@
 #!/bin/bash
 set -e
-# Build DMG and create a GitHub Release with it.
+# Create a version tag and push it to trigger the unified release workflow.
+# CI builds both macOS DMG (macos-26 runner) and Windows installer,
+# then publishes a single GitHub Release with all artifacts.
+#
 # Usage: ./scripts/release.sh <version>
-# Example: ./scripts/release.sh 1.1.2
-# Requires: gh (brew install gh) and `gh auth login`
+# Example: ./scripts/release.sh 1.2.0
 
 VERSION="${1:?Usage: ./scripts/release.sh <version>}"
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-DMG_PATH="$REPO_DIR/build/Cropaway-${VERSION}.dmg"
+TAG="v${VERSION}"
 
-cd "$REPO_DIR"
-./scripts/build-dmg.sh "$VERSION"
-
-if [ ! -f "$DMG_PATH" ]; then
-    echo "❌ DMG not found: $DMG_PATH"
+# Ensure we're on main and up to date
+BRANCH=$(git branch --show-current)
+if [ "$BRANCH" != "main" ]; then
+    echo "⚠️  You're on '$BRANCH', not 'main'. Switch to main first."
     exit 1
 fi
 
-echo "📤 Creating release v${VERSION} and uploading DMG..."
-gh release create "v${VERSION}" "$DMG_PATH" --title "v${VERSION}" --generate-notes
-echo "✅ Release v${VERSION} is live."
+git fetch origin
+LOCAL=$(git rev-parse HEAD)
+REMOTE=$(git rev-parse origin/main)
+if [ "$LOCAL" != "$REMOTE" ]; then
+    echo "⚠️  Local main is not up to date with origin. Run: git pull origin main"
+    exit 1
+fi
+
+# Check tag doesn't already exist
+if git rev-parse "$TAG" >/dev/null 2>&1; then
+    echo "❌ Tag $TAG already exists."
+    exit 1
+fi
+
+echo "🏷️  Creating tag $TAG on main..."
+git tag -a "$TAG" -m "Release $VERSION"
+
+echo "📤 Pushing tag to origin..."
+git push origin "$TAG"
+
+echo ""
+echo "✅ Tag $TAG pushed. GitHub Actions will now:"
+echo "   1. Build macOS DMG (macos-26 runner, Xcode 26)"
+echo "   2. Build Windows installer + portable ZIP (windows-latest)"
+echo "   3. Create unified GitHub Release with all artifacts"
+echo ""
+echo "   Track progress: gh run watch"

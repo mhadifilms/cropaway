@@ -338,6 +338,9 @@ struct CopiedCropSettings {
     let circleCenter: CGPoint
     let circleRadius: Double
     let freehandPoints: [CGPoint]
+    let maskSmoothness: Double
+    let maskRadius: Double
+    let maskDenoise: Double
 }
 
 struct EditNotificationHandler: ViewModifier {
@@ -383,7 +386,10 @@ struct EditNotificationHandler: ViewModifier {
             cropRect: cropEditorVM.cropRect,
             circleCenter: cropEditorVM.circleCenter,
             circleRadius: cropEditorVM.circleRadius,
-            freehandPoints: cropEditorVM.freehandPoints
+            freehandPoints: cropEditorVM.freehandPoints,
+            maskSmoothness: cropEditorVM.maskSmoothness,
+            maskRadius: cropEditorVM.maskRadius,
+            maskDenoise: cropEditorVM.maskDenoise
         )
     }
 
@@ -395,6 +401,9 @@ struct EditNotificationHandler: ViewModifier {
         cropEditorVM.circleCenter = settings.circleCenter
         cropEditorVM.circleRadius = settings.circleRadius
         cropEditorVM.freehandPoints = settings.freehandPoints
+        cropEditorVM.maskSmoothness = settings.maskSmoothness
+        cropEditorVM.maskRadius = settings.maskRadius
+        cropEditorVM.maskDenoise = settings.maskDenoise
     }
 }
 

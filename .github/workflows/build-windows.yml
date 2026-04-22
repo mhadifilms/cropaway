@@ -1,0 +1,58 @@
+name: CI — Windows Build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'CropawayWindows/**'
+      - '.github/workflows/build-windows.yml'
+    tags-ignore: ['v*']   # releases handled by release.yml
+  pull_request:
+    paths:
+      - 'CropawayWindows/**'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version number (e.g. 1.0.0)'
+        required: false
+        default: '1.0.0'
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Determine version
+        id: version
+        shell: pwsh
+        run: |
+          if ("${{ github.event.inputs.version }}" -ne "") {
+              $ver = "${{ github.event.inputs.version }}"
+          } else {
+              $ver = "1.0.0"
+          }
+          Write-Host "Version: $ver"
+          "VERSION=$ver" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build application
+        working-directory: CropawayWindows
+        shell: pwsh
+        run: |
+          dotnet build CropawayWindows/CropawayWindows.csproj `
+            -c Release `
+            -p:Version=${{ steps.version.outputs.VERSION }}
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CropawayWindows-CI
+          path: CropawayWindows/CropawayWindows/bin/Release/
+          if-no-files-found: warn
