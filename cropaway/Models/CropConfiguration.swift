@@ -36,7 +36,7 @@ final class CropConfiguration: ObservableObject {
 
     // Keyframes for animation
     @Published var keyframes: [Keyframe] = []
-    @Published var keyframesEnabled: Bool = false
+    @Published var keyframesEnabled: Bool = true
 
     // Export settings (per-video)
     @Published var preserveWidth: Bool = true

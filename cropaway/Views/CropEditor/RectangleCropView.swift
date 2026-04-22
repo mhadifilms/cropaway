@@ -8,6 +8,7 @@ import SwiftUI
 struct RectangleCropView: View {
     @Binding var rect: CGRect
     let videoSize: CGSize
+    var onDragStateChanged: ((Bool) -> Void)? = nil
     var onEditEnded: (() -> Void)? = nil
 
     // Visual sizes
@@ -38,18 +39,18 @@ struct RectangleCropView: View {
                     RuleOfThirdsGrid(rect: pixelRect)
 
                     // All handles rendered directly (no ForEach for better performance)
-                    HandleView(handle: .topLeft, rect: $rect, videoSize: videoSize, pixelRect: pixelRect, cornerHitSize: cornerHitSize, cornerHandleSize: cornerHandleSize, edgeInset: edgeInset, onEditEnded: onEditEnded)
-                    HandleView(handle: .topRight, rect: $rect, videoSize: videoSize, pixelRect: pixelRect, cornerHitSize: cornerHitSize, cornerHandleSize: cornerHandleSize, edgeInset: edgeInset, onEditEnded: onEditEnded)
-                    HandleView(handle: .bottomLeft, rect: $rect, videoSize: videoSize, pixelRect: pixelRect, cornerHitSize: cornerHitSize, cornerHandleSize: cornerHandleSize, edgeInset: edgeInset, onEditEnded: onEditEnded)
-                    HandleView(handle: .bottomRight, rect: $rect, videoSize: videoSize, pixelRect: pixelRect, cornerHitSize: cornerHitSize, cornerHandleSize: cornerHandleSize, edgeInset: edgeInset, onEditEnded: onEditEnded)
+                    HandleView(handle: .topLeft, rect: $rect, videoSize: videoSize, pixelRect: pixelRect, cornerHitSize: cornerHitSize, cornerHandleSize: cornerHandleSize, edgeInset: edgeInset, onDragStateChanged: onDragStateChanged, onEditEnded: onEditEnded)
+                    HandleView(handle: .topRight, rect: $rect, videoSize: videoSize, pixelRect: pixelRect, cornerHitSize: cornerHitSize, cornerHandleSize: cornerHandleSize, edgeInset: edgeInset, onDragStateChanged: onDragStateChanged, onEditEnded: onEditEnded)
+                    HandleView(handle: .bottomLeft, rect: $rect, videoSize: videoSize, pixelRect: pixelRect, cornerHitSize: cornerHitSize, cornerHandleSize: cornerHandleSize, edgeInset: edgeInset, onDragStateChanged: onDragStateChanged, onEditEnded: onEditEnded)
+                    HandleView(handle: .bottomRight, rect: $rect, videoSize: videoSize, pixelRect: pixelRect, cornerHitSize: cornerHitSize, cornerHandleSize: cornerHandleSize, edgeInset: edgeInset, onDragStateChanged: onDragStateChanged, onEditEnded: onEditEnded)
 
-                    EdgeHandleView(handle: .top, rect: $rect, videoSize: videoSize, pixelRect: pixelRect, edgeHitSize: edgeHitSize, edgeHandleThickness: edgeHandleThickness, edgeInset: edgeInset, onEditEnded: onEditEnded)
-                    EdgeHandleView(handle: .bottom, rect: $rect, videoSize: videoSize, pixelRect: pixelRect, edgeHitSize: edgeHitSize, edgeHandleThickness: edgeHandleThickness, edgeInset: edgeInset, onEditEnded: onEditEnded)
-                    EdgeHandleView(handle: .left, rect: $rect, videoSize: videoSize, pixelRect: pixelRect, edgeHitSize: edgeHitSize, edgeHandleThickness: edgeHandleThickness, edgeInset: edgeInset, onEditEnded: onEditEnded)
-                    EdgeHandleView(handle: .right, rect: $rect, videoSize: videoSize, pixelRect: pixelRect, edgeHitSize: edgeHitSize, edgeHandleThickness: edgeHandleThickness, edgeInset: edgeInset, onEditEnded: onEditEnded)
+                    EdgeHandleView(handle: .top, rect: $rect, videoSize: videoSize, pixelRect: pixelRect, edgeHitSize: edgeHitSize, edgeHandleThickness: edgeHandleThickness, edgeInset: edgeInset, onDragStateChanged: onDragStateChanged, onEditEnded: onEditEnded)
+                    EdgeHandleView(handle: .bottom, rect: $rect, videoSize: videoSize, pixelRect: pixelRect, edgeHitSize: edgeHitSize, edgeHandleThickness: edgeHandleThickness, edgeInset: edgeInset, onDragStateChanged: onDragStateChanged, onEditEnded: onEditEnded)
+                    EdgeHandleView(handle: .left, rect: $rect, videoSize: videoSize, pixelRect: pixelRect, edgeHitSize: edgeHitSize, edgeHandleThickness: edgeHandleThickness, edgeInset: edgeInset, onDragStateChanged: onDragStateChanged, onEditEnded: onEditEnded)
+                    EdgeHandleView(handle: .right, rect: $rect, videoSize: videoSize, pixelRect: pixelRect, edgeHitSize: edgeHitSize, edgeHandleThickness: edgeHandleThickness, edgeInset: edgeInset, onDragStateChanged: onDragStateChanged, onEditEnded: onEditEnded)
 
                     // Center drag
-                    CenterDragView(rect: $rect, videoSize: videoSize, pixelRect: pixelRect, cornerHitSize: cornerHitSize, onEditEnded: onEditEnded)
+                    CenterDragView(rect: $rect, videoSize: videoSize, pixelRect: pixelRect, cornerHitSize: cornerHitSize, onDragStateChanged: onDragStateChanged, onEditEnded: onEditEnded)
                 }
             }
         }
@@ -66,6 +67,7 @@ private struct HandleView: View {
     let cornerHitSize: CGFloat
     let cornerHandleSize: CGFloat
     let edgeInset: CGFloat
+    var onDragStateChanged: ((Bool) -> Void)?
     var onEditEnded: (() -> Void)?
 
     @State private var initialRect: CGRect? = nil
@@ -88,6 +90,7 @@ private struct HandleView: View {
             .onChanged { value in
                 if initialRect == nil {
                     initialRect = rect
+                    onDragStateChanged?(true)
                 }
                 guard let start = initialRect else { return }
 
@@ -114,6 +117,7 @@ private struct HandleView: View {
             }
             .onEnded { _ in
                 initialRect = nil
+                onDragStateChanged?(false)
                 onEditEnded?()
             }
     }
@@ -149,6 +153,7 @@ private struct EdgeHandleView: View {
     let edgeHitSize: CGFloat
     let edgeHandleThickness: CGFloat
     let edgeInset: CGFloat
+    var onDragStateChanged: ((Bool) -> Void)?
     var onEditEnded: (() -> Void)?
 
     @State private var initialRect: CGRect? = nil
@@ -181,6 +186,7 @@ private struct EdgeHandleView: View {
             .onChanged { value in
                 if initialRect == nil {
                     initialRect = rect
+                    onDragStateChanged?(true)
                 }
                 guard let start = initialRect else { return }
 
@@ -207,6 +213,7 @@ private struct EdgeHandleView: View {
             }
             .onEnded { _ in
                 initialRect = nil
+                onDragStateChanged?(false)
                 onEditEnded?()
             }
     }
@@ -239,6 +246,7 @@ private struct CenterDragView: View {
     let videoSize: CGSize
     let pixelRect: CGRect
     let cornerHitSize: CGFloat
+    var onDragStateChanged: ((Bool) -> Void)?
     var onEditEnded: (() -> Void)?
 
     @State private var initialRect: CGRect? = nil
@@ -260,6 +268,7 @@ private struct CenterDragView: View {
             .onChanged { value in
                 if initialRect == nil {
                     initialRect = rect
+                    onDragStateChanged?(true)
                 }
                 guard let start = initialRect else { return }
 
@@ -271,6 +280,7 @@ private struct CenterDragView: View {
             }
             .onEnded { _ in
                 initialRect = nil
+                onDragStateChanged?(false)
                 onEditEnded?()
             }
     }

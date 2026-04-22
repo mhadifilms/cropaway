@@ -15,6 +15,7 @@ struct InterpolatedCropState {
     var freehandPathData: Data?
     var aiMaskData: Data?
     var aiBoundingBox: CGRect
+    var isAbsent: Bool
 }
 
 final class KeyframeInterpolator {
@@ -23,6 +24,37 @@ final class KeyframeInterpolator {
     private init() {}
 
     func interpolate(
+        keyframes: [Keyframe],
+        at timestamp: Double,
+        mode: CropMode
+    ) -> InterpolatedCropState {
+        guard !keyframes.isEmpty else {
+            return defaultState()
+        }
+
+        let sorted = keyframes.sorted { $0.timestamp < $1.timestamp }
+
+        // Before first keyframe - use first keyframe's state
+        if timestamp <= sorted.first!.timestamp {
+            return stateFromKeyframe(sorted.first!, mode: mode)
+        }
+
+        // After last keyframe - use last keyframe's state
+        if timestamp >= sorted.last!.timestamp {
+            return stateFromKeyframe(sorted.last!, mode: mode)
+        }
+
+        // Find the keyframe at or just before the current timestamp (hold/step behavior)
+        // This means: use keyframe A's values until we reach keyframe B
+        if let currentKeyframe = sorted.last(where: { $0.timestamp <= timestamp }) {
+            return stateFromKeyframe(currentKeyframe, mode: mode)
+        }
+
+        return stateFromKeyframe(sorted.first!, mode: mode)
+    }
+
+    /// Interpolate with smooth transitions (for future use if user wants linear interpolation)
+    func interpolateSmooth(
         keyframes: [Keyframe],
         at timestamp: Double,
         mode: CropMode
@@ -80,7 +112,8 @@ final class KeyframeInterpolator {
             freehandPoints: [],
             freehandPathData: nil,
             aiMaskData: nil,
-            aiBoundingBox: .zero
+            aiBoundingBox: .zero,
+            isAbsent: false
         )
     }
 
@@ -109,7 +142,8 @@ final class KeyframeInterpolator {
             freehandPoints: freehandPoints,
             freehandPathData: keyframe.freehandPathData,
             aiMaskData: keyframe.aiMaskData,
-            aiBoundingBox: keyframe.aiBoundingBox ?? .zero
+            aiBoundingBox: keyframe.aiBoundingBox ?? .zero,
+            isAbsent: keyframe.isAbsent
         )
     }
 
@@ -141,7 +175,8 @@ final class KeyframeInterpolator {
             freehandPoints: t < 0.5 ? from.freehandPoints : to.freehandPoints,
             freehandPathData: t < 0.5 ? from.freehandPathData : to.freehandPathData,  // Hold interpolation for freehand
             aiMaskData: t < 0.5 ? from.aiMaskData : to.aiMaskData,  // Hold interpolation for AI masks
-            aiBoundingBox: lerp(from.aiBoundingBox, to.aiBoundingBox, t)  // Linear interpolation for AI bounding box
+            aiBoundingBox: lerp(from.aiBoundingBox, to.aiBoundingBox, t),  // Linear interpolation for AI bounding box
+            isAbsent: t < 0.5 ? from.isAbsent : to.isAbsent  // Hold interpolation for absence
         )
     }
 

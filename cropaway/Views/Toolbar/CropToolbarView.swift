@@ -13,6 +13,7 @@ struct CropToolbarView: View {
 
     @EnvironmentObject var cropEditorVM: CropEditorViewModel
     @EnvironmentObject var keyframeVM: KeyframeViewModel
+    @EnvironmentObject var playerVM: VideoPlayerViewModel
     @EnvironmentObject var undoManager: CropUndoManager
 
     init(video: VideoItem) {
@@ -240,6 +241,13 @@ struct CropToolbarView: View {
             }
 
             Button {
+                // Export JSON but encode absent frames as Python-style None
+                NotificationCenter.default.post(name: .exportBoundingBox, object: true)
+            } label: {
+                Label("Export Bounding Boxes (JSON, Python None)...", systemImage: "rectangle.dashed")
+            }
+
+            Button {
                 NotificationCenter.default.post(name: .exportBoundingBoxPickle, object: nil)
             } label: {
                 Label("Export Bounding Boxes (Pickle)...", systemImage: "rectangle.dashed.badge.record")
@@ -324,6 +332,7 @@ extension View {
         var body: some View {
             VStack {
                 CropToolbarView(video: video)
+                    .environmentObject(VideoPlayerViewModel())
                     .environmentObject(CropEditorViewModel())
                     .environmentObject(KeyframeViewModel())
                     .environmentObject(CropUndoManager())
@@ -335,3 +344,4 @@ extension View {
     }
     return PreviewWrapper()
 }
+

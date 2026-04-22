@@ -45,14 +45,15 @@ final class Keyframe: Identifiable, ObservableObject {
 
     // Interpolation to next keyframe
     @Published var interpolation: KeyframeInterpolation
-
+    @Published var isAbsent: Bool = false
     init(
         timestamp: Double,
         cropRect: CGRect = CGRect(x: 0, y: 0, width: 1, height: 1),
         edgeInsets: EdgeInsets = EdgeInsets(),
         circleCenter: CGPoint = CGPoint(x: 0.5, y: 0.5),
         circleRadius: Double = 0.4,
-        interpolation: KeyframeInterpolation = .linear
+        interpolation: KeyframeInterpolation = .linear,
+        isAbsent: Bool = false
     ) {
         self.id = UUID()
         self.timestamp = timestamp
@@ -61,6 +62,7 @@ final class Keyframe: Identifiable, ObservableObject {
         self.circleCenter = circleCenter
         self.circleRadius = circleRadius
         self.interpolation = interpolation
+        self.isAbsent = isAbsent
     }
 
     func copy() -> Keyframe {
@@ -76,6 +78,7 @@ final class Keyframe: Identifiable, ObservableObject {
         kf.aiMaskData = aiMaskData
         kf.aiPromptPoints = aiPromptPoints
         kf.aiBoundingBox = aiBoundingBox
+        kf.isAbsent = isAbsent
         return kf
     }
 }

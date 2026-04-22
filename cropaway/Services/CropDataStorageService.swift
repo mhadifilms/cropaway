@@ -141,6 +141,16 @@ final class CropDataStorageService {
 
     /// Apply loaded crop data to a VideoItem
     func apply(_ document: CropStorageDocument, to video: VideoItem) {
+        // Wrap in do-catch to prevent crashes from corrupted data
+        do {
+            try applyUnsafe(document, to: video)
+        } catch {
+            print("Failed to apply crop data: \(error). Using defaults.")
+        }
+    }
+    
+    /// Internal apply that can throw
+    private func applyUnsafe(_ document: CropStorageDocument, to video: VideoItem) throws {
         let config = video.cropConfiguration
 
         config.mode = CropMode(rawValue: document.crop.mode) ?? .rectangle
@@ -207,7 +217,8 @@ final class CropDataStorageService {
             config.keyframes = keyframes.map { kfData in
                 let kf = Keyframe(
                     timestamp: kfData.timestamp,
-                    interpolation: KeyframeInterpolation(rawValue: kfData.interpolation) ?? .linear
+                    interpolation: KeyframeInterpolation(rawValue: kfData.interpolation) ?? .linear,
+                    isAbsent: kfData.isAbsent ?? false
                 )
 
                 if let rect = kfData.rectangle {
@@ -251,6 +262,7 @@ final class CropDataStorageService {
                 return kf
             }
         }
+
     }
 
     /// List all crop data files for a video (Application Support only)
@@ -327,9 +339,9 @@ final class CropDataStorageService {
 
     // MARK: - Bounding Box Export
 
-    /// Export bounding box data as [[x1, y1, x2, y2], ...] for each frame
-    /// x1=left, y1=top, x2=right, y2=bottom in pixel coordinates
-    func exportBoundingBoxData(video: VideoItem, destinationFolder: URL) throws -> URL {
+    /// Export bounding box data as {"bounding_boxes": [[x1, y1, x2, y2], ...]} for each frame.
+    /// Absent frames are encoded as empty arrays [].
+    func exportBoundingBoxData(video: VideoItem, destinationFolder: URL, usePythonNone: Bool = false) throws -> URL {
         let config = video.cropConfiguration
         let meta = video.metadata
 
@@ -338,7 +350,7 @@ final class CropDataStorageService {
         }
 
         // Calculate total frames
-        let totalFrames = Int(ceil(meta.duration * meta.frameRate))
+        let totalFrames = meta.totalFrameCount
         guard totalFrames > 0 else {
             throw StorageError.invalidMetadata
         }
@@ -353,8 +365,9 @@ final class CropDataStorageService {
         for frameIndex in 0..<totalFrames {
             let timestamp = Double(frameIndex) / meta.frameRate
 
-            // Get crop rect at this timestamp (interpolated if keyframes exist)
+            // Get crop state at this timestamp (interpolated if keyframes exist)
             let cropRect: CGRect
+            let isAbsent: Bool
             if config.hasKeyframes {
                 let state = KeyframeInterpolator.shared.interpolate(
                     keyframes: config.keyframes,
@@ -362,8 +375,16 @@ final class CropDataStorageService {
                     mode: config.mode
                 )
                 cropRect = state.cropRect
+                isAbsent = state.isAbsent
             } else {
                 cropRect = config.effectiveCropRect
+                isAbsent = false
+            }
+
+            // Empty array for absent frames
+            if isAbsent {
+                boundingBoxes.append([])
+                continue
             }
 
             // Convert normalized rect to pixel bounding box [x1, y1, x2, y2]
@@ -375,10 +396,14 @@ final class CropDataStorageService {
             boundingBoxes.append([x1, y1, x2, y2])
         }
 
-        // Encode as JSON
+        // Encode as JSON - absent frames are empty arrays []
+        struct BoundingBoxExport: Codable {
+            let boundingBoxes: [[Int]]
+            enum CodingKeys: String, CodingKey { case boundingBoxes = "bounding_boxes" }
+        }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
-        let data = try encoder.encode(boundingBoxes)
+        let data = try encoder.encode(BoundingBoxExport(boundingBoxes: boundingBoxes))
 
         // Create filename: videoname_bbox.json
         let videoName = video.sourceURL.deletingPathExtension().lastPathComponent
@@ -394,10 +419,10 @@ final class CropDataStorageService {
     }
 
     /// Export bounding box data for multiple videos
-    func exportMultipleBoundingBoxData(videos: [VideoItem], destinationFolder: URL) throws -> [URL] {
+    func exportMultipleBoundingBoxData(videos: [VideoItem], destinationFolder: URL, usePythonNone: Bool = false) throws -> [URL] {
         var exportedURLs: [URL] = []
         for video in videos where video.hasCropChanges {
-            let url = try exportBoundingBoxData(video: video, destinationFolder: destinationFolder)
+            let url = try exportBoundingBoxData(video: video, destinationFolder: destinationFolder, usePythonNone: usePythonNone)
             exportedURLs.append(url)
         }
         return exportedURLs
@@ -437,6 +462,7 @@ final class CropDataStorageService {
     }
 
     /// Generate bounding boxes array for a video (shared between JSON and pickle export)
+    /// Absent frames are represented as empty arrays []
     private func generateBoundingBoxes(for video: VideoItem) throws -> [[Int]] {
         let config = video.cropConfiguration
         let meta = video.metadata
@@ -446,7 +472,7 @@ final class CropDataStorageService {
         }
 
         // Calculate total frames
-        let totalFrames = Int(ceil(meta.duration * meta.frameRate))
+        let totalFrames = meta.totalFrameCount
         guard totalFrames > 0 else {
             throw StorageError.invalidMetadata
         }
@@ -461,8 +487,9 @@ final class CropDataStorageService {
         for frameIndex in 0..<totalFrames {
             let timestamp = Double(frameIndex) / meta.frameRate
 
-            // Get crop rect at this timestamp (interpolated if keyframes exist)
+            // Get crop state at this timestamp (interpolated if keyframes exist)
             let cropRect: CGRect
+            let isAbsent: Bool
             if config.hasKeyframes {
                 let state = KeyframeInterpolator.shared.interpolate(
                     keyframes: config.keyframes,
@@ -470,8 +497,16 @@ final class CropDataStorageService {
                     mode: config.mode
                 )
                 cropRect = state.cropRect
+                isAbsent = state.isAbsent
             } else {
                 cropRect = config.effectiveCropRect
+                isAbsent = false
+            }
+
+            // Empty array for absent frames
+            if isAbsent {
+                boundingBoxes.append([])
+                continue
             }
 
             // Convert normalized rect to pixel bounding box [x1, y1, x2, y2]
@@ -655,7 +690,8 @@ final class CropDataStorageService {
             cropData.keyframes = config.keyframes.map { kf in
                 var kfData = CropStorageDocument.KeyframeData(
                     timestamp: kf.timestamp,
-                    interpolation: kf.interpolation.rawValue
+                    interpolation: kf.interpolation.rawValue,
+                    isAbsent: kf.isAbsent
                 )
 
                 kfData.rectangle = CropStorageDocument.RectangleData(
@@ -775,6 +811,7 @@ struct CropStorageDocument: Codable {
         var freehand: FreehandData?
         var ai: AIData?
         var keyframes: [KeyframeData]?
+        var absenceRanges: [AbsenceRangeData]?
 
         init(mode: String) {
             self.mode = mode
@@ -836,15 +873,22 @@ struct CropStorageDocument: Codable {
     struct KeyframeData: Codable {
         let timestamp: Double
         let interpolation: String
+        var isAbsent: Bool?
         var rectangle: RectangleData?
         var circle: CircleData?
         var freehand: FreehandData?
         var ai: AIData?
 
-        init(timestamp: Double, interpolation: String) {
+        init(timestamp: Double, interpolation: String, isAbsent: Bool = false) {
             self.timestamp = timestamp
             self.interpolation = interpolation
+            self.isAbsent = isAbsent
         }
+    }
+
+    struct AbsenceRangeData: Codable {
+        let start: Double
+        let end: Double
     }
 
     /// Pre-calculated pixel values for easy uncropping
@@ -867,3 +911,5 @@ struct CropStorageDocument: Codable {
         }
     }
 }
+
+

@@ -119,6 +119,7 @@ final class VideoItem: Identifiable, ObservableObject, Hashable {
 
     /// Load previously saved crop data
     private func loadSavedCropData() {
+        // Load synchronously but with error protection
         if let document = CropDataStorageService.shared.load(for: sourceURL) {
             CropDataStorageService.shared.apply(document, to: self)
             print("Loaded saved crop data for: \(sourceURL.lastPathComponent)")

@@ -12,6 +12,7 @@ import CoreGraphics
 final class CropEditorViewModel: ObservableObject {
     @Published var mode: CropMode = .rectangle
     @Published var isEditing: Bool = true
+    @Published var isDragging: Bool = false  // True while user is actively dragging a handle
 
     // Rectangle crop (normalized 0-1)
     @Published var cropRect: CGRect = CGRect(x: 0, y: 0, width: 1, height: 1)

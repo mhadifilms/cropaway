@@ -306,7 +306,8 @@ final class VideoProcessingService {
                             freehandPoints: cropConfig.freehandPoints,
                             freehandPathData: cropConfig.freehandPathData,
                             aiMaskData: cropConfig.aiMaskData,
-                            aiBoundingBox: cropConfig.aiBoundingBox
+                            aiBoundingBox: cropConfig.aiBoundingBox,
+                            isAbsent: false
                         )
                     }
 

@@ -91,26 +91,30 @@ struct MainContentView: View {
         undoManager.bind(to: cropEditorVM)
         undoManager.clearHistory()
 
-        // Set up auto-keyframe creation when crop editing ends
-        // Note: We use a local capture here since this closure may outlive the view
-        let kfVM = keyframeVM
-        let pVM = playerVM
-        let um = undoManager
-        cropEditorVM.onCropEditEnded = {
-            // Auto-create or update keyframe when keyframes are enabled
-            if kfVM.keyframesEnabled {
-                let hadKeyframeAtTime = kfVM.hasKeyframe(at: pVM.currentTime)
-                kfVM.autoCreateKeyframe(at: pVM.currentTime)
-                // Record undo only for new keyframes
-                if !hadKeyframeAtTime {
-                    um.recordAction(type: .keyframeAdd)
-                }
-            }
-        }
+        // Crop edit callback - currently not needed since hasUnsavedChanges is computed
+        cropEditorVM.onCropEditEnded = nil
     }
 
     private func handleTimeChange(_ oldValue: Double, _ newTime: Double) {
-        if keyframeVM.keyframesEnabled && keyframeVM.keyframes.count >= 2 {
+        // Apply keyframe interpolation when keyframes are enabled
+        // Works with 1+ keyframes (snaps to keyframe values, interpolates between them)
+        if keyframeVM.keyframesEnabled && !keyframeVM.keyframes.isEmpty {
+            let tolerance = 0.01 // Very tight tolerance for frame-aligned keyframes
+            
+            // Check if we landed exactly on a keyframe
+            if let keyframeAtTime = keyframeVM.keyframes.first(where: { abs($0.timestamp - newTime) < tolerance }) {
+                // Auto-select the keyframe we landed on
+                if !keyframeVM.selectedKeyframeIDs.contains(keyframeAtTime.id) {
+                    keyframeVM.selectKeyframe(keyframeAtTime)
+                }
+            } else if let selectedKeyframe = keyframeVM.selectedKeyframe {
+                // If a keyframe is selected but the playhead moved away from it, deselect
+                // This allows normal interpolation to resume during playback/scrubbing
+                if abs(selectedKeyframe.timestamp - newTime) > tolerance {
+                    keyframeVM.deselectAll()
+                }
+            }
+            
             keyframeVM.applyKeyframeState(at: newTime)
         }
     }
@@ -137,8 +141,9 @@ struct FileNotificationHandler: ViewModifier {
             .onReceive(NotificationCenter.default.publisher(for: .exportJSON)) { _ in
                 handleExportJSON()
             }
-            .onReceive(NotificationCenter.default.publisher(for: .exportBoundingBox)) { _ in
-                handleExportBoundingBox()
+            .onReceive(NotificationCenter.default.publisher(for: .exportBoundingBox)) { notification in
+                let usePythonNone = (notification.object as? Bool) == true
+                handleExportBoundingBox(usePythonNone: usePythonNone)
             }
             .onReceive(NotificationCenter.default.publisher(for: .exportBoundingBoxPickle)) { _ in
                 handleExportBoundingBoxPickle()
@@ -234,7 +239,7 @@ struct FileNotificationHandler: ViewModifier {
         }
     }
 
-    private func handleExportBoundingBox() {
+    private func handleExportBoundingBox(usePythonNone: Bool = false) {
         // Get videos to export (selected ones with crop changes)
         let videosToExport: [VideoItem]
         if projectVM.selectedVideoIDs.count > 1 {
@@ -260,7 +265,8 @@ struct FileNotificationHandler: ViewModifier {
             do {
                 let exportedURLs = try CropDataStorageService.shared.exportMultipleBoundingBoxData(
                     videos: videosToExport,
-                    destinationFolder: folderURL
+                    destinationFolder: folderURL,
+                    usePythonNone: usePythonNone
                 )
                 // Show in Finder
                 if !exportedURLs.isEmpty {
@@ -710,3 +716,4 @@ struct EmptyStateView: View {
     MainContentView()
         .environmentObject(ProjectViewModel())
 }
+
