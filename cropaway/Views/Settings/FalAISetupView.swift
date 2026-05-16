@@ -430,8 +430,3 @@ extension View {
 #Preview("No Key") {
     FalAISetupView()
 }
-
-#Preview("With Key") {
-    let _ = FalAIService.shared.saveAPIKey("fal_test_key_12345678901234567890")
-    return FalAISetupView()
-}

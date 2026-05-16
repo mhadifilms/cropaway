@@ -16,6 +16,7 @@ DerivedData/
 *.swp
 *.swo
 *~
+test-videos/
 
 # Archives
 *.xcarchive
@@ -34,6 +35,8 @@ Packages/
 # IDE
 .idea/
 *.code-workspace
+.claude/
+CLAUDE.md
 
 # Environment
 .env

@@ -496,7 +496,8 @@ struct DimmedCropOverlay: View {
             freehandPoints: freehandPoints,
             freehandPathData: freehandPathData,
             aiMaskData: aiMaskData,
-            aiBoundingBox: .zero
+            aiBoundingBox: .zero,
+            isAbsent: false
         )
 
         return Self.previewMaskRenderer.generateMaskImage(

@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -96,12 +97,12 @@ public class FalAIException : Exception
 /// <summary>
 /// Internal response from queue submission.
 /// </summary>
-internal record QueueSubmissionResponse(string RequestId, string StatusUrl, string ResponseUrl);
+internal record QueueSubmissionResponse(string RequestId, Uri StatusUrl, Uri ResponseUrl);
 
 /// <summary>
 /// Cloud-based AI video tracking service using fal.ai SAM3 API.
 /// Supports text prompts and point prompts for object tracking.
-/// API key is stored in user settings (Properties.Settings).
+/// API key is stored with per-user DPAPI protection.
 /// </summary>
 public sealed class FalAIService : IDisposable
 {
@@ -112,9 +113,14 @@ public sealed class FalAIService : IDisposable
     private const string QueueEndpoint = "https://queue.fal.run/fal-ai/sam-3/video-rle";
     private const string TokenEndpoint = "https://rest.alpha.fal.ai/storage/auth/token?storage_type=fal-cdn-v3";
     private const string StatusBaseUrl = "https://queue.fal.run/fal-ai/sam-3/video-rle/requests";
+    private const string QueueHost = "queue.fal.run";
+    private const string FalMediaHostSuffix = "fal.media";
 
-    // Settings key for API key storage
+    // Settings key for encrypted API key storage.
+    private const string RegistryPath = @"SOFTWARE\Cropaway";
     private const string ApiKeySettingsKey = "FalAIAPIKey";
+    private const string LegacyApiKeySettingsKey = "FalAIApiKey";
+    private const string ProtectedValuePrefix = "dpapi:";
 
     // Maximum file size before proxy creation (50 MB)
     private const long MaxDirectUploadSize = 50 * 1024 * 1024;
@@ -165,27 +171,46 @@ public sealed class FalAIService : IDisposable
     /// <summary>Gets the stored API key.</summary>
     public string? GetAPIKey()
     {
-        // Use isolated storage or registry for user settings on Windows
         try
         {
-            return Microsoft.Win32.Registry.CurrentUser
-                .OpenSubKey(@"SOFTWARE\Cropaway")?
-                .GetValue(ApiKeySettingsKey) as string;
+            using var regKey = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(RegistryPath);
+            string? storedValue = regKey?.GetValue(ApiKeySettingsKey) as string;
+            if (!string.IsNullOrWhiteSpace(storedValue))
+            {
+                if (TryUnprotectAPIKey(storedValue, out string? apiKey))
+                    return apiKey;
+
+                if (storedValue.StartsWith(ProtectedValuePrefix, StringComparison.Ordinal))
+                    return null;
+
+                // Migrate older plaintext values in-place.
+                SaveAPIKey(storedValue);
+                return storedValue;
+            }
+
+            string? legacyValue = regKey?.GetValue(LegacyApiKeySettingsKey) as string;
+            if (!string.IsNullOrWhiteSpace(legacyValue))
+            {
+                SaveAPIKey(legacyValue);
+                return legacyValue;
+            }
         }
         catch
         {
-            return null;
         }
+
+        return null;
     }
 
-    /// <summary>Saves the API key to user settings.</summary>
+    /// <summary>Saves the API key in a DPAPI-protected user setting.</summary>
     public void SaveAPIKey(string key)
     {
         try
         {
             using var regKey = Microsoft.Win32.Registry.CurrentUser
-                .CreateSubKey(@"SOFTWARE\Cropaway");
-            regKey?.SetValue(ApiKeySettingsKey, key);
+                .CreateSubKey(RegistryPath);
+            regKey?.SetValue(ApiKeySettingsKey, ProtectAPIKey(key));
+            regKey?.DeleteValue(LegacyApiKeySettingsKey, throwOnMissingValue: false);
         }
         catch (Exception ex)
         {
@@ -199,8 +224,9 @@ public sealed class FalAIService : IDisposable
         try
         {
             using var regKey = Microsoft.Win32.Registry.CurrentUser
-                .OpenSubKey(@"SOFTWARE\Cropaway", writable: true);
+                .OpenSubKey(RegistryPath, writable: true);
             regKey?.DeleteValue(ApiKeySettingsKey, throwOnMissingValue: false);
+            regKey?.DeleteValue(LegacyApiKeySettingsKey, throwOnMissingValue: false);
         }
         catch (Exception ex)
         {
@@ -212,6 +238,36 @@ public sealed class FalAIService : IDisposable
     public static bool IsValidAPIKeyFormat(string key)
     {
         return !string.IsNullOrWhiteSpace(key) && key.Length >= 20;
+    }
+
+    private static string ProtectAPIKey(string key)
+    {
+        byte[] plainBytes = Encoding.UTF8.GetBytes(key);
+        byte[] protectedBytes = ProtectedData.Protect(
+            plainBytes, optionalEntropy: null, DataProtectionScope.CurrentUser);
+        return ProtectedValuePrefix + Convert.ToBase64String(protectedBytes);
+    }
+
+    private static bool TryUnprotectAPIKey(string storedValue, out string? apiKey)
+    {
+        apiKey = null;
+
+        if (!storedValue.StartsWith(ProtectedValuePrefix, StringComparison.Ordinal))
+            return false;
+
+        try
+        {
+            string encoded = storedValue[ProtectedValuePrefix.Length..];
+            byte[] protectedBytes = Convert.FromBase64String(encoded);
+            byte[] plainBytes = ProtectedData.Unprotect(
+                protectedBytes, optionalEntropy: null, DataProtectionScope.CurrentUser);
+            apiKey = Encoding.UTF8.GetString(plainBytes);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     #endregion
@@ -303,7 +359,7 @@ public sealed class FalAIService : IDisposable
     private async Task<string> UploadVideoAsync(
         string videoFilePath, string apiKey, CancellationToken token)
     {
-        Debug.WriteLine($"[FalAI] Preparing video: {Path.GetFileName(videoFilePath)}");
+        Debug.WriteLine("[FalAI] Preparing video for upload.");
 
         var fileInfo = new FileInfo(videoFilePath);
         if (!fileInfo.Exists)
@@ -338,7 +394,7 @@ public sealed class FalAIService : IDisposable
             if (!tokenResponse.IsSuccessStatusCode)
             {
                 throw new FalAIException(FalAIError.UploadFailed,
-                    $"Failed to get upload token: HTTP {(int)tokenResponse.StatusCode}: {tokenBody}");
+                    $"Failed to get upload token: HTTP {(int)tokenResponse.StatusCode}");
             }
 
             var tokenJson = JsonDocument.Parse(tokenBody).RootElement;
@@ -353,14 +409,14 @@ public sealed class FalAIService : IDisposable
             else if (tokenJson.TryGetProperty("base_upload_url", out var baseUploadUrlProp))
                 baseUploadUrl = baseUploadUrlProp.GetString() ?? baseUploadUrl;
 
-            Debug.WriteLine($"[FalAI] Got upload token, base URL: {baseUploadUrl}");
+            Debug.WriteLine("[FalAI] Got upload token.");
 
             // Step 2: Upload file to CDN
             UpdateStatus(FalAIStatus.Uploading, 0.4);
             byte[] videoData = await File.ReadAllBytesAsync(uploadFilePath, token);
             Debug.WriteLine($"[FalAI] Upload size: {videoData.Length / (1024.0 * 1024.0):F1} MB");
 
-            string cdnUploadUrl = $"{baseUploadUrl}/files/upload";
+            Uri cdnUploadUrl = CreateFalMediaUploadUri(baseUploadUrl);
             var uploadRequest = new HttpRequestMessage(HttpMethod.Post, cdnUploadUrl);
             uploadRequest.Headers.Authorization =
                 new AuthenticationHeaderValue(tokenType, uploadToken);
@@ -369,7 +425,7 @@ public sealed class FalAIService : IDisposable
                 new MediaTypeHeaderValue("video/mp4");
             uploadRequest.Headers.TryAddWithoutValidation("X-Fal-File-Name", "proxy.mp4");
 
-            Debug.WriteLine($"[FalAI] Uploading to: {cdnUploadUrl}");
+            Debug.WriteLine("[FalAI] Uploading video.");
 
             var uploadResponse = await _httpClient.SendAsync(uploadRequest, token);
             string uploadBody = await uploadResponse.Content.ReadAsStringAsync(token);
@@ -377,7 +433,7 @@ public sealed class FalAIService : IDisposable
             if (!uploadResponse.IsSuccessStatusCode)
             {
                 throw new FalAIException(FalAIError.UploadFailed,
-                    $"Upload failed: HTTP {(int)uploadResponse.StatusCode}: {uploadBody}");
+                    $"Upload failed: HTTP {(int)uploadResponse.StatusCode}");
             }
 
             var uploadJson = JsonDocument.Parse(uploadBody).RootElement;
@@ -392,10 +448,15 @@ public sealed class FalAIService : IDisposable
             if (string.IsNullOrEmpty(accessUrl))
             {
                 throw new FalAIException(FalAIError.UploadFailed,
-                    $"Could not parse upload response: {uploadBody}");
+                    "Could not parse upload response.");
             }
 
-            Debug.WriteLine($"[FalAI] Video uploaded: {accessUrl}");
+            if (!IsAllowedFalMediaUrl(accessUrl))
+            {
+                throw new FalAIException(FalAIError.UploadFailed, "Upload response returned an unexpected host.");
+            }
+
+            Debug.WriteLine("[FalAI] Video uploaded.");
             UpdateStatus(FalAIStatus.Uploading, 1.0);
             return accessUrl;
         }
@@ -415,7 +476,7 @@ public sealed class FalAIService : IDisposable
     /// </summary>
     private async Task<string> CreateProxyAsync(string sourceFilePath, CancellationToken token)
     {
-        Debug.WriteLine($"[FalAI] Creating proxy for: {Path.GetFileName(sourceFilePath)}");
+        Debug.WriteLine("[FalAI] Creating proxy for upload.");
 
         string? ffmpegPath = FFmpegExportService.FindFFmpeg();
         if (ffmpegPath == null)
@@ -500,9 +561,7 @@ public sealed class FalAIService : IDisposable
 
             body["point_prompts"] = new JsonArray { pointPromptObj };
 
-            Debug.WriteLine($"[FalAI] Point prompt: pixel=({pixelX}, {pixelY}) " +
-                            $"normalized=({pointPrompt.Value.X:F3}, {pointPrompt.Value.Y:F3}) " +
-                            $"videoSize={videoWidth}x{videoHeight}");
+            Debug.WriteLine($"[FalAI] Point prompt prepared for video size {videoWidth}x{videoHeight}.");
         }
 
         var request = new HttpRequestMessage(HttpMethod.Post, QueueEndpoint);
@@ -510,17 +569,17 @@ public sealed class FalAIService : IDisposable
         request.Content = new StringContent(
             body.ToJsonString(), Encoding.UTF8, "application/json");
 
-        Debug.WriteLine($"[FalAI] Request body: {body.ToJsonString()}");
+        Debug.WriteLine("[FalAI] Request body prepared.");
 
         var response = await _httpClient.SendAsync(request, token);
         string responseBody = await response.Content.ReadAsStringAsync(token);
 
-        Debug.WriteLine($"[FalAI] Submit response: {responseBody}");
+        Debug.WriteLine($"[FalAI] Submit response received: {responseBody.Length} bytes.");
 
         if (!response.IsSuccessStatusCode)
         {
             throw new FalAIException(FalAIError.JobSubmissionFailed,
-                $"HTTP {(int)response.StatusCode}: {responseBody}");
+                $"HTTP {(int)response.StatusCode}");
         }
 
         var json = JsonDocument.Parse(responseBody).RootElement;
@@ -528,23 +587,25 @@ public sealed class FalAIService : IDisposable
         if (!json.TryGetProperty("request_id", out var requestIdProp))
         {
             throw new FalAIException(FalAIError.JobSubmissionFailed,
-                $"Could not parse response: {responseBody}");
+                "Could not parse response.");
         }
 
         string requestId = requestIdProp.GetString()!;
 
         // Get the status and response URLs
-        string statusUrl = json.TryGetProperty("status_url", out var statusUrlProp)
+        string statusUrlString = json.TryGetProperty("status_url", out var statusUrlProp)
             ? statusUrlProp.GetString() ?? $"{StatusBaseUrl}/{requestId}/status"
             : $"{StatusBaseUrl}/{requestId}/status";
 
-        string responseUrl = json.TryGetProperty("response_url", out var responseUrlProp)
+        string responseUrlString = json.TryGetProperty("response_url", out var responseUrlProp)
             ? responseUrlProp.GetString() ?? $"{StatusBaseUrl}/{requestId}"
             : $"{StatusBaseUrl}/{requestId}";
 
+        Uri statusUrl = ValidateQueueUri(statusUrlString);
+        Uri responseUrl = ValidateQueueUri(responseUrlString);
+
         Debug.WriteLine($"[FalAI] Job submitted: {requestId}");
-        Debug.WriteLine($"[FalAI] Status URL: {statusUrl}");
-        Debug.WriteLine($"[FalAI] Response URL: {responseUrl}");
+        Debug.WriteLine("[FalAI] Queue URLs validated.");
 
         return new QueueSubmissionResponse(requestId, statusUrl, responseUrl);
     }
@@ -620,7 +681,7 @@ public sealed class FalAIService : IDisposable
                         resultRequest.Headers.Authorization = new AuthenticationHeaderValue("Key", apiKey);
                         resultRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
-                        Debug.WriteLine($"[FalAI] Fetching result from: {submission.ResponseUrl}");
+                        Debug.WriteLine("[FalAI] Fetching result.");
                         var resultResponse = await _httpClient.SendAsync(resultRequest, token);
                         string resultBody = await resultResponse.Content.ReadAsStringAsync(token);
 
@@ -645,7 +706,7 @@ public sealed class FalAIService : IDisposable
                         {
                             var lastLog = logs[logs.GetArrayLength() - 1];
                             if (lastLog.TryGetProperty("message", out var msgProp))
-                                Debug.WriteLine($"[FalAI] Log: {msgProp.GetString()}");
+                                Debug.WriteLine("[FalAI] Received status log message.");
                         }
                         break;
                     }
@@ -870,6 +931,43 @@ public sealed class FalAIService : IDisposable
     #endregion
 
     #region Helpers
+
+    private static Uri ValidateQueueUri(string url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? uri) ||
+            !string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(uri.Host, QueueHost, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new FalAIException(FalAIError.InvalidResponse, "Unexpected fal.ai queue URL.");
+        }
+
+        return uri;
+    }
+
+    private static Uri CreateFalMediaUploadUri(string baseUploadUrl)
+    {
+        if (!Uri.TryCreate(baseUploadUrl, UriKind.Absolute, out Uri? baseUri) ||
+            !string.Equals(baseUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
+            !IsFalMediaHost(baseUri.Host))
+        {
+            throw new FalAIException(FalAIError.UploadFailed, "Unexpected fal.ai upload host.");
+        }
+
+        return new Uri($"{baseUri.ToString().TrimEnd('/')}/files/upload");
+    }
+
+    private static bool IsAllowedFalMediaUrl(string url)
+    {
+        return Uri.TryCreate(url, UriKind.Absolute, out Uri? uri) &&
+               string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) &&
+               IsFalMediaHost(uri.Host);
+    }
+
+    private static bool IsFalMediaHost(string host)
+    {
+        return string.Equals(host, FalMediaHostSuffix, StringComparison.OrdinalIgnoreCase) ||
+               host.EndsWith($".{FalMediaHostSuffix}", StringComparison.OrdinalIgnoreCase);
+    }
 
     private void UpdateStatus(FalAIStatus status, double progress)
     {

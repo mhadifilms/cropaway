@@ -10,6 +10,7 @@ import Foundation
 import AppKit
 import AVFoundation
 import Combine
+import Security
 
 /// Status of fal.ai processing
 enum FalAIStatus: Equatable {
@@ -82,42 +83,134 @@ final class FalAIService: ObservableObject {
 
     // API endpoints - using video-rle which returns bounding box coordinates directly
     private let queueEndpoint = "https://queue.fal.run/fal-ai/sam-3/video-rle"
-    private let storageEndpoint = "https://fal.ai/api/storage/upload/initiate"
+    private let tokenEndpoint = "https://rest.alpha.fal.ai/storage/auth/token?storage_type=fal-cdn-v3"
     private let statusBaseURL = "https://queue.fal.run/fal-ai/sam-3/video-rle/requests"
 
-    // UserDefaults key for API key
-    private let apiKeyKey = "FalAIAPIKey"
+    private let queueHost = "queue.fal.run"
+    private let falMediaHostSuffix = "fal.media"
+    private let legacyAPIKeyKey = "FalAIAPIKey"
+    private let keychainService = Bundle.main.bundleIdentifier ?? "com.mhadifilms.cropaway"
+    private let keychainAccount = "fal.ai.apiKey"
 
     private init() {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 300  // 5 minute timeout for uploads
         config.timeoutIntervalForResource = 1800  // 30 minute timeout for processing
         self.session = URLSession(configuration: config)
+        migrateAPIKeyFromUserDefaults()
     }
 
     // MARK: - API Key Management
 
     var hasAPIKey: Bool {
-        guard let key = UserDefaults.standard.string(forKey: apiKeyKey) else {
-            return false
-        }
+        guard let key = apiKey else { return false }
         return !key.isEmpty
     }
 
     var apiKey: String? {
-        UserDefaults.standard.string(forKey: apiKeyKey)
+        readAPIKeyFromKeychain()
     }
 
     func saveAPIKey(_ key: String) {
-        UserDefaults.standard.set(key, forKey: apiKeyKey)
+        if saveAPIKeyToKeychain(key) {
+            UserDefaults.standard.removeObject(forKey: legacyAPIKeyKey)
+        } else {
+            lastError = "Could not save API key securely."
+        }
     }
 
     func removeAPIKey() {
-        UserDefaults.standard.removeObject(forKey: apiKeyKey)
+        deleteAPIKeyFromKeychain()
+        UserDefaults.standard.removeObject(forKey: legacyAPIKeyKey)
     }
 
     func isValidAPIKeyFormat(_ key: String) -> Bool {
         return !key.isEmpty && key.count >= 20
+    }
+
+    private func migrateAPIKeyFromUserDefaults() {
+        guard readAPIKeyFromKeychain() == nil,
+              let legacyKey = UserDefaults.standard.string(forKey: legacyAPIKeyKey),
+              !legacyKey.isEmpty else {
+            return
+        }
+
+        if saveAPIKeyToKeychain(legacyKey) {
+            UserDefaults.standard.removeObject(forKey: legacyAPIKeyKey)
+        }
+    }
+
+    private func keychainQuery() -> [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: keychainAccount
+        ]
+    }
+
+    private func readAPIKeyFromKeychain() -> String? {
+        var query = keychainQuery()
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+
+        guard status == errSecSuccess,
+              let data = result as? Data else {
+            return nil
+        }
+
+        return String(data: data, encoding: .utf8)
+    }
+
+    private func saveAPIKeyToKeychain(_ key: String) -> Bool {
+        deleteAPIKeyFromKeychain()
+
+        var item = keychainQuery()
+        item[kSecValueData as String] = Data(key.utf8)
+        item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+
+        return SecItemAdd(item as CFDictionary, nil) == errSecSuccess
+    }
+
+    private func deleteAPIKeyFromKeychain() {
+        SecItemDelete(keychainQuery() as CFDictionary)
+    }
+
+    private func log(_ message: @autoclosure () -> String) {
+        #if DEBUG
+        print(message())
+        #endif
+    }
+
+    private func validatedURL(_ string: String, expectedHost: String, context: String) throws -> URL {
+        guard let url = URL(string: string),
+              url.scheme == "https",
+              url.host?.lowercased() == expectedHost else {
+            throw FalAIError.invalidResponse
+        }
+        return url
+    }
+
+    private func validatedFalMediaUploadURL(from baseUploadURL: String) throws -> URL {
+        guard let baseURL = URL(string: baseUploadURL),
+              baseURL.scheme == "https",
+              let host = baseURL.host?.lowercased(),
+              (host == falMediaHostSuffix || host.hasSuffix(".\(falMediaHostSuffix)")) else {
+            throw FalAIError.uploadFailed("Invalid upload host")
+        }
+
+        return baseURL.appendingPathComponent("files/upload")
+    }
+
+    private func isFalMediaURL(_ url: URL) -> Bool {
+        guard url.scheme == "https",
+              let host = url.host?.lowercased() else {
+            return false
+        }
+
+        return host == falMediaHostSuffix || host.hasSuffix(".\(falMediaHostSuffix)")
     }
 
     // MARK: - Video Tracking
@@ -145,7 +238,7 @@ final class FalAIService: ObservableObject {
         do {
             // Get source video dimensions for coordinate conversion
             let sourceDimensions = await getVideoDimensions(videoURL) ?? CGSize(width: 1920, height: 1080)
-            print("[FalAI] Source video dimensions: \(sourceDimensions)")
+            log("[FalAI] Source video dimensions: \(sourceDimensions)")
 
             // Step 1: Upload video to fal.ai storage
             let uploadedURL = try await uploadVideo(videoURL, apiKey: apiKey)
@@ -208,7 +301,7 @@ final class FalAIService: ObservableObject {
 
     /// Create a lightweight H.264 proxy for upload (same resolution, compressed)
     private func createProxy(_ sourceURL: URL) async throws -> URL {
-        print("[FalAI] Creating proxy for: \(sourceURL.lastPathComponent)")
+        log("[FalAI] Creating proxy for upload")
 
         let tempDir = FileManager.default.temporaryDirectory
         let proxyURL = tempDir.appendingPathComponent("proxy_\(UUID().uuidString).mp4")
@@ -253,7 +346,7 @@ final class FalAIService: ObservableObject {
         }
 
         let proxySize = try FileManager.default.attributesOfItem(atPath: proxyURL.path)[.size] as? Int64 ?? 0
-        print("[FalAI] Proxy created: \(ByteCountFormatter.string(fromByteCount: proxySize, countStyle: .file))")
+        log("[FalAI] Proxy created: \(ByteCountFormatter.string(fromByteCount: proxySize, countStyle: .file))")
 
         return proxyURL
     }
@@ -294,11 +387,11 @@ final class FalAIService: ObservableObject {
     /// Upload video to fal.ai CDN storage
     /// Flow: 1) Create proxy, 2) Get upload token, 3) Upload proxy to CDN, 4) Return access URL
     private func uploadVideo(_ localURL: URL, apiKey: String) async throws -> URL {
-        print("[FalAI] Preparing video: \(localURL.lastPathComponent)")
+        log("[FalAI] Preparing video for upload")
 
         // Check file size - if over 50MB, create a proxy
         let fileSize = (try? FileManager.default.attributesOfItem(atPath: localURL.path)[.size] as? Int64) ?? 0
-        print("[FalAI] Original size: \(ByteCountFormatter.string(fromByteCount: fileSize, countStyle: .file))")
+        log("[FalAI] Original size: \(ByteCountFormatter.string(fromByteCount: fileSize, countStyle: .file))")
 
         let uploadURL: URL
         var proxyToCleanup: URL? = nil
@@ -327,12 +420,12 @@ final class FalAIService: ObservableObject {
             throw FalAIError.uploadFailed("Could not read video file: \(error.localizedDescription)")
         }
 
-        print("[FalAI] Upload size: \(ByteCountFormatter.string(fromByteCount: Int64(videoData.count), countStyle: .file))")
+        log("[FalAI] Upload size: \(ByteCountFormatter.string(fromByteCount: Int64(videoData.count), countStyle: .file))")
 
         // Step 1: Get upload token (POST with empty JSON body)
         status = .uploading(progress: 0.2)
-        print("[FalAI] Getting upload token...")
-        let tokenURL = URL(string: "https://rest.alpha.fal.ai/storage/auth/token?storage_type=fal-cdn-v3")!
+        log("[FalAI] Getting upload token")
+        let tokenURL = try validatedURL(tokenEndpoint, expectedHost: "rest.alpha.fal.ai", context: "upload token")
         var tokenRequest = URLRequest(url: tokenURL)
         tokenRequest.httpMethod = "POST"
         tokenRequest.setValue("Key \(apiKey)", forHTTPHeaderField: "Authorization")
@@ -347,26 +440,24 @@ final class FalAIService: ObservableObject {
         }
 
         if tokenHttpResponse.statusCode != 200 {
-            let errorBody = String(data: tokenData, encoding: .utf8) ?? "Unknown error"
-            throw FalAIError.uploadFailed("Failed to get upload token: HTTP \(tokenHttpResponse.statusCode): \(errorBody)")
+            throw FalAIError.uploadFailed("Failed to get upload token: HTTP \(tokenHttpResponse.statusCode)")
         }
 
         guard let tokenJson = try? JSONSerialization.jsonObject(with: tokenData) as? [String: Any],
               let token = tokenJson["token"] as? String,
               let tokenType = tokenJson["token_type"] as? String else {
-            let responseStr = String(data: tokenData, encoding: .utf8) ?? "empty"
-            throw FalAIError.uploadFailed("Could not parse token response: \(responseStr)")
+            throw FalAIError.uploadFailed("Could not parse token response")
         }
 
         // Get base upload URL (try multiple keys, default to v3.fal.media)
         let baseUploadURL = (tokenJson["base_url"] as? String)
             ?? (tokenJson["base_upload_url"] as? String)
             ?? "https://v3.fal.media"
-        print("[FalAI] Got upload token, base URL: \(baseUploadURL)")
+        log("[FalAI] Got upload token")
 
         // Step 2: Upload file to CDN
         status = .uploading(progress: 0.4)
-        let cdnUploadURL = URL(string: "\(baseUploadURL)/files/upload")!
+        let cdnUploadURL = try validatedFalMediaUploadURL(from: baseUploadURL)
         var uploadRequest = URLRequest(url: cdnUploadURL)
         uploadRequest.httpMethod = "POST"
         uploadRequest.setValue("\(tokenType) \(token)", forHTTPHeaderField: "Authorization")
@@ -374,7 +465,7 @@ final class FalAIService: ObservableObject {
         uploadRequest.setValue("proxy.mp4", forHTTPHeaderField: "X-Fal-File-Name")
         uploadRequest.httpBody = videoData
 
-        print("[FalAI] Uploading to: \(cdnUploadURL)")
+        log("[FalAI] Uploading video")
 
         let (uploadData, uploadResponse) = try await session.data(for: uploadRequest)
 
@@ -383,8 +474,7 @@ final class FalAIService: ObservableObject {
         }
 
         if uploadHttpResponse.statusCode != 200 && uploadHttpResponse.statusCode != 201 {
-            let errorBody = String(data: uploadData, encoding: .utf8) ?? "Unknown error"
-            throw FalAIError.uploadFailed("Upload failed: HTTP \(uploadHttpResponse.statusCode): \(errorBody)")
+            throw FalAIError.uploadFailed("Upload failed: HTTP \(uploadHttpResponse.statusCode)")
         }
 
         // Parse response to get access URL
@@ -395,15 +485,21 @@ final class FalAIService: ObservableObject {
             if let uploadJson = try? JSONSerialization.jsonObject(with: uploadData) as? [String: Any],
                let urlString = uploadJson["url"] as? String,
                let resultURL = URL(string: urlString) {
-                print("[FalAI] Video uploaded: \(resultURL)")
+                guard isFalMediaURL(resultURL) else {
+                    throw FalAIError.uploadFailed("Upload response returned an unexpected host")
+                }
+                log("[FalAI] Video uploaded")
                 status = .uploading(progress: 1.0)
                 return resultURL
             }
-            let responseStr = String(data: uploadData, encoding: .utf8) ?? "empty"
-            throw FalAIError.uploadFailed("Could not parse upload response: \(responseStr)")
+            throw FalAIError.uploadFailed("Could not parse upload response")
         }
 
-        print("[FalAI] Video uploaded: \(accessURL)")
+        guard isFalMediaURL(accessURL) else {
+            throw FalAIError.uploadFailed("Upload response returned an unexpected host")
+        }
+
+        log("[FalAI] Video uploaded")
         status = .uploading(progress: 1.0)
         return accessURL
     }
@@ -423,9 +519,9 @@ final class FalAIService: ObservableObject {
         sourceDimensions: CGSize,
         apiKey: String
     ) async throws -> QueueSubmissionResponse {
-        print("[FalAI] Submitting tracking job")
+        log("[FalAI] Submitting tracking job")
 
-        var request = URLRequest(url: URL(string: queueEndpoint)!)
+        var request = URLRequest(url: try validatedURL(queueEndpoint, expectedHost: queueHost, context: "queue"))
         request.httpMethod = "POST"
         request.setValue("Key \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -458,12 +554,12 @@ final class FalAIService: ObservableObject {
                 "object_id": 1
             ]
             body["point_prompts"] = [pointPromptObj]
-            print("[FalAI] Point prompt: pixel=(\(pixelX), \(pixelY)) normalized=(\(point.x), \(point.y)) videoSize=\(sourceDimensions)")
+            log("[FalAI] Point prompt prepared for video size \(sourceDimensions)")
         }
 
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        print("[FalAI] Request body: \(body)")
+        log("[FalAI] Request body prepared")
 
         let (data, response) = try await session.data(for: request)
 
@@ -471,39 +567,34 @@ final class FalAIService: ObservableObject {
             throw FalAIError.jobSubmissionFailed("Invalid response")
         }
 
-        let responseStr = String(data: data, encoding: .utf8) ?? "empty"
-        print("[FalAI] Submit response: \(responseStr)")
+        log("[FalAI] Submit response received: \(data.count) bytes")
 
         if httpResponse.statusCode != 200 && httpResponse.statusCode != 201 && httpResponse.statusCode != 202 {
-            throw FalAIError.jobSubmissionFailed("HTTP \(httpResponse.statusCode): \(responseStr)")
+            throw FalAIError.jobSubmissionFailed("HTTP \(httpResponse.statusCode)")
         }
 
         // Parse response to get request_id and URLs
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let requestId = json["request_id"] as? String else {
-            throw FalAIError.jobSubmissionFailed("Could not parse response: \(responseStr)")
+            throw FalAIError.jobSubmissionFailed("Could not parse response")
         }
 
         // Get the returned URLs (fal.ai provides these)
         let statusUrlString = json["status_url"] as? String ?? "\(statusBaseURL)/\(requestId)/status"
         let responseUrlString = json["response_url"] as? String ?? "\(statusBaseURL)/\(requestId)"
 
-        guard let statusUrl = URL(string: statusUrlString),
-              let responseUrl = URL(string: responseUrlString) else {
-            throw FalAIError.jobSubmissionFailed("Invalid URLs in response")
-        }
+        let statusUrl = try validatedURL(statusUrlString, expectedHost: queueHost, context: "status")
+        let responseUrl = try validatedURL(responseUrlString, expectedHost: queueHost, context: "response")
 
-        print("[FalAI] Job submitted: \(requestId)")
-        print("[FalAI] Status URL: \(statusUrl)")
-        print("[FalAI] Response URL: \(responseUrl)")
+        log("[FalAI] Job submitted: \(requestId)")
+        log("[FalAI] Queue URLs validated")
 
         return QueueSubmissionResponse(requestId: requestId, statusUrl: statusUrl, responseUrl: responseUrl)
     }
 
     /// Poll for job completion and get results
     private func pollForResult(submission: QueueSubmissionResponse, apiKey: String, frameRate: Double, videoDimensions: CGSize) async throws -> TrackingResult {
-        print("[FalAI] Polling for results: \(submission.requestId)")
-        print("[FalAI] Using status URL: \(submission.statusUrl)")
+        log("[FalAI] Polling for results: \(submission.requestId)")
 
         var statusRequest = URLRequest(url: submission.statusUrl)
         statusRequest.httpMethod = "GET"
@@ -522,7 +613,7 @@ final class FalAIService: ObservableObject {
             do {
                 (data, response) = try await session.data(for: statusRequest)
             } catch {
-                print("[FalAI] Network error during poll: \(error.localizedDescription)")
+                log("[FalAI] Network error during poll: \(error.localizedDescription)")
                 // Wait and retry on network errors
                 try await Task.sleep(nanoseconds: 5_000_000_000)
                 pollCount += 1
@@ -531,10 +622,8 @@ final class FalAIService: ObservableObject {
 
             // Check HTTP status
             if let httpResponse = response as? HTTPURLResponse {
-                print("[FalAI] Poll HTTP status: \(httpResponse.statusCode)")
+                log("[FalAI] Poll HTTP status: \(httpResponse.statusCode)")
                 if httpResponse.statusCode != 200 {
-                    let errorBody = String(data: data, encoding: .utf8) ?? "empty"
-                    print("[FalAI] Poll error response: \(errorBody)")
                     // Wait and retry on server errors
                     if httpResponse.statusCode >= 500 {
                         try await Task.sleep(nanoseconds: 5_000_000_000)
@@ -544,21 +633,20 @@ final class FalAIService: ObservableObject {
                 }
             }
 
-            let responseStr = String(data: data, encoding: .utf8) ?? "empty"
-            print("[FalAI] Poll response: \(responseStr.prefix(500))")
+            log("[FalAI] Poll response received: \(data.count) bytes")
 
             guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                print("[FalAI] Failed to parse JSON response")
+                log("[FalAI] Failed to parse JSON response")
                 try await Task.sleep(nanoseconds: 5_000_000_000)
                 pollCount += 1
                 continue
             }
 
             guard let statusString = json["status"] as? String else {
-                print("[FalAI] No status field in response, keys: \(json.keys)")
+                log("[FalAI] No status field in response, keys: \(json.keys)")
                 // Maybe the response IS the result (some APIs return result directly)
                 if json["video"] != nil || json["boundingbox_frames_zip"] != nil || json["rle"] != nil {
-                    print("[FalAI] Found result data in response, parsing...")
+                    log("[FalAI] Found result data in response, parsing")
                     return try await parseResult(data, apiKey: apiKey, frameRate: frameRate, videoDimensions: videoDimensions)
                 }
                 try await Task.sleep(nanoseconds: 5_000_000_000)
@@ -566,7 +654,7 @@ final class FalAIService: ObservableObject {
                 continue
             }
 
-            print("[FalAI] Status: \(statusString)")
+            log("[FalAI] Status: \(statusString)")
 
             switch statusString {
             case "COMPLETED":
@@ -576,7 +664,7 @@ final class FalAIService: ObservableObject {
                 resultRequest.setValue("Key \(apiKey)", forHTTPHeaderField: "Authorization")
                 resultRequest.setValue("application/json", forHTTPHeaderField: "Accept")
 
-                print("[FalAI] Fetching result from: \(submission.responseUrl)")
+                log("[FalAI] Fetching result")
                 let (resultData, _) = try await session.data(for: resultRequest)
                 return try await parseResult(resultData, apiKey: apiKey, frameRate: frameRate, videoDimensions: videoDimensions)
 
@@ -588,12 +676,12 @@ final class FalAIService: ObservableObject {
                 // Update progress if available
                 if let logs = json["logs"] as? [[String: Any]], let lastLog = logs.last {
                     if let message = lastLog["message"] as? String {
-                        print("[FalAI] Log: \(message)")
+                        log("[FalAI] Status log: \(message)")
                     }
                 }
 
             default:
-                print("[FalAI] Unknown status: \(statusString)")
+                log("[FalAI] Unknown status: \(statusString)")
             }
 
             // Wait before next poll
@@ -607,20 +695,19 @@ final class FalAIService: ObservableObject {
     /// Parse the result from fal.ai video-rle endpoint
     /// Response format: { rle: [...], boxes: [[cx, cy, w, h], ...] }
     private func parseResult(_ data: Data, apiKey: String, frameRate: Double, videoDimensions: CGSize) async throws -> TrackingResult {
-        print("[FalAI] Parsing video-rle result")
+        log("[FalAI] Parsing video-rle result")
 
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            let responseStr = String(data: data, encoding: .utf8) ?? "empty"
-            print("[FalAI] Invalid JSON response: \(responseStr)")
+            log("[FalAI] Invalid JSON response")
             throw FalAIError.invalidResponse
         }
 
-        print("[FalAI] Response keys: \(json.keys)")
+        log("[FalAI] Response keys: \(json.keys)")
 
         // Use video dimensions for RLE size if not provided by API
         // COCO RLE format uses [height, width]
         let defaultSize = [Int(videoDimensions.height), Int(videoDimensions.width)]
-        print("[FalAI] Video dimensions for RLE: \(videoDimensions) -> size: \(defaultSize)")
+        log("[FalAI] Video dimensions for RLE: \(videoDimensions) -> size: \(defaultSize)")
 
         var masks: [Int: Data] = [:]
         var boundingBoxes: [Int: CGRect] = [:]
@@ -628,7 +715,7 @@ final class FalAIService: ObservableObject {
 
         // Extract RLE masks - primary data from video-rle endpoint
         if let rleArray = json["rle"] as? [Any] {
-            print("[FalAI] Found rle array with \(rleArray.count) items")
+            log("[FalAI] Found rle array with \(rleArray.count) items")
             frameCount = rleArray.count
 
             for (frameIndex, rle) in rleArray.enumerated() {
@@ -640,7 +727,7 @@ final class FalAIService: ObservableObject {
 
         // Extract bounding boxes (derived from masks by API)
         if let boxes = json["boxes"] as? [[Double]] {
-            print("[FalAI] Found boxes array with \(boxes.count) items")
+            log("[FalAI] Found boxes array with \(boxes.count) items")
             frameCount = max(frameCount, boxes.count)
 
             for (frameIndex, box) in boxes.enumerated() {
@@ -663,7 +750,7 @@ final class FalAIService: ObservableObject {
 
         // Check metadata array for per-frame data
         if let metadata = json["metadata"] as? [[String: Any]] {
-            print("[FalAI] Found metadata array with \(metadata.count) items")
+            log("[FalAI] Found metadata array with \(metadata.count) items")
 
             for (idx, item) in metadata.enumerated() {
                 let index = item["index"] as? Int ?? idx
@@ -694,7 +781,7 @@ final class FalAIService: ObservableObject {
             }
         }
 
-        print("[FalAI] Parsed \(masks.count) RLE masks and \(boundingBoxes.count) bounding boxes from \(frameCount) frames")
+        log("[FalAI] Parsed \(masks.count) RLE masks and \(boundingBoxes.count) bounding boxes from \(frameCount) frames")
 
         if masks.isEmpty {
             throw FalAIError.noBoundingBoxData
@@ -714,7 +801,7 @@ final class FalAIService: ObservableObject {
     private func convertRLEToData(_ rle: Any, defaultSize: [Int]) -> Data? {
         // If it's already a string (JSON string or raw counts)
         if let rleString = rle as? String {
-            print("[FalAI] RLE is string, length=\(rleString.count), prefix=\(rleString.prefix(50))")
+            log("[FalAI] RLE is string, length=\(rleString.count)")
             if rleString.hasPrefix("{") {
                 // Parse JSON, add size if missing, re-serialize
                 if var jsonDict = try? JSONSerialization.jsonObject(with: rleString.data(using: .utf8)!) as? [String: Any] {
@@ -722,13 +809,13 @@ final class FalAIService: ObservableObject {
                     if !hadSize {
                         jsonDict["size"] = defaultSize
                     }
-                    print("[FalAI] JSON dict keys: \(jsonDict.keys), hadSize=\(hadSize)")
+                    log("[FalAI] JSON dict keys: \(jsonDict.keys), hadSize=\(hadSize)")
                     return try? JSONSerialization.data(withJSONObject: jsonDict)
                 }
                 return rleString.data(using: .utf8)
             }
             // Raw counts string - wrap with size
-            print("[FalAI] Raw counts string, wrapping with size=\(defaultSize)")
+            log("[FalAI] Raw counts string, wrapping with size=\(defaultSize)")
             let dict: [String: Any] = ["counts": rleString, "size": defaultSize]
             return try? JSONSerialization.data(withJSONObject: dict)
         }
@@ -739,18 +826,18 @@ final class FalAIService: ObservableObject {
             if !hadSize {
                 rleDict["size"] = defaultSize
             }
-            print("[FalAI] RLE dict keys: \(rleDict.keys), hadSize=\(hadSize)")
+            log("[FalAI] RLE dict keys: \(rleDict.keys), hadSize=\(hadSize)")
             return try? JSONSerialization.data(withJSONObject: rleDict)
         }
 
         // If it's an array of counts
         if let counts = rle as? [Int] {
-            print("[FalAI] RLE is array of \(counts.count) counts, adding size=\(defaultSize)")
+            log("[FalAI] RLE is array of \(counts.count) counts, adding size=\(defaultSize)")
             let rleDict: [String: Any] = ["counts": counts, "size": defaultSize]
             return try? JSONSerialization.data(withJSONObject: rleDict)
         }
 
-        print("[FalAI] Unknown RLE type: \(type(of: rle))")
+        log("[FalAI] Unknown RLE type: \(type(of: rle))")
         return nil
     }
 }

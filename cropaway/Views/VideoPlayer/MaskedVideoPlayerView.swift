@@ -48,7 +48,8 @@ struct MaskedVideoPlayerView: NSViewRepresentable {
             freehandPoints: freehandPoints,
             freehandPathData: freehandPathData,
             aiMaskData: aiMaskData,
-            aiBoundingBox: .zero
+            aiBoundingBox: .zero,
+            isAbsent: false
         )
 
         let maskImage = Self.previewMaskRenderer.generateMaskImage(

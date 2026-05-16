@@ -128,39 +128,115 @@ Requires a fal.ai API key — configure in the app settings. Pricing is approxim
 
 ## Building from Source
 
+The published GitHub Releases are unsigned/ad-hoc-signed. If you want to verify the source, ship a personal build, or self-sign with your own Developer ID, follow the instructions below.
+
 ### macOS
 
-Requires Xcode 26 (for Liquid Glass APIs) and FFmpeg.
+**Prerequisites**
+- macOS 14 Sonoma or later
+- Xcode 26 or newer (required for the Liquid Glass APIs used in the UI). Install from the Mac App Store, then run `sudo xcode-select -s /Applications/Xcode.app` and accept the license: `sudo xcodebuild -license accept`.
+- [Homebrew](https://brew.sh)
+- FFmpeg (`brew install ffmpeg`) — used at runtime via the system PATH or the bundled binary.
+
+**1. Clone and open in Xcode**
 
 ```bash
-brew install ffmpeg
+git clone https://github.com/mhadifilms/cropaway.git
+cd cropaway
+open cropaway.xcodeproj
+```
 
-# Build release
-xcodebuild -scheme Cropaway -configuration Release build
+In Xcode, pick the **Cropaway** scheme and **My Mac** as the destination, then press ⌘R to run a Debug build. The first build downloads SwiftPM dependencies and may take a couple of minutes.
 
-# Create DMG
+**2. Command-line Debug build**
+
+```bash
+xcodebuild -scheme Cropaway -configuration Debug \
+    -derivedDataPath build/DerivedData build
+open build/DerivedData/Build/Products/Debug/Cropaway.app
+```
+
+**3. Release DMG (ad-hoc / unsigned)**
+
+```bash
 ./scripts/build-dmg.sh 1.0.0
 ```
 
+This produces `build/Cropaway-1.0.0.dmg` ad-hoc-signed. The DMG opens normally, but Gatekeeper will block first launch because the app is not signed with a Developer ID or notarized. To run it:
+
+- **Right-click** the app in `/Applications` → **Open** → **Open** in the confirmation dialog (only required the first time), or
+- Run once from Terminal to strip the quarantine flag: `xattr -dr com.apple.quarantine /Applications/Cropaway.app`
+
+**4. Release DMG (signed with your own Developer ID, optional)**
+
+If you have a paid Apple Developer account and a **Developer ID Application** certificate installed in your login keychain, you can produce a fully signed (and optionally notarized) DMG by exporting the required environment variables before invoking the build script:
+
+```bash
+# Signing only — produces a Developer-ID-signed DMG (still triggers Gatekeeper unless notarized)
+export DEVELOPMENT_TEAM="ABCDE12345"               # Your 10-char Team ID
+export CODE_SIGN_IDENTITY="Developer ID Application: Your Name (ABCDE12345)"
+
+# Optional: also notarize and staple
+export APPLE_ID="you@example.com"
+export APPLE_TEAM_ID="ABCDE12345"
+export APPLE_APP_SPECIFIC_PASSWORD="abcd-efgh-ijkl-mnop"   # App-Specific Password, not your Apple ID password
+
+./scripts/build-dmg.sh 1.0.0
+```
+
+You can find your identity string with:
+
+```bash
+security find-identity -p codesigning -v | grep "Developer ID Application"
+```
+
+App-Specific Passwords are generated at [appleid.apple.com](https://appleid.apple.com) → Sign-In and Security → App-Specific Passwords. Notarization uploads the DMG to Apple and waits for the result; it typically takes 1–5 minutes.
+
 ### Windows
 
-Requires .NET 8 SDK and FFmpeg.
+**Prerequisites**
+- Windows 10 or later (64-bit)
+- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
+- [Inno Setup 6](https://jrsoftware.org/isinfo.php) (only if you want to build the installer `.exe`)
+- FFmpeg — the build expects `ffmpeg.exe` and `ffprobe.exe` in `CropawayWindows/ffmpeg-bin/`. Download a static build from [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds/releases/latest) and copy the two binaries into that folder.
 
-```bash
-cd CropawayWindows
+**1. Clone and build**
 
-# Restore and build
-dotnet build CropawayWindows/CropawayWindows.csproj
+```powershell
+git clone https://github.com/mhadifilms/cropaway.git
+cd cropaway\CropawayWindows
 
-# Publish self-contained
-dotnet publish CropawayWindows/CropawayWindows.csproj -c Release -r win-x64 --self-contained true -o publish
+dotnet restore CropawayWindows\CropawayWindows.csproj
+dotnet build  CropawayWindows\CropawayWindows.csproj -c Release
 ```
 
-To create an installer, install [Inno Setup 6](https://jrsoftware.org/isinfo.php) and run:
+**2. Self-contained publish (portable folder)**
 
-```bash
+```powershell
+dotnet publish CropawayWindows\CropawayWindows.csproj `
+    -c Release -r win-x64 --self-contained true `
+    -p:PublishSingleFile=false `
+    -p:IncludeNativeLibrariesForSelfExtract=true `
+    -o publish
+
+# Bundle FFmpeg with the build
+New-Item -ItemType Directory -Path publish\ffmpeg -Force | Out-Null
+Copy-Item ffmpeg-bin\ffmpeg.exe  publish\ffmpeg\ffmpeg.exe
+Copy-Item ffmpeg-bin\ffprobe.exe publish\ffmpeg\ffprobe.exe
+```
+
+Run `publish\CropawayWindows.exe` directly, or zip the `publish` folder for a portable distribution.
+
+**3. Installer (.exe)**
+
+With Inno Setup installed:
+
+```powershell
 iscc /DMyAppVersion=1.0.0 installer.iss
+# Output appears in CropawayWindows\output\CropawaySetup-1.0.0.exe
 ```
+
+The installer is unsigned by default; SmartScreen may show a "Windows protected your PC" warning on first run. Click **More info** → **Run anyway** to proceed, or sign the installer yourself with `signtool` if you have an EV/OV code-signing certificate.
 
 ## Tech Stack
 

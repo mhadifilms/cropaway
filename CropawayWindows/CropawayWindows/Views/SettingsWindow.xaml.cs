@@ -9,7 +9,7 @@ namespace CropawayWindows.Views;
 
 /// <summary>
 /// Settings/preferences window for Cropaway.
-/// Stores settings in the Windows Registry under HKCU\Software\Cropaway.
+/// Stores general settings in the Windows Registry and API keys in protected user storage.
 /// </summary>
 public partial class SettingsWindow : Window
 {
@@ -38,7 +38,7 @@ public partial class SettingsWindow : Window
         if (key != null)
         {
             FFmpegPathTextBox.Text = key.GetValue("FFmpegPath", "")?.ToString() ?? "";
-            _currentApiKey = key.GetValue("FalAIApiKey", "")?.ToString() ?? "";
+            _currentApiKey = FalAIService.Instance.GetAPIKey() ?? "";
 
             string format = key.GetValue("DefaultFormat", "MOV")?.ToString() ?? "MOV";
             SelectComboBoxItem(FormatComboBox, format);
@@ -72,7 +72,10 @@ public partial class SettingsWindow : Window
         if (key == null) return;
 
         key.SetValue("FFmpegPath", FFmpegPathTextBox.Text.Trim());
-        key.SetValue("FalAIApiKey", _currentApiKey);
+        if (string.IsNullOrWhiteSpace(_currentApiKey))
+            FalAIService.Instance.RemoveAPIKey();
+        else
+            FalAIService.Instance.SaveAPIKey(_currentApiKey.Trim());
 
         string format = GetSelectedComboBoxText(FormatComboBox) ?? "MOV";
         key.SetValue("DefaultFormat", format);
@@ -295,6 +298,6 @@ public partial class SettingsWindow : Window
     /// </summary>
     public static string? GetFalAIApiKey()
     {
-        return GetSetting("FalAIApiKey");
+        return FalAIService.Instance.GetAPIKey();
     }
 }

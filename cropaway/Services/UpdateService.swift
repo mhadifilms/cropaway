@@ -222,6 +222,8 @@ final class UpdateService: ObservableObject {
         status = .installing
 
         do {
+            try verifyDownloadedDMG(at: dmgPath)
+
             // Mount the DMG
             let mountPoint = try await mountDMG(at: dmgPath)
 
@@ -239,6 +241,8 @@ final class UpdateService: ObservableObject {
             guard FileManager.default.fileExists(atPath: sourceApp.path) else {
                 throw UpdateError.installFailed("Could not find \(appName) in update")
             }
+
+            try verifyDownloadedApp(at: sourceApp)
 
             // Get current app location
             let currentAppURL = Bundle.main.bundleURL
@@ -405,27 +409,80 @@ final class UpdateService: ObservableObject {
         process.waitUntilExit()
     }
 
+    private func verifyDownloadedDMG(at dmgURL: URL) throws {
+        try runVerificationCommand(
+            executable: "/usr/sbin/spctl",
+            arguments: ["--assess", "--type", "open", "--verbose=4", dmgURL.path],
+            failureMessage: "Downloaded update is not accepted by Gatekeeper"
+        )
+    }
+
+    private func verifyDownloadedApp(at appURL: URL) throws {
+        if let currentBundleID = Bundle.main.bundleIdentifier,
+           let updateBundle = Bundle(url: appURL),
+           let updateBundleID = updateBundle.bundleIdentifier,
+           currentBundleID != updateBundleID {
+            throw UpdateError.installFailed("Update bundle identifier does not match this app")
+        }
+
+        try runVerificationCommand(
+            executable: "/usr/bin/codesign",
+            arguments: ["--verify", "--deep", "--strict", "--verbose=2", appURL.path],
+            failureMessage: "Downloaded app signature could not be verified"
+        )
+    }
+
+    private func runVerificationCommand(
+        executable: String,
+        arguments: [String],
+        failureMessage: String
+    ) throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+
+        try process.run()
+        process.waitUntilExit()
+
+        guard process.terminationStatus == 0 else {
+            throw UpdateError.installFailed(failureMessage)
+        }
+    }
+
     private func createUpdateScript(sourceApp: URL, destApp: URL, appToRelaunch: URL) throws -> String {
+        let sourcePath = shellQuoted(sourceApp.path)
+        let destPath = shellQuoted(destApp.path)
+        let relaunchPath = shellQuoted(appToRelaunch.path)
         let scriptContent = """
         #!/bin/bash
-        # Wait for app to quit
+        set -e
+
         sleep 2
 
-        # Remove old app
-        rm -rf "\(destApp.path)"
+        SOURCE_APP=\(sourcePath)
+        DEST_APP=\(destPath)
+        RELAUNCH_APP=\(relaunchPath)
+        BACKUP_PARENT="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/cropaway-old.XXXXXX")"
+        BACKUP_APP="$BACKUP_PARENT/Cropaway.app"
 
-        # Copy new app
-        cp -R "\(sourceApp.path)" "\(destApp.path)"
+        if [ -e "$DEST_APP" ]; then
+          /bin/mv "$DEST_APP" "$BACKUP_APP"
+        fi
 
-        # Fix permissions
-        chmod -R 755 "\(destApp.path)"
-        xattr -cr "\(destApp.path)" 2>/dev/null || true
+        if ! /usr/bin/ditto "$SOURCE_APP" "$DEST_APP"; then
+          if [ -e "$BACKUP_APP" ]; then
+            /bin/mv "$BACKUP_APP" "$DEST_APP"
+          fi
+          exit 1
+        fi
 
-        # Relaunch
-        open "\(appToRelaunch.path)"
+        /bin/chmod -R 755 "$DEST_APP"
 
-        # Clean up this script
-        rm -f "$0"
+        /usr/bin/open "$RELAUNCH_APP"
+
+        /bin/rm -f "$0"
         """
 
         let tempDir = FileManager.default.temporaryDirectory
@@ -440,6 +497,10 @@ final class UpdateService: ObservableObject {
         )
 
         return scriptPath.path
+    }
+
+    private func shellQuoted(_ value: String) -> String {
+        "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
     }
 
     /// Compare semantic versions

@@ -169,7 +169,8 @@ struct AIMaskOverlay: View {
             freehandPoints: [],
             freehandPathData: nil,
             aiMaskData: maskData,
-            aiBoundingBox: .zero
+            aiBoundingBox: .zero,
+            isAbsent: false
         )
 
         if let cgImage = Self.previewMaskRenderer.generateMaskImage(
